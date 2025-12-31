@@ -6,7 +6,14 @@
 	- [x] Remove commands globally
 - [x] Ping command
 - [x] Event handler system
-- [ ] Lavalink
+- [x] Lavalink
+	- [x] Play
+	- [ ] Pause
+	- [ ] Skip
+	- [ ] Stop
+	- [ ] Volume
+	- [ ] Filters
+	- [ ] Queue
 - [ ] Permissions
 - [ ] ChatGPT
 - [ ] CSGO Unboxing
