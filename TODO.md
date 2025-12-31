@@ -1,12 +1,12 @@
-- [ ] Connect to discord
-- [ ] Ping command
-- [ ] Command registration handler
-	- [ ] Push commands globally
-	- [ ] Push commands to dev server
+- [x] Connect to discord
+- [x] Ping command
+- [x] Command registration handler
+	- [x] Push commands globally
+	- [x] Push commands to dev server
 	- [ ] Remove commands from dev server
 	- [ ] Remove commands globally
-- [ ] Ping command
-- [ ] Event handler system
+- [x] Ping command
+- [x] Event handler system
 - [ ] Lavalink
 - [ ] Permissions
 - [ ] ChatGPT
