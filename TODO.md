@@ -1,10 +1,9 @@
 - [x] Connect to discord
-- [x] Ping command
 - [x] Command registration handler
 	- [x] Push commands globally
 	- [x] Push commands to dev server
-	- [ ] Remove commands from dev server
-	- [ ] Remove commands globally
+	- [x] Remove commands from dev server
+	- [x] Remove commands globally
 - [x] Ping command
 - [x] Event handler system
 - [ ] Lavalink
