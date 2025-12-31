@@ -2,18 +2,41 @@
  * Main bot class that extends the Discord.js Client class.
  * This class exists so that we can easily add properties and methods to the bot.
  */
-import { Client, Collection, Events, GatewayIntentBits, Routes, type ClientEvents, type RESTGetAPIApplicationCommandsResult, type RESTGetAPIApplicationGuildCommandsResult, type Snowflake } from "discord.js";
+import { Client, Collection, Events, GatewayIntentBits, Message, Routes, TextChannel, type ClientEvents, type RESTGetAPIApplicationCommandsResult, type RESTGetAPIApplicationGuildCommandsResult, type Snowflake } from "discord.js";
+import { Connectors } from "shoukaku";
+import { Kazagumo } from "kazagumo";
 import type Command from "./Command";
 import path from "node:path";
 import type BotEvent from "./BotEvent";
 import fs from "node:fs/promises";
 
+// temp lavalink nodes, will be replaced with config later
+const lavalinkNodes = [
+    {
+        name: "localhost",
+        url: "localhost:2333",
+        auth: "youshallnotpass",
+        secure: false,
+    }
+]
+
 export default class Bot extends Client {
     commands: Collection<string, Command>;
+    override music: Kazagumo;
 
     constructor(shouldDeployCommands: boolean = false, shouldRemoveCommands: boolean = false, guildId: string | undefined = undefined) {
-        super({ intents: [GatewayIntentBits.Guilds] });
+        super({ intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMessages, GatewayIntentBits.GuildVoiceStates] });
         this.commands = new Collection<string, Command>();
+
+        // TODO: Change search engine to youtube
+        this.music = new Kazagumo({
+            defaultSearchEngine: "soundcloud",
+            send: (guildId, payload) => {
+                const guild = this.guilds.cache.get(guildId);
+                if (guild) guild.shard.send(payload);
+            }
+        }, new Connectors.DiscordJS(this), lavalinkNodes);
+        
         this.registerCommands(path.join(import.meta.dirname, "../commands")).catch((error) => {
             console.error("Error registering commands:", error);
         });
@@ -33,6 +56,31 @@ export default class Bot extends Client {
                 await this.removeCommands(guildId).catch((error) => {
                     console.error("Error removing commands:", error);
                 });
+            }
+        });
+
+        // Lavalink events
+        // Dervied from Kazagumo readme
+        this.music.shoukaku.on('ready', (name) => console.log(`Lavalink ${name}: Ready!`));
+        this.music.shoukaku.on('error', (name, error) => console.error(`Lavalink ${name}: Error Caught,`, error));
+        this.music.shoukaku.on('close', (name, code, reason) => console.warn(`Lavalink ${name}: Closed, Code ${code}, Reason ${reason || 'No reason'}`));
+        this.music.shoukaku.on('debug', (name, info) => console.debug(`Lavalink ${name}: Debug,`, info));
+        this.music.shoukaku.on('disconnect', (name, count) => {
+            const players = [...this.music.shoukaku.players.values()].filter(p => p.node.name === name);
+            players.forEach(player => {
+                this.music.destroyPlayer(player.guildId);
+                player.destroy();
+            });
+            console.warn(`Lavalink ${name}: Disconnected`);
+        });
+
+        this.music.on("playerEmpty", player => {
+            player.disconnect();
+            if (!player.textId) return;
+            const channel = this.channels.cache.get(player.textId);
+            if (channel?.isTextBased() && channel instanceof TextChannel) {
+                channel.send({content: `Destroyed player due to inactivity.`})
+                    .then((x: Message) => player.data.set("message", x));
             }
         });
     }
@@ -127,5 +175,13 @@ export default class Bot extends Client {
             }
             console.log(`Done removing commands globally`);
         }
+    }
+}
+
+// Extend the Discord.js Client class to include the music property.
+// This is so that we can easily access the music property from the client instance.
+declare module "discord.js" {
+    interface Client {
+        music: Kazagumo;
     }
 }

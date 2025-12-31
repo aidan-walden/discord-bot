@@ -6,9 +6,10 @@
 import type {
 	ChatInputCommandInteraction,
 	SlashCommandBuilder,
+	SlashCommandOptionsOnlyBuilder,
 } from "discord.js";
 
 export default interface Command {
-	data: SlashCommandBuilder;
+	data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
 	execute(interaction: ChatInputCommandInteraction): Promise<void>;
 }
