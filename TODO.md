@@ -1,0 +1,14 @@
+- [ ] Connect to discord
+- [ ] Ping command
+- [ ] Command registration handler
+	- [ ] Push commands globally
+	- [ ] Push commands to dev server
+	- [ ] Remove commands from dev server
+	- [ ] Remove commands globally
+- [ ] Ping command
+- [ ] Event handler system
+- [ ] Lavalink
+- [ ] Permissions
+- [ ] ChatGPT
+- [ ] CSGO Unboxing
+- [ ] Admin WebUI
