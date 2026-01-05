@@ -9,11 +9,11 @@
 - [x] Lavalink
 	- [x] Play
 	- [ ] Pause
-	- [ ] Skip
-	- [ ] Stop
+	- [x] Skip
+	- [x] Stop
 	- [ ] Volume
 	- [ ] Filters
-	- [ ] Queue
+	- [x] Queue
 - [ ] Permissions
 - [ ] ChatGPT
 - [ ] CSGO Unboxing

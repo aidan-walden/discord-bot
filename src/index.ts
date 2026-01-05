@@ -18,7 +18,7 @@ const { values, positionals } = parseArgs({
 		remove: {
 			type: "boolean",
 			default: false,
-			description: "Remove commands from the Discord API for registration.",
+			description: "Remove commands from the Discord API.",
 		},
 		guild: {
 			type: "string",
