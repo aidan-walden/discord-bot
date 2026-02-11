@@ -5,10 +5,11 @@ import {
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
 import type Command from "../../models/Command";
 
-export default class Stop implements Command {
+export default class Pause implements Command {
 	data = new SlashCommandBuilder()
-		.setName("stop")
-		.setDescription("Clears the queue and stops the player");
+		.setName("pause")
+		.setDescription("Pauses the current track");
+
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
 		const context = await getMusicCommandContext(interaction, {
 			requireVoiceChannel: true,
@@ -19,8 +20,7 @@ export default class Stop implements Command {
 		}
 
 		const { player } = context;
-		player.queue.clear();
-		player.skip();
-		await interaction.reply({ content: "Player stopped" });
+		player.pause(true);
+		await interaction.reply({ content: "Paused." });
 	}
 }
