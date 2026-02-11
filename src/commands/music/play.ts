@@ -1,9 +1,9 @@
 import {
-	GuildMember,
+	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
-	type ChatInputCommandInteraction,
 } from "discord.js";
+import { getMusicCommandContext } from "../../helpers/musicCommandContext";
 import type Command from "../../models/Command";
 
 export default class Play implements Command {
@@ -17,27 +17,10 @@ export default class Play implements Command {
 				.setRequired(true),
 		);
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-		if (!interaction.guildId) {
-			await interaction.reply({
-				content: "This command can only be used in a guild",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
-
-		if (!(interaction.member instanceof GuildMember)) {
-			await interaction.reply({
-				content: "This command can only be used by a member",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
-
-		if (!interaction.member?.voice.channelId) {
-			await interaction.reply({
-				content: "You must be in a voice channel to use this command",
-				flags: MessageFlags.Ephemeral,
-			});
+		const context = await getMusicCommandContext(interaction, {
+			requireVoiceChannel: true,
+		});
+		if (!context || !context.voiceChannelId) {
 			return;
 		}
 
@@ -71,12 +54,12 @@ export default class Play implements Command {
 
 		// Get or create player
 		const player = await interaction.client.bot.music.createPlayer({
-			guildId: interaction.guildId,
+			guildId: context.guildId,
 			textId: interaction.channelId,
-			voiceId: interaction.member.voice.channelId,
+			voiceId: context.voiceChannelId,
 			deaf: true,
 		});
-        
+
 		if (!player) {
 			await interaction.reply({
 				content: "Failed to create player",

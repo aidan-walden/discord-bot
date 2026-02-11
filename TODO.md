@@ -8,11 +8,11 @@
 - [x] Event handler system
 - [x] Lavalink
 	- [x] Play
-	- [ ] Pause
+	- [x] Pause
 	- [x] Skip
 	- [x] Stop
-	- [ ] Volume
-	- [ ] Filters
+	- [x] Volume
+	- [x] Filters
 	- [x] Queue
 - [ ] Permissions
 - [ ] ChatGPT
