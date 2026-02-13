@@ -1,13 +1,9 @@
 import { Events } from "discord.js";
 import Bot from "./models/Bot";
 import { parseArgs } from "node:util";
+import { loadConfig } from "./config";
 
-if (process.env.DISCORD_TOKEN === undefined) {
-	console.error("Environment variable DISCORD_TOKEN must be set.");
-	process.exit(1);
-}
-
-const { values, positionals } = parseArgs({
+const { values } = parseArgs({
 	args: Bun.argv,
 	options: {
 		sync: {
@@ -34,10 +30,16 @@ if (values.sync && values.remove) {
 	process.exit(1);
 }
 
-const client = new Bot(values.sync, values.remove, values.guild);
+const config = await loadConfig();
+const client = new Bot(
+	values.sync,
+	values.remove,
+	values.guild,
+	config.lavalink.nodes,
+);
 
 client.once(Events.ClientReady, (readyClient) => {
 	console.log(`Logged in as ${readyClient.user.tag}`);
 });
 
-client.login(process.env.DISCORD_TOKEN);
+client.login(config.BOT_TOKEN);

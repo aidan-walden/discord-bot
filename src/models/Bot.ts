@@ -21,16 +21,7 @@ import type Command from "./Command";
 import path from "node:path";
 import type BotEvent from "./BotEvent";
 import fs from "node:fs/promises";
-
-// temp lavalink nodes, will be replaced with config later
-const lavalinkNodes = [
-	{
-		name: "localhost",
-		url: "localhost:2333",
-		auth: "youshallnotpass",
-		secure: false,
-	},
-];
+import type { LavalinkNodeConfig } from "../config";
 
 export default class Bot extends Client {
 	override readonly bot: Bot = this;
@@ -41,6 +32,7 @@ export default class Bot extends Client {
 		shouldDeployCommands: boolean = false,
 		shouldRemoveCommands: boolean = false,
 		guildId: string | undefined = undefined,
+		lavalinkNodes: LavalinkNodeConfig[],
 	) {
 		super({
 			intents: [
