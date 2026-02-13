@@ -1,0 +1,9 @@
+BOT_TOKEN: ""
+OPENAI_API_TOKEN: ""
+
+lavalink:
+  nodes:
+    - name: "localhost"
+      url: "localhost:2333"
+      auth: "youshallnotpass"
+      secure: false
