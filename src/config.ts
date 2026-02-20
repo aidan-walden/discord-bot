@@ -11,6 +11,7 @@ export interface LavalinkNodeConfig {
 interface AppConfigFile {
 	BOT_TOKEN?: string;
 	OPENAI_API_TOKEN?: string;
+	ADMIN_USER_IDS?: string[];
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -19,6 +20,7 @@ interface AppConfigFile {
 export interface AppConfig {
 	BOT_TOKEN: string;
 	OPENAI_API_TOKEN?: string;
+	ADMIN_USER_IDS: string[];
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -30,7 +32,9 @@ function isNonEmptyString(value: unknown): value is string {
 
 function ensureString(value: unknown, key: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
-		throw new Error(`Invalid config value for ${key}: expected non-empty string.`);
+		throw new Error(
+			`Invalid config value for ${key}: expected non-empty string.`,
+		);
 	}
 	return value;
 }
@@ -44,7 +48,9 @@ function ensureBoolean(value: unknown, key: string): boolean {
 
 function validateNodes(value: unknown): LavalinkNodeConfig[] {
 	if (!Array.isArray(value) || value.length === 0) {
-		throw new Error("Invalid config value for lavalink.nodes: expected non-empty array.");
+		throw new Error(
+			"Invalid config value for lavalink.nodes: expected non-empty array.",
+		);
 	}
 
 	return value.map((node, index) => {
@@ -57,28 +63,54 @@ function validateNodes(value: unknown): LavalinkNodeConfig[] {
 			name: ensureString(nodeRecord.name, `lavalink.nodes[${index}].name`),
 			url: ensureString(nodeRecord.url, `lavalink.nodes[${index}].url`),
 			auth: ensureString(nodeRecord.auth, `lavalink.nodes[${index}].auth`),
-			secure: ensureBoolean(nodeRecord.secure, `lavalink.nodes[${index}].secure`),
+			secure: ensureBoolean(
+				nodeRecord.secure,
+				`lavalink.nodes[${index}].secure`,
+			),
 		};
 	});
 }
 
-export async function loadConfig(filePath: string = "config.yml"): Promise<AppConfig> {
+function validateAdminUserIds(value: unknown): string[] {
+	if (value === undefined) {
+		return [];
+	}
+
+	if (!Array.isArray(value)) {
+		throw new Error(
+			"Invalid config value for ADMIN_USER_IDS: expected array of strings.",
+		);
+	}
+
+	const adminUserIds = value.map((userId, index) =>
+		ensureString(userId, `ADMIN_USER_IDS[${index}]`),
+	);
+	return [...new Set(adminUserIds)];
+}
+
+export async function loadConfig(
+	filePath: string = "config.yml",
+): Promise<AppConfig> {
 	const resolvedPath = path.resolve(filePath);
-	const fileContents = await fs.readFile(resolvedPath, "utf8").catch((error) => {
-		throw new Error(`Failed to read config file at ${resolvedPath}: ${error}`);
-	});
+	const fileContents = await fs
+		.readFile(resolvedPath, "utf8")
+		.catch((error) => {
+			throw new Error(
+				`Failed to read config file at ${resolvedPath}: ${error}`,
+			);
+		});
 
 	const parsed = Bun.YAML.parse(fileContents);
 	if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
-		throw new Error(`Invalid config format in ${resolvedPath}: expected an object at root.`);
+		throw new Error(
+			`Invalid config format in ${resolvedPath}: expected an object at root.`,
+		);
 	}
 
 	const configFile = parsed as AppConfigFile;
 	const envBotToken = process.env.BOT_TOKEN;
 	const configBotToken = configFile.BOT_TOKEN;
-	const botToken = isNonEmptyString(envBotToken)
-		? envBotToken
-		: configBotToken;
+	const botToken = isNonEmptyString(envBotToken) ? envBotToken : configBotToken;
 
 	if (!isNonEmptyString(botToken)) {
 		throw new Error(
@@ -86,12 +118,15 @@ export async function loadConfig(filePath: string = "config.yml"): Promise<AppCo
 		);
 	}
 
-	const openaiToken = process.env.OPENAI_API_TOKEN ?? configFile.OPENAI_API_TOKEN;
+	const openaiToken =
+		process.env.OPENAI_API_TOKEN ?? configFile.OPENAI_API_TOKEN;
+	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 
 	return {
 		BOT_TOKEN: botToken,
 		OPENAI_API_TOKEN: openaiToken,
+		ADMIN_USER_IDS: adminUserIds,
 		lavalink: {
 			nodes: lavalinkNodes,
 		},

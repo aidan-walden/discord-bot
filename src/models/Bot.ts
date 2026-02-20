@@ -4,35 +4,37 @@
  */
 import {
 	Client,
+	type ClientEvents,
 	Collection,
 	Events,
 	GatewayIntentBits,
 	Message,
-	Routes,
-	TextChannel,
-	type ClientEvents,
 	type RESTGetAPIApplicationCommandsResult,
 	type RESTGetAPIApplicationGuildCommandsResult,
+	Routes,
 	type Snowflake,
+	TextChannel,
 } from "discord.js";
-import { Connectors } from "shoukaku";
 import { Kazagumo, PlayerState } from "kazagumo";
-import type Command from "./Command";
-import path from "node:path";
-import type BotEvent from "./BotEvent";
+import { Connectors } from "shoukaku";
 import fs from "node:fs/promises";
+import path from "node:path";
 import type { LavalinkNodeConfig } from "../config";
+import type BotEvent from "./BotEvent";
+import type Command from "./Command";
 
 export default class Bot extends Client {
 	override readonly bot: Bot = this;
 	readonly commands: Collection<string, Command>;
 	readonly music: Kazagumo;
+	readonly adminUserIds: ReadonlySet<string>;
 
 	constructor(
 		shouldDeployCommands: boolean = false,
 		shouldRemoveCommands: boolean = false,
 		guildId: string | undefined = undefined,
 		lavalinkNodes: LavalinkNodeConfig[],
+		adminUserIds: string[] = [],
 	) {
 		super({
 			intents: [
@@ -42,6 +44,7 @@ export default class Bot extends Client {
 			],
 		});
 		this.commands = new Collection<string, Command>();
+		this.adminUserIds = new Set(adminUserIds);
 
 		// TODO: Change search engine to youtube
 		this.music = new Kazagumo(

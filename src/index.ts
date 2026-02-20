@@ -1,7 +1,7 @@
-import { Events } from "discord.js";
-import Bot from "./models/Bot";
 import { parseArgs } from "node:util";
+import { Events } from "discord.js";
 import { loadConfig } from "./config";
+import Bot from "./models/Bot";
 
 const { values } = parseArgs({
 	args: Bun.argv,
@@ -18,7 +18,8 @@ const { values } = parseArgs({
 		},
 		guild: {
 			type: "string",
-			description: "The guild ID to deploy the commands to. If not provided, commands will be deployed/removed globally.",
+			description:
+				"The guild ID to deploy the commands to. If not provided, commands will be deployed/removed globally.",
 		},
 	},
 	allowPositionals: true,
@@ -36,6 +37,7 @@ const client = new Bot(
 	values.remove,
 	values.guild,
 	config.lavalink.nodes,
+	config.ADMIN_USER_IDS,
 );
 
 client.once(Events.ClientReady, (readyClient) => {
