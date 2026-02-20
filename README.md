@@ -3,6 +3,13 @@ A modular Discord bot written in TypeScript for the Bun JS runtime. This reposit
 
 ## Setup
 
+Make sure that these values are defined in `config.yml`
+
+- `BOT_TOKEN`: Discord bot token
+- `OPENAI_API_TOKEN`: optional OpenAI API token, used for ChatGPT sessions
+- `ADMIN_USER_IDS`: list of Discord user IDs treated as bot admins
+- `lavalink.nodes`: Lavalink node configuration
+
 ### Building Shoukaku Type Definitions
 
 The `shoukaku` package requires a manual build step to generate proper TypeScript definitions:
