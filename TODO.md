@@ -14,7 +14,7 @@
 	- [x] Volume
 	- [x] Filters
 	- [x] Queue
-- [ ] Permissions
+- [x] Permissions
 - [ ] ChatGPT
 - [ ] CSGO Unboxing
 - [ ] Admin WebUI

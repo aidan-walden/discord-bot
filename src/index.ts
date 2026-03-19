@@ -32,13 +32,8 @@ if (values.sync && values.remove) {
 }
 
 const config = await loadConfig();
-const client = new Bot(
-	values.sync,
-	values.remove,
-	values.guild,
-	config.lavalink.nodes,
-	config.ADMIN_USER_IDS,
-);
+const client = new Bot(config, values.sync, values.remove, values.guild);
+await client.initialize();
 
 client.once(Events.ClientReady, (readyClient) => {
 	console.log(`Logged in as ${readyClient.user.tag}`);

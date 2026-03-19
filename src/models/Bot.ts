@@ -2,24 +2,28 @@
  * Main bot class that extends the Discord.js Client class.
  * This class exists so that we can easily add properties and methods to the bot.
  */
+
+import fs from "node:fs/promises";
+import path from "node:path";
 import {
 	Client,
 	type ClientEvents,
 	Collection,
 	Events,
 	GatewayIntentBits,
-	Message,
 	type RESTGetAPIApplicationCommandsResult,
 	type RESTGetAPIApplicationGuildCommandsResult,
 	Routes,
 	type Snowflake,
-	TextChannel,
 } from "discord.js";
-import { Kazagumo, PlayerState } from "kazagumo";
+import { Kazagumo } from "kazagumo";
+import OpenAI from "openai";
+import postgres from "postgres";
 import { Connectors } from "shoukaku";
-import fs from "node:fs/promises";
-import path from "node:path";
-import type { LavalinkNodeConfig } from "../config";
+import type { AppConfig } from "../config";
+import { migrateDatabase } from "../database/migrate";
+import BanRepository from "../repositories/BanRepository";
+import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
 import type Command from "./Command";
 
@@ -28,13 +32,20 @@ export default class Bot extends Client {
 	readonly commands: Collection<string, Command>;
 	readonly music: Kazagumo;
 	readonly adminUserIds: ReadonlySet<string>;
+	readonly config: AppConfig;
+	readonly db: postgres.Sql;
+	readonly openai: OpenAI | null;
+	readonly permissions: PermissionService;
+
+	private readonly shouldDeployCommands: boolean;
+	private readonly shouldRemoveCommands: boolean;
+	private readonly deployGuildId: string | undefined;
 
 	constructor(
+		config: AppConfig,
 		shouldDeployCommands: boolean = false,
 		shouldRemoveCommands: boolean = false,
 		guildId: string | undefined = undefined,
-		lavalinkNodes: LavalinkNodeConfig[],
-		adminUserIds: string[] = [],
 	) {
 		super({
 			intents: [
@@ -43,8 +54,22 @@ export default class Bot extends Client {
 				GatewayIntentBits.GuildVoiceStates,
 			],
 		});
+		this.config = config;
+		this.shouldDeployCommands = shouldDeployCommands;
+		this.shouldRemoveCommands = shouldRemoveCommands;
+		this.deployGuildId = guildId;
 		this.commands = new Collection<string, Command>();
-		this.adminUserIds = new Set(adminUserIds);
+		this.adminUserIds = new Set(config.ADMIN_USER_IDS);
+		this.db = postgres(config.DATABASE_URL);
+		this.openai = config.OPENAI_API_TOKEN
+			? new OpenAI({ apiKey: config.OPENAI_API_TOKEN })
+			: null;
+		this.permissions = new PermissionService(
+			this.adminUserIds,
+			new BanRepository(this.db, "gpt_user_bans", "user_id"),
+			new BanRepository(this.db, "music_user_bans", "user_id"),
+			new BanRepository(this.db, "music_guild_bans", "guild_id"),
+		);
 
 		// TODO: Change search engine to youtube
 		this.music = new Kazagumo(
@@ -56,34 +81,8 @@ export default class Bot extends Client {
 				},
 			},
 			new Connectors.DiscordJS(this),
-			lavalinkNodes,
+			config.lavalink.nodes,
 		);
-
-		this.registerCommands(path.join(import.meta.dirname, "../commands")).catch(
-			(error) => {
-				console.error("Error registering commands:", error);
-			},
-		);
-
-		this.registerEvents(path.join(import.meta.dirname, "../events")).catch(
-			(error) => {
-				console.error("Error registering events:", error);
-			},
-		);
-
-		// Bot must be ready to deploy or remove commands, as we need to access the bot user's ID.
-		this.once(Events.ClientReady, async () => {
-			if (shouldDeployCommands) {
-				await this.deployCommands(guildId).catch((error) => {
-					console.error("Error deploying commands:", error);
-				});
-			}
-			if (shouldRemoveCommands) {
-				await this.removeCommands(guildId).catch((error) => {
-					console.error("Error removing commands:", error);
-				});
-			}
-		});
 
 		// Lavalink events
 		// Dervied from Kazagumo readme
@@ -101,7 +100,7 @@ export default class Bot extends Client {
 		this.music.shoukaku.on("debug", (name, info) =>
 			console.debug(`Lavalink ${name}: Debug,`, info),
 		);
-		this.music.shoukaku.on("disconnect", (name, count) => {
+		this.music.shoukaku.on("disconnect", (name) => {
 			const players = [...this.music.shoukaku.players.values()].filter(
 				(p) => p.node.name === name,
 			);
@@ -118,11 +117,31 @@ export default class Bot extends Client {
 		});
 	}
 
+	async initialize(): Promise<void> {
+		await migrateDatabase(this.db);
+		await this.registerCommands(path.join(import.meta.dirname, "../commands"));
+		await this.registerEvents(path.join(import.meta.dirname, "../events"));
+
+		// Bot must be ready to deploy or remove commands, as we need to access the bot user's ID.
+		this.once(Events.ClientReady, async () => {
+			if (this.shouldDeployCommands) {
+				await this.deployCommands(this.deployGuildId).catch((error) => {
+					console.error("Error deploying commands:", error);
+				});
+			}
+			if (this.shouldRemoveCommands) {
+				await this.removeCommands(this.deployGuildId).catch((error) => {
+					console.error("Error removing commands:", error);
+				});
+			}
+		});
+	}
+
 	/**
 	 * Register all events in the given directory, to be executed by the bot when the event is triggered.
 	 * @param {string} rootDir - The root directory to search for event files.
 	 */
-	async registerEvents(rootDir: string): Promise<void> {
+	private async registerEvents(rootDir: string): Promise<void> {
 		const eventFiles = (await fs.readdir(rootDir)).filter((file) =>
 			file.endsWith(".ts"),
 		);
@@ -148,7 +167,7 @@ export default class Bot extends Client {
 	 * Register all commands in the given directory, to be executed by the bot when the command is triggered.
 	 * @param {string} rootDir - The root directory to search for command files.
 	 */
-	async registerCommands(rootDir: string): Promise<void> {
+	private async registerCommands(rootDir: string): Promise<void> {
 		const commandFolders = await fs.readdir(rootDir);
 		for (const folder of commandFolders) {
 			const commandFolderPath = path.join(rootDir, folder);
