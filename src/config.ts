@@ -10,7 +10,9 @@ export interface LavalinkNodeConfig {
 
 interface AppConfigFile {
 	BOT_TOKEN?: string;
+	DATABASE_URL?: string;
 	OPENAI_API_TOKEN?: string;
+	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS?: string[];
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
@@ -19,7 +21,9 @@ interface AppConfigFile {
 
 export interface AppConfig {
 	BOT_TOKEN: string;
+	DATABASE_URL: string;
 	OPENAI_API_TOKEN?: string;
+	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS: string[];
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
@@ -111,6 +115,9 @@ export async function loadConfig(
 	const envBotToken = process.env.BOT_TOKEN;
 	const configBotToken = configFile.BOT_TOKEN;
 	const botToken = isNonEmptyString(envBotToken) ? envBotToken : configBotToken;
+	const databaseUrl = isNonEmptyString(process.env.DATABASE_URL)
+		? process.env.DATABASE_URL
+		: configFile.DATABASE_URL;
 
 	if (!isNonEmptyString(botToken)) {
 		throw new Error(
@@ -118,14 +125,25 @@ export async function loadConfig(
 		);
 	}
 
+	if (!isNonEmptyString(databaseUrl)) {
+		throw new Error(
+			"DATABASE_URL is not set. Define DATABASE_URL in environment or set DATABASE_URL in config.yml.",
+		);
+	}
+
 	const openaiToken =
 		process.env.OPENAI_API_TOKEN ?? configFile.OPENAI_API_TOKEN;
+	const openaiModel = isNonEmptyString(process.env.OPENAI_MODEL)
+		? process.env.OPENAI_MODEL
+		: configFile.OPENAI_MODEL;
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 
 	return {
 		BOT_TOKEN: botToken,
+		DATABASE_URL: databaseUrl,
 		OPENAI_API_TOKEN: openaiToken,
+		OPENAI_MODEL: openaiModel,
 		ADMIN_USER_IDS: adminUserIds,
 		lavalink: {
 			nodes: lavalinkNodes,

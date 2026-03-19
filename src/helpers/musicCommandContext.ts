@@ -39,6 +39,19 @@ export async function getMusicCommandContext(
 		return null;
 	}
 
+	const usageBlockReason =
+		await interaction.client.bot.permissions.getMusicUsageBlockReason(
+			interaction.user.id,
+			interaction.guildId,
+		);
+	if (usageBlockReason) {
+		await interaction.reply({
+			content: usageBlockReason,
+			flags: MessageFlags.Ephemeral,
+		});
+		return null;
+	}
+
 	const voiceChannelId = interaction.member.voice.channelId;
 	if (requireVoiceChannel && !voiceChannelId) {
 		await interaction.reply({

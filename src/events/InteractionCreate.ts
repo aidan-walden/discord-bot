@@ -5,11 +5,27 @@ import type BotEvent from "../models/BotEvent";
 
 export default class InteractionCreate implements BotEvent {
 	once: boolean = false;
-	event: typeof Events[keyof typeof Events] = Events.InteractionCreate;
+	event: (typeof Events)[keyof typeof Events] = Events.InteractionCreate;
 	async execute(bot: Bot, interaction: Interaction): Promise<void> {
-		if (!interaction.isChatInputCommand()) return;
+		if (interaction.isAutocomplete()) {
+			const command = bot.commands.get(interaction.commandName);
+			if (!command?.autocomplete) {
+				return;
+			}
+
+			await command.autocomplete(interaction);
+			return;
+		}
+
+		if (!interaction.isChatInputCommand()) {
+			return;
+		}
+
 		const command = bot.commands.get(interaction.commandName);
-		if (!command) return;
+		if (!command) {
+			return;
+		}
+
 		await command.execute(interaction);
 	}
 }
