@@ -8,10 +8,14 @@ import type {
 	ChatInputCommandInteraction,
 	SlashCommandBuilder,
 	SlashCommandOptionsOnlyBuilder,
+	SlashCommandSubcommandsOnlyBuilder,
 } from "discord.js";
 
 export default interface Command {
-	data: SlashCommandBuilder | SlashCommandOptionsOnlyBuilder;
+	data:
+		| SlashCommandBuilder
+		| SlashCommandOptionsOnlyBuilder
+		| SlashCommandSubcommandsOnlyBuilder;
 	execute(interaction: ChatInputCommandInteraction): Promise<void>;
 	autocomplete?(interaction: AutocompleteInteraction): Promise<void>;
 }
