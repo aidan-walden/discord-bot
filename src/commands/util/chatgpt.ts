@@ -1,6 +1,7 @@
 import {
 	type AnyThreadChannel,
 	type ChatInputCommandInteraction,
+	InteractionContextType,
 	MessageFlags,
 	SlashCommandBuilder,
 	TextChannel,
@@ -35,7 +36,7 @@ export default class ChatGpt implements Command {
 	data = new SlashCommandBuilder()
 		.setName("chatgpt")
 		.setDescription("Talk to ChatGPT in a managed thread")
-		.setDMPermission(false)
+		.setContexts([InteractionContextType.Guild])
 		.addSubcommand((subcommand) =>
 			subcommand
 				.setName("ask")
@@ -50,7 +51,7 @@ export default class ChatGpt implements Command {
 		.addSubcommand((subcommand) =>
 			subcommand
 				.setName("end")
-				.setDescription("End your active ChatGPT session"),
+				.setDescription("End your ChatGPT session"),
 		);
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -150,21 +151,21 @@ export default class ChatGpt implements Command {
 			}
 		} else {
 			await interaction.editReply(
-				"ChatGPT sessions can only be started from a server text channel or thread.",
+				"ChatGPT sessions can only be started from a server.",
 			);
 			return;
 		}
 
 		if (!session || !thread) {
 			await interaction.editReply(
-				"Failed to create or locate a ChatGPT thread.",
+				"Failed to create or locate ChatGPT thread.",
 			);
 			return;
 		}
 
 		if (session.isBusy) {
 			await interaction.editReply(
-				`ChatGPT is still processing your previous message in ${thread}.`,
+				`OpenAI is still processing your previous message in ${thread}.`,
 			);
 			return;
 		}
@@ -181,7 +182,7 @@ export default class ChatGpt implements Command {
 		} catch (error) {
 			console.error("ChatGPT ask command failed:", error);
 			await thread.send(
-				"ChatGPT failed to respond. Check the bot logs for the underlying error.",
+				`ChatGPT failed to respond. Please contact @<${interaction.client.bot.config.BOT_OWNER_ID}>`,
 			);
 		}
 	}
