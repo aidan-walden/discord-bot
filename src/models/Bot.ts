@@ -23,6 +23,7 @@ import { Connectors } from "shoukaku";
 import type { AppConfig } from "../config";
 import { migrateDatabase } from "../database/migrate";
 import BanRepository from "../repositories/BanRepository";
+import ChatSessionService from "../services/ChatSessionService";
 import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
 import type Command from "./Command";
@@ -36,6 +37,7 @@ export default class Bot extends Client {
 	readonly db: postgres.Sql;
 	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
+	readonly chatSessions: ChatSessionService;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -51,6 +53,7 @@ export default class Bot extends Client {
 			intents: [
 				GatewayIntentBits.Guilds,
 				GatewayIntentBits.GuildMessages,
+				GatewayIntentBits.MessageContent,
 				GatewayIntentBits.GuildVoiceStates,
 			],
 		});
@@ -69,6 +72,10 @@ export default class Bot extends Client {
 			new BanRepository(this.db, "gpt_user_bans", "user_id"),
 			new BanRepository(this.db, "music_user_bans", "user_id"),
 			new BanRepository(this.db, "music_guild_bans", "guild_id"),
+		);
+		this.chatSessions = new ChatSessionService(
+			this.openai,
+			config.OPENAI_MODEL,
 		);
 
 		// TODO: Change search engine to youtube
