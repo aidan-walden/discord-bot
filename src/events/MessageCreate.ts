@@ -47,7 +47,7 @@ export default class MessageCreate implements BotEvent {
 		}
 
 		if (session.isBusy) {
-			await message.reply("I'm still working on your previous message.");
+			await message.reply("Your previous message is still being processed!");
 			return;
 		}
 
@@ -58,7 +58,7 @@ export default class MessageCreate implements BotEvent {
 		} catch (error) {
 			console.error("ChatGPT thread response failed:", error);
 			await message.reply(
-				"ChatGPT failed to respond. Check the bot logs for the underlying error.",
+				`ChatGPT failed to respond. Please contact @<${bot.config.BOT_OWNER_ID}>`,
 			);
 		}
 	}
