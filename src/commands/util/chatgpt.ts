@@ -49,9 +49,7 @@ export default class ChatGpt implements Command {
 				),
 		)
 		.addSubcommand((subcommand) =>
-			subcommand
-				.setName("end")
-				.setDescription("End your ChatGPT session"),
+			subcommand.setName("end").setDescription("End your ChatGPT session"),
 		);
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -157,9 +155,7 @@ export default class ChatGpt implements Command {
 		}
 
 		if (!session || !thread) {
-			await interaction.editReply(
-				"Failed to create or locate ChatGPT thread.",
-			);
+			await interaction.editReply("Failed to create or locate ChatGPT thread.");
 			return;
 		}
 
