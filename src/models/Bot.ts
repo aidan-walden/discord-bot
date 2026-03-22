@@ -23,6 +23,7 @@ import { Connectors } from "shoukaku";
 import type { AppConfig } from "../config";
 import { migrateDatabase } from "../database/migrate";
 import BanRepository from "../repositories/BanRepository";
+import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import ChatSessionService from "../services/ChatSessionService";
 import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
@@ -38,6 +39,7 @@ export default class Bot extends Client {
 	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
+	readonly balances: UserBalanceRepository;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -73,6 +75,7 @@ export default class Bot extends Client {
 			new BanRepository(this.db, "music_user_bans", "user_id"),
 			new BanRepository(this.db, "music_guild_bans", "guild_id"),
 		);
+		this.balances = new UserBalanceRepository(this.db);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
 			config.OPENAI_MODEL,

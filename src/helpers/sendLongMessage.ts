@@ -1,4 +1,4 @@
-import type { MessageCreateOptions } from "discord.js";
+import type { MessageCreateOptions, SendableChannels } from "discord.js";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 
@@ -26,9 +26,7 @@ function chunkMessage(content: string): string[] {
 }
 
 export async function sendLongMessage(
-	channel: {
-		send(options: MessageCreateOptions): Promise<unknown>;
-	},
+	channel: SendableChannels,
 	content: string,
 	baseOptions: Omit<MessageCreateOptions, "content"> = {},
 ): Promise<void> {

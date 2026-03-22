@@ -1,0 +1,3 @@
+[submodule "csgo-skins-scraper"]
+	path = csgo-skins-scraper
+	url = https://github.com/aidan-walden/csgo-skins-scraper.git

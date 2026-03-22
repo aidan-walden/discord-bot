@@ -16,5 +16,5 @@
 	- [x] Queue
 - [x] Permissions
 - [x] ChatGPT
-- [ ] CSGO Unboxing
+- [x] CSGO Unboxing
 - [ ] Admin WebUI
