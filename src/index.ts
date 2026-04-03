@@ -2,6 +2,7 @@ import { parseArgs } from "node:util";
 import { Events } from "discord.js";
 import { loadConfig } from "./config";
 import Bot from "./models/Bot";
+import { startWebServer } from "./web/server";
 
 const { values } = parseArgs({
 	args: Bun.argv,
@@ -40,3 +41,4 @@ client.once(Events.ClientReady, (readyClient) => {
 });
 
 client.login(config.BOT_TOKEN);
+startWebServer();
