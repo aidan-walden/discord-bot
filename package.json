@@ -4,7 +4,7 @@
 	"type": "module",
 	"private": true,
 	"scripts": {
-		"check": "biome check .",
+		"check": "biome check AGENTS.md README.md TODO.md biome.json config.yml package.json tsconfig.json src",
 		"typecheck": "tsc --noEmit"
 	},
 	"devDependencies": {
@@ -17,6 +17,7 @@
 	},
 	"dependencies": {
 		"discord.js": "^14.25.1",
+		"hono": "^4.12.10",
 		"kazagumo": "^3.4.0",
 		"openai": "^6.8.1",
 		"postgres": "^3.4.7",
