@@ -1,18 +1,18 @@
-import { handleRoot } from "./routes/index";
+import { Hono } from "hono";
+import type Bot from "../models/Bot";
+import { createApiHandler } from "./routes/api/apiHandler";
 
 const PORT = 3000;
+const app = new Hono();
 
-export function startWebServer(): void {
-	Bun.serve({
-		port: PORT,
-		fetch(req) {
-			const url = new URL(req.url);
+export function startWebServer(bot: Bot): void {
+  app.get("/", (c) => c.html("Hello from discord-bot"));
+  app.route("/api", createApiHandler(bot));
 
-			if (url.pathname === "/") return handleRoot(req);
+  Bun.serve({
+    port: PORT,
+    fetch: app.fetch,
+  });
 
-			return new Response("Not Found", { status: 404 });
-		},
-	});
-
-	console.log(`Admin web UI listening on http://localhost:${PORT}`);
+  console.log(`Admin web UI listening on http://localhost:${PORT}`);
 }
