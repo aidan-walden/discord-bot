@@ -24,7 +24,7 @@ import { migrateDatabase } from "../database/migrate";
 import BanRepository from "../repositories/BanRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import ChatSessionService from "../services/ChatSessionService";
-import MetricsFactory from "../services/MetricsFactory";
+import MetricsCollector from "../services/MetricsCollector";
 import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
 import type Command from "./Command";
@@ -40,7 +40,7 @@ export default class Bot extends Client {
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
 	readonly balances: UserBalanceRepository;
-	readonly metrics: MetricsFactory;
+	readonly metrics: MetricsCollector;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -82,7 +82,7 @@ export default class Bot extends Client {
 			config.OPENAI_MODEL,
 		);
 
-		this.metrics = new MetricsFactory();
+		this.metrics = new MetricsCollector();
 
 		// TODO: Change search engine to youtube
 		this.music = new Kazagumo(
