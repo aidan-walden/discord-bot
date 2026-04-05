@@ -13,13 +13,13 @@ interface GuildListingItem {
 
 guilds.get("/listGuilds", (c) => {
   const bot = c.get("bot");
-  const guilds = bot.guilds.cache.map((guild) => {
+  const guilds: GuildListingItem[] = bot.guilds.cache.map((guild) => {
     return {
       name: guild.name,
       id: guild.id,
       icon: guild.icon,
       available: guild.available,
-    } as GuildListingItem;
+    };
   });
 
   const response = {
