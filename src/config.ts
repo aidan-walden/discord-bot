@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 
 export interface LavalinkNodeConfig {
@@ -94,8 +93,8 @@ export async function loadConfig(
 	filePath: string = "config.yml",
 ): Promise<AppConfig> {
 	const resolvedPath = path.resolve(filePath);
-	const fileContents = await fs
-		.readFile(resolvedPath, "utf8")
+	const fileContents = await Bun.file(resolvedPath)
+		.text()
 		.catch((error) => {
 			throw new Error(
 				`Failed to read config file at ${resolvedPath}: ${error}`,
