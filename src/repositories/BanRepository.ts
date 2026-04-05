@@ -1,8 +1,6 @@
-import type postgres from "postgres";
-
 export default class BanRepository {
 	constructor(
-		private readonly sql: postgres.Sql,
+		private readonly sql: typeof Bun.sql,
 		private readonly tableName:
 			| "gpt_user_bans"
 			| "music_user_bans"

@@ -1,6 +1,4 @@
-import type postgres from "postgres";
-
-export async function migrateDatabase(sql: postgres.Sql): Promise<void> {
+export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 	await sql`
 		CREATE TABLE IF NOT EXISTS gpt_user_bans (
 			user_id TEXT PRIMARY KEY,

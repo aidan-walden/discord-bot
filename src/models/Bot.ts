@@ -18,7 +18,6 @@ import {
 } from "discord.js";
 import { Kazagumo } from "kazagumo";
 import OpenAI from "openai";
-import postgres from "postgres";
 import { Connectors } from "shoukaku";
 import type { AppConfig } from "../config";
 import { migrateDatabase } from "../database/migrate";
@@ -36,7 +35,7 @@ export default class Bot extends Client {
 	readonly music: Kazagumo;
 	readonly adminUserIds: ReadonlySet<string>;
 	readonly config: AppConfig;
-	readonly db: postgres.Sql;
+	readonly db: typeof Bun.sql;
 	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
@@ -67,7 +66,7 @@ export default class Bot extends Client {
 		this.deployGuildId = guildId;
 		this.commands = new Collection<string, Command>();
 		this.adminUserIds = new Set(config.ADMIN_USER_IDS);
-		this.db = postgres(config.DATABASE_URL);
+		this.db = new Bun.SQL(config.DATABASE_URL);
 		this.openai = config.OPENAI_API_TOKEN
 			? new OpenAI({ apiKey: config.OPENAI_API_TOKEN })
 			: null;
