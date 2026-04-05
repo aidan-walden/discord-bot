@@ -1,4 +1,3 @@
-import fs from "node:fs/promises";
 import path from "node:path";
 import type {
 	CounterStrikeCaseCatalog,
@@ -144,7 +143,7 @@ export async function loadCaseCatalog(): Promise<CounterStrikeCaseCatalog> {
 		return cachedCases;
 	}
 
-	const fileContents = await fs.readFile(ASSET_PATH, "utf8");
+	const fileContents = await Bun.file(ASSET_PATH).text();
 	const parsed = JSON.parse(fileContents) as unknown;
 	if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
 		throw new Error("Invalid skins.json: expected an object at root.");
