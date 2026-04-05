@@ -9,6 +9,7 @@ metrics.get("/footprint", (c) => {
 	const response = {
 		uptime: bot.metrics.uptime,
 		memory: bot.metrics.memory,
+		cpuPercent: bot.metrics.cpu,
 	};
 
 	return c.json(response);
