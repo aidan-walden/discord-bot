@@ -7,14 +7,14 @@ const PORT = 3000;
 const app = new Hono();
 
 export function startWebServer(bot: Bot): void {
-  app.use("*", injectBot(bot));
-  app.get("/", (c) => c.html("Hello from discord-bot"));
-  app.route("/api", api);
+	app.use("*", injectBot(bot));
+	app.get("/", (c) => c.html("Hello from discord-bot"));
+	app.route("/api", api);
 
-  Bun.serve({
-    port: PORT,
-    fetch: app.fetch,
-  });
+	Bun.serve({
+		port: PORT,
+		fetch: app.fetch,
+	});
 
-  console.log(`Admin web UI listening on http://localhost:${PORT}`);
+	console.log(`Admin web UI listening on http://localhost:${PORT}`);
 }
