@@ -4,13 +4,11 @@ import type { AppContext } from "../../../context";
 const metrics = new Hono<AppContext>();
 
 metrics.get("/footprint", (c) => {
-	// TODO: CPU usage
-	const uptime = process.uptime();
-	const memory = process.memoryUsage();
+	const bot = c.get("bot");
 
 	const response = {
-		uptime: uptime,
-		memory: memory.rss,
+		uptime: bot.metrics.uptime,
+		memory: bot.metrics.memory,
 	};
 
 	return c.json(response);
