@@ -1,5 +1,3 @@
-import type postgres from "postgres";
-
 export type UserBalance = {
 	userId: string;
 	balanceCents: number;
@@ -8,7 +6,7 @@ export type UserBalance = {
 };
 
 export default class UserBalanceRepository {
-	constructor(private readonly sql: postgres.Sql) {}
+	constructor(private readonly sql: typeof Bun.sql) {}
 
 	async applyProfit(userId: string, profitCents: number): Promise<UserBalance> {
 		const rows = await this.sql<
