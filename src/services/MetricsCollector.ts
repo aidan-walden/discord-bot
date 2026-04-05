@@ -1,4 +1,4 @@
-export default class MetricsFactory {
+export default class MetricsCollector {
 	private cpuPercent: number = 0;
 	private lastCpu: NodeJS.CpuUsage;
 	private lastTime: number;
