@@ -72,9 +72,9 @@ export default class Bot extends Client {
 			: null;
 		this.permissions = new PermissionService(
 			this.adminUserIds,
-			new BanRepository(this.db, "gpt_user_bans", "user_id"),
-			new BanRepository(this.db, "music_user_bans", "user_id"),
-			new BanRepository(this.db, "music_guild_bans", "guild_id"),
+			new BanRepository(this.db, "gpt_user_bans"),
+			new BanRepository(this.db, "music_user_bans"),
+			new BanRepository(this.db, "music_guild_bans"),
 		);
 		this.balances = new UserBalanceRepository(this.db);
 		this.chatSessions = new ChatSessionService(
