@@ -307,7 +307,10 @@ export function formatRolledSkinsSummary(
 	rolledSkins: Record<SkinRarity, Record<string, number>>,
 ): string {
 	const sections = RARITY_ORDER.map((rarity) => {
-		const entries = Object.entries(rolledSkins[rarity]);
+		const entries = Object.entries(rolledSkins[rarity]).sort(
+			([leftName, leftCount], [rightName, rightCount]) =>
+				rightCount - leftCount || leftName.localeCompare(rightName),
+		);
 		const lines =
 			entries.length === 0
 				? ["\tNone"]
