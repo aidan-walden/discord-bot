@@ -17,7 +17,7 @@ interface HolidayRule {
 	getRange(context: HolidayRuleContext): HolidayRange | null;
 }
 
-function getContextYear(context: HolidayRuleContext): number {
+export function getContextYear(context: HolidayRuleContext): number {
 	return DateTime.fromJSDate(context.date, { zone: context.timeZone }).year;
 }
 
