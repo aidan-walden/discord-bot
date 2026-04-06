@@ -10,6 +10,7 @@
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
 		"@types/bun": "latest",
+		"@types/luxon": "^3.7.1",
 		"tsup": "^8.5.1"
 	},
 	"peerDependencies": {
@@ -19,6 +20,7 @@
 		"discord.js": "^14.25.1",
 		"hono": "^4.12.10",
 		"kazagumo": "^3.4.0",
+		"luxon": "^3.7.2",
 		"openai": "^6.8.1",
 		"shoukaku": "shipgirlproject/Shoukaku#master"
 	},
