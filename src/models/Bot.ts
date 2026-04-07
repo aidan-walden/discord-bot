@@ -24,6 +24,7 @@ import { migrateDatabase } from "../database/migrate";
 import BanRepository from "../repositories/BanRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import ChatSessionService from "../services/ChatSessionService";
+import HolidayProvider from "../services/HolidayProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
@@ -45,6 +46,7 @@ export default class Bot extends Client {
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
 	private readonly deployGuildId: string | undefined;
+	private readonly holidays: HolidayProvider;
 
 	constructor(
 		config: AppConfig,
@@ -72,9 +74,9 @@ export default class Bot extends Client {
 			: null;
 		this.permissions = new PermissionService(
 			this.adminUserIds,
-			new BanRepository(this.db, "gpt_user_bans"),
-			new BanRepository(this.db, "music_user_bans"),
-			new BanRepository(this.db, "music_guild_bans"),
+			new BanRepository(this.db, "gpt_user_bans", "user_id"),
+			new BanRepository(this.db, "music_user_bans", "user_id"),
+			new BanRepository(this.db, "music_guild_bans", "guild_id"),
 		);
 		this.balances = new UserBalanceRepository(this.db);
 		this.chatSessions = new ChatSessionService(
@@ -83,6 +85,7 @@ export default class Bot extends Client {
 		);
 
 		this.metrics = new MetricsCollector();
+		this.holidays = new HolidayProvider();
 
 		// TODO: Change search engine to youtube
 		this.music = new Kazagumo(
@@ -128,6 +131,14 @@ export default class Bot extends Client {
 			this.music.destroyPlayer(player.guildId);
 			console.warn(`Lavalink: Player Empty, Destroyed`);
 		});
+
+		this.holidays.on("change", (holiday) => {
+			if (!holiday) {
+				console.log("No active holiday");
+			} else {
+				console.log(`Current holiday: ${holiday}`);
+			}
+		});
 	}
 
 	async initialize(): Promise<void> {
@@ -147,6 +158,8 @@ export default class Bot extends Client {
 					console.error("Error removing commands:", error);
 				});
 			}
+
+			this.holidays.start();
 		});
 	}
 
