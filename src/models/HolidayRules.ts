@@ -12,9 +12,19 @@ export interface HolidayRuleContext {
 	timeZone: string;
 }
 
-interface HolidayRule {
+export interface HolidayRuleExample {
+	isoDate: string;
+}
+
+interface HolidayRuleExamples {
+	active: HolidayRuleExample[];
+	inactive: HolidayRuleExample[];
+}
+
+export interface HolidayRule {
 	holiday: Holiday;
 	getRange(context: HolidayRuleContext): HolidayRange | null;
+	examples: HolidayRuleExamples;
 }
 
 export function getContextYear(context: HolidayRuleContext): number {
@@ -34,6 +44,10 @@ const HOLIDAY_RULES: HolidayRule[] = [
 				end: getEod(year, context.timeZone, 11, 31),
 			};
 		},
+		examples: {
+			active: [{ isoDate: "2024-12-15" }],
+			inactive: [{ isoDate: "2024-11-30" }],
+		},
 	},
 	{
 		holiday: Holiday.Thanksgiving,
@@ -43,6 +57,10 @@ const HOLIDAY_RULES: HolidayRule[] = [
 				start: getNthWeekdayOfMonth(year, context.timeZone, 10, 4, 4), // 4th Thursday of November
 				end: getEod(year, context.timeZone, 10, 30),
 			};
+		},
+		examples: {
+			active: [{ isoDate: "2024-11-29" }, { isoDate: "2025-11-28" }],
+			inactive: [{ isoDate: "2024-11-01" }, { isoDate: "2024-12-01" }],
 		},
 	},
 	{
@@ -58,6 +76,10 @@ const HOLIDAY_RULES: HolidayRule[] = [
 				end: getEod(year, context.timeZone, 10, 30),
 			};
 		},
+		examples: {
+			active: [{ isoDate: "2024-11-10" }],
+			inactive: [{ isoDate: "2025-11-10" }],
+		},
 	},
 	{
 		holiday: Holiday.Halloween,
@@ -67,6 +89,10 @@ const HOLIDAY_RULES: HolidayRule[] = [
 				start: getZonedDate(year, context.timeZone, 9).toJSDate(),
 				end: getEod(year, context.timeZone, 9, 31),
 			};
+		},
+		examples: {
+			active: [{ isoDate: "2024-10-15" }],
+			inactive: [{ isoDate: "2024-09-30" }],
 		},
 	},
 	{
@@ -78,6 +104,10 @@ const HOLIDAY_RULES: HolidayRule[] = [
 				end: getEod(year, context.timeZone, 6, 31),
 			};
 		},
+		examples: {
+			active: [{ isoDate: "2026-07-06" }],
+			inactive: [{ isoDate: "2026-06-30" }],
+		},
 	},
 	{
 		holiday: Holiday.AprilFools,
@@ -87,6 +117,10 @@ const HOLIDAY_RULES: HolidayRule[] = [
 				start: getZonedDate(year, context.timeZone, 3, 1).toJSDate(),
 				end: getEod(year, context.timeZone, 3, 1),
 			};
+		},
+		examples: {
+			active: [{ isoDate: "2026-04-01" }],
+			inactive: [{ isoDate: "2026-04-02" }],
 		},
 	},
 ];
