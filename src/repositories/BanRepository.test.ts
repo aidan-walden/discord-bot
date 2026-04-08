@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, mock, test } from "bun:test";
 import BanRepository from "./BanRepository";
 
-const mockSql = mock(
-	(_strings: TemplateStringsArray, ..._values: unknown[]) =>
-		Promise.resolve<unknown[]>([]),
+const mockSql = mock((_strings: TemplateStringsArray, ..._values: unknown[]) =>
+	Promise.resolve<unknown[]>([]),
 );
 const mockUnsafe = mock((identifier: string) => identifier);
 
@@ -82,10 +81,7 @@ describe("BanRepository", () => {
 		await repo.remove("guild-123");
 
 		expect(mockSql).toHaveBeenCalledTimes(1);
-		expect(mockUnsafe.mock.calls).toEqual([
-			["music_guild_bans"],
-			["guild_id"],
-		]);
+		expect(mockUnsafe.mock.calls).toEqual([["music_guild_bans"], ["guild_id"]]);
 		expect(mockSql.mock.calls[0]?.slice(1)).toEqual([
 			"music_guild_bans",
 			"guild_id",
@@ -94,7 +90,10 @@ describe("BanRepository", () => {
 	});
 
 	test("list() maps rows to string ids using the configured column", async () => {
-		mockSql.mockResolvedValueOnce([{ value: "guild-123" }, { value: "guild-456" }]);
+		mockSql.mockResolvedValueOnce([
+			{ value: "guild-123" },
+			{ value: "guild-456" },
+		]);
 
 		const repo = new BanRepository(sql, "music_guild_bans", "guild_id");
 		const result = await repo.list();
