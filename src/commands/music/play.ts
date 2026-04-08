@@ -20,7 +20,7 @@ export default class Play implements Command {
 		const context = await getMusicCommandContext(interaction, {
 			requireVoiceChannel: true,
 		});
-		if (!context || !context.voiceChannelId) {
+		if (!context?.voiceChannelId) {
 			return;
 		}
 

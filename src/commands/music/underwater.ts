@@ -2,12 +2,16 @@ import {
 	type ChatInputCommandInteraction,
 	SlashCommandBuilder,
 } from "discord.js";
-import type { Band } from "shoukaku";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
 import type Command from "../../models/Command";
 
-function generateBands(startingBand: number, zeroed = false): Band[] {
-	const bands: Band[] = [];
+type EqualizerBand = {
+	band: number;
+	gain: number;
+};
+
+function generateBands(startingBand: number, zeroed = false): EqualizerBand[] {
+	const bands: EqualizerBand[] = [];
 	if (zeroed) {
 		for (let i = startingBand; i < 15; i++) {
 			bands.push({ band: i, gain: 0 });
