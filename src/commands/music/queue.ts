@@ -18,13 +18,10 @@ export default class Queue implements Command {
 		}
 		const { player } = context;
 
-		const queue = Array.from(player.queue.entries());
-
 		// Limit the queue to 2000 characters to avoid Discord message length limit
-		const queueString = queue
+		const queueString = player.queue
 			.map(
-				([index, track]) =>
-					`**${index + 1}**. ${track.title} by ${track.author}`,
+				(track, index) => `**${index + 1}**. ${track.title} by ${track.author}`,
 			)
 			.join("\n")
 			.slice(0, 2000);
