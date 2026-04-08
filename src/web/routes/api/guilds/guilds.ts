@@ -1,6 +1,6 @@
+import type { Snowflake } from "discord.js";
 import { Hono } from "hono";
 import type { AppContext } from "../../../context";
-import type { Snowflake } from "discord.js";
 
 const guilds = new Hono<AppContext>();
 
