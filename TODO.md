@@ -17,4 +17,11 @@
 - [x] Permissions
 - [x] ChatGPT
 - [x] CSGO Unboxing
+- [ ] CI/CD Infrastructure (in progress)
+  - [ ] Full test case coverage
+  - [ ] Dockerfile
+  - [ ] Docker compose example
+  - [ ] GitHub Actions
+  - [ ] Deployment workflow
+  - [ ] Healthchecks
 - [ ] Admin WebUI
