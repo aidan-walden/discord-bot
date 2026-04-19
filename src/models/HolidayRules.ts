@@ -123,6 +123,6 @@ const HOLIDAY_RULES: HolidayRule[] = [
 			inactive: [{ isoDate: "2026-04-02" }],
 		},
 	},
-];
+] as const;
 
 export default HOLIDAY_RULES;

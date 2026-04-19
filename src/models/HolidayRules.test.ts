@@ -103,7 +103,7 @@ describe("HolidayRules", () => {
 				// Thanksgiving and USAElection are both active on this date (election year)
 				// verifies Thanksgiving takes priority
 			},
-		];
+		] as const;
 
 		let provider: HolidayProvider;
 
