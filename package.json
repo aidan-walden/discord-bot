@@ -5,7 +5,8 @@
 	"private": true,
 	"scripts": {
 		"check": "biome check AGENTS.md README.md TODO.md biome.json config.yml package.json tsconfig.json src",
-		"typecheck": "tsc --noEmit"
+		"typecheck": "tsc --noEmit",
+    "format": "biome check --write src/"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
