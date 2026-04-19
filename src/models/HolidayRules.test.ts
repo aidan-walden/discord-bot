@@ -20,101 +20,107 @@ function getExampleContext(isoDate: string): HolidayRuleContext {
 	};
 }
 
-describe("all holidays have defined test cases", () => {
-	for (const rule of HOLIDAY_RULES) {
-		describe(rule.holiday, () => {
-			test("active and inactive examples are non-empty", () => {
-				expect(rule.examples).not.toBeEmptyObject();
-				expect(rule.examples.active.length).toBeGreaterThan(0);
-				expect(rule.examples.inactive.length).toBeGreaterThan(0);
+describe("HolidayRules", () => {
+	describe("all holidays have defined test cases", () => {
+		for (const rule of HOLIDAY_RULES) {
+			describe(rule.holiday, () => {
+				test("active and inactive examples are non-empty", () => {
+					expect(rule.examples).not.toBeEmptyObject();
+					expect(rule.examples.active.length).toBeGreaterThan(0);
+					expect(rule.examples.inactive.length).toBeGreaterThan(0);
+				});
 			});
+		}
+	});
+
+	describe("holiday date mappings", () => {
+		let provider: HolidayProvider;
+
+		beforeAll(() => {
+			provider = new HolidayProvider();
 		});
-	}
-});
 
-describe("holiday date mappings", () => {
-	let provider: HolidayProvider;
+		afterAll(() => {
+			provider.removeAllListeners();
+		});
 
-	beforeAll(() => {
-		provider = new HolidayProvider();
-	});
+		for (const rule of HOLIDAY_RULES) {
+			describe(rule.holiday, () => {
+				for (const { isoDate } of rule.examples.active) {
+					test(`treats ${isoDate} as active`, () => {
+						const context = getExampleContext(isoDate);
+						const range = rule.getRange(context);
 
-	afterAll(() => {
-		provider.removeAllListeners();
-	});
+						expect(range).not.toBeNull();
+						if (!range) return;
 
-	for (const rule of HOLIDAY_RULES) {
-		describe(rule.holiday, () => {
-			for (const { isoDate } of rule.examples.active) {
-				test(`treats ${isoDate} as active`, () => {
-					const context = getExampleContext(isoDate);
-					const range = rule.getRange(context);
+						expect(context.date >= range.start).toBe(true);
+						expect(context.date <= range.end).toBe(true);
 
-					expect(range).not.toBeNull();
-					if (!range) return;
+						const activeHolidays = provider.getAllActiveHolidays(context);
+						expect(activeHolidays.has(rule.holiday)).toBe(true);
 
-					expect(context.date >= range.start).toBe(true);
-					expect(context.date <= range.end).toBe(true);
-
-					const activeHolidays = provider.getAllActiveHolidays(context);
-					expect(activeHolidays.has(rule.holiday)).toBe(true);
-
-					const expectedCanonical =
-						HOLIDAY_RULES.find(({ holiday }) => activeHolidays.has(holiday))
-							?.holiday ?? null;
-					expect(provider.getCanonicalHoliday(context)).toBe(expectedCanonical);
-				});
-			}
-
-			for (const { isoDate } of rule.examples.inactive) {
-				test(`treats ${isoDate} as inactive`, () => {
-					const context = getExampleContext(isoDate);
-					const range = rule.getRange(context);
-
-					if (range !== null) {
-						expect(context.date < range.start || context.date > range.end).toBe(
-							true,
+						const expectedCanonical =
+							HOLIDAY_RULES.find(({ holiday }) => activeHolidays.has(holiday))
+								?.holiday ?? null;
+						expect(provider.getCanonicalHoliday(context)).toBe(
+							expectedCanonical,
 						);
-					}
+					});
+				}
 
-					const activeHolidays = provider.getAllActiveHolidays(context);
-					expect(activeHolidays.has(rule.holiday)).toBe(false);
+				for (const { isoDate } of rule.examples.inactive) {
+					test(`treats ${isoDate} as inactive`, () => {
+						const context = getExampleContext(isoDate);
+						const range = rule.getRange(context);
 
-					const expectedCanonical =
-						HOLIDAY_RULES.find(({ holiday }) => activeHolidays.has(holiday))
-							?.holiday ?? null;
-					expect(provider.getCanonicalHoliday(context)).toBe(expectedCanonical);
-				});
-			}
-		});
-	}
-});
+						if (range !== null) {
+							expect(
+								context.date < range.start || context.date > range.end,
+							).toBe(true);
+						}
 
-describe("holiday overlaps", () => {
-	const OVERLAP_TEST_CASES: OverlapTestCase[] = [
-		{
-			isoDate: "2024-11-29",
-			expectedCanonical: Holiday.Thanksgiving,
-			// Thanksgiving and USAElection are both active on this date (election year)
-			// verifies Thanksgiving takes priority
-		},
-	];
+						const activeHolidays = provider.getAllActiveHolidays(context);
+						expect(activeHolidays.has(rule.holiday)).toBe(false);
 
-	let provider: HolidayProvider;
-
-	beforeAll(() => {
-		provider = new HolidayProvider();
+						const expectedCanonical =
+							HOLIDAY_RULES.find(({ holiday }) => activeHolidays.has(holiday))
+								?.holiday ?? null;
+						expect(provider.getCanonicalHoliday(context)).toBe(
+							expectedCanonical,
+						);
+					});
+				}
+			});
+		}
 	});
 
-	afterAll(() => {
-		provider.removeAllListeners();
-	});
+	describe("holiday overlaps", () => {
+		const OVERLAP_TEST_CASES: OverlapTestCase[] = [
+			{
+				isoDate: "2024-11-29",
+				expectedCanonical: Holiday.Thanksgiving,
+				// Thanksgiving and USAElection are both active on this date (election year)
+				// verifies Thanksgiving takes priority
+			},
+		];
 
-	for (const testcase of OVERLAP_TEST_CASES) {
-		test(`canonical holiday for ${testcase.isoDate} is ${testcase.expectedCanonical}`, () => {
-			const context = getExampleContext(testcase.isoDate);
-			const canonical = provider.getCanonicalHoliday(context);
-			expect(canonical).toBe(testcase.expectedCanonical);
+		let provider: HolidayProvider;
+
+		beforeAll(() => {
+			provider = new HolidayProvider();
 		});
-	}
+
+		afterAll(() => {
+			provider.removeAllListeners();
+		});
+
+		for (const testcase of OVERLAP_TEST_CASES) {
+			test(`canonical holiday for ${testcase.isoDate} is ${testcase.expectedCanonical}`, () => {
+				const context = getExampleContext(testcase.isoDate);
+				const canonical = provider.getCanonicalHoliday(context);
+				expect(canonical).toBe(testcase.expectedCanonical);
+			});
+		}
+	});
 });
