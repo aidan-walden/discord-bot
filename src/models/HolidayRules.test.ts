@@ -51,8 +51,10 @@ describe("holiday date mappings", () => {
 					const range = rule.getRange(context);
 
 					expect(range).not.toBeNull();
-					expect(context.date >= range!.start).toBe(true);
-					expect(context.date <= range!.end).toBe(true);
+					if (!range) return;
+
+					expect(context.date >= range.start).toBe(true);
+					expect(context.date <= range.end).toBe(true);
 
 					const activeHolidays = provider.getAllActiveHolidays(context);
 					expect(activeHolidays.has(rule.holiday)).toBe(true);
