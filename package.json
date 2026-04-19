@@ -6,12 +6,13 @@
 	"scripts": {
 		"check": "biome check AGENTS.md README.md TODO.md biome.json config.yml package.json tsconfig.json src",
 		"typecheck": "tsc --noEmit",
-    "format": "biome check --write src/"
+		"format": "biome check --write src/"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
 		"@types/bun": "latest",
 		"@types/luxon": "^3.7.1",
+		"lefthook": "^2.1.6",
 		"tsup": "^8.5.1"
 	},
 	"peerDependencies": {
