@@ -10,12 +10,95 @@ interface HolidayProviderEvents {
 	change: [holiday: Holiday | null];
 }
 
-const MAX_TIMEOUT = 2 ** 31 - 1;
+export const MAX_TIMEOUT = 2 ** 31 - 1;
+
+export interface HolidayProviderClock {
+	now(): number;
+	setTimeout(callback: () => void, delay: number): NodeJS.Timeout;
+	clearTimeout(timeout: NodeJS.Timeout): void;
+}
+
+export type HolidayTimeZoneResolver = () => string | null | undefined;
+export type HolidayBoundaryFinder = (
+	context: HolidayRuleContext,
+) => Date | null;
+
+interface HolidayProviderOptions {
+	clock?: HolidayProviderClock;
+	resolveTimeZone?: HolidayTimeZoneResolver;
+	getNextBoundary?: HolidayBoundaryFinder;
+}
+
+const SYSTEM_CLOCK: HolidayProviderClock = {
+	now: () => Date.now(),
+	setTimeout: (callback, delay) => setTimeout(callback, delay),
+	clearTimeout: (timeout) => clearTimeout(timeout),
+};
+
+function getRuntimeTimeZone(): string | null | undefined {
+	return Intl.DateTimeFormat().resolvedOptions().timeZone;
+}
+
+export function findNextHolidayBoundary(
+	context: HolidayRuleContext,
+	getContextForYear: (
+		context: HolidayRuleContext,
+		year: number,
+	) => HolidayRuleContext = (currentContext, year) => ({
+		...currentContext,
+		date: DateTime.fromJSDate(currentContext.date, {
+			zone: currentContext.timeZone,
+		})
+			.set({ year })
+			.toJSDate(),
+	}),
+): Date | null {
+	const year = getContextYear(context);
+	const candidateYears = [year, year + 1];
+	let nextBoundary: Date | null = null;
+
+	for (const candidateYear of candidateYears) {
+		for (const { getRange } of HOLIDAY_RULES) {
+			const range = getRange(getContextForYear(context, candidateYear));
+			if (range === null) {
+				continue;
+			}
+
+			const boundaryCandidates = [
+				range.start,
+				new Date(range.end.getTime() + 1),
+			];
+			for (const candidate of boundaryCandidates) {
+				if (candidate <= context.date) {
+					continue;
+				}
+
+				if (nextBoundary === null || candidate < nextBoundary) {
+					nextBoundary = candidate;
+				}
+			}
+		}
+	}
+
+	return nextBoundary;
+}
 
 export default class HolidayProvider extends EventEmitter<HolidayProviderEvents> {
 	private timeout: NodeJS.Timeout | null = null;
 	private isRunning = false;
 	private cachedTimeZone: string | null = null;
+	private readonly clock: HolidayProviderClock;
+	private readonly resolveTimeZone: HolidayTimeZoneResolver;
+	private readonly getNextBoundaryForContext: HolidayBoundaryFinder;
+
+	public constructor(options: HolidayProviderOptions = {}) {
+		super();
+		this.clock = options.clock ?? SYSTEM_CLOCK;
+		this.resolveTimeZone = options.resolveTimeZone ?? getRuntimeTimeZone;
+		this.getNextBoundaryForContext =
+			options.getNextBoundary ??
+			((context) => findNextHolidayBoundary(context, this.getContextForYear));
+	}
 
 	public getAllActiveHolidays(
 		context: HolidayRuleContext = this.getDefaultContext(),
@@ -62,45 +145,14 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 		this.isRunning = false;
 
 		if (this.timeout !== null) {
-			clearTimeout(this.timeout);
+			this.clock.clearTimeout(this.timeout);
 			this.timeout = null;
 		}
 	}
 
-	private getNextBoundary(context: HolidayRuleContext): Date | null {
-		const year = getContextYear(context);
-		const candidateYears = [year, year + 1];
-		let nextBoundary: Date | null = null;
-
-		for (const candidateYear of candidateYears) {
-			for (const { getRange } of HOLIDAY_RULES) {
-				const range = getRange(this.getContextForYear(context, candidateYear));
-				if (range === null) {
-					continue;
-				}
-
-				const boundaryCandidates = [
-					range.start,
-					new Date(range.end.getTime() + 1),
-				];
-				for (const candidate of boundaryCandidates) {
-					if (candidate <= context.date) {
-						continue;
-					}
-
-					if (nextBoundary === null || candidate < nextBoundary) {
-						nextBoundary = candidate;
-					}
-				}
-			}
-		}
-
-		return nextBoundary;
-	}
-
 	private scheduleNext(): void {
 		const context = this.getDefaultContext();
-		const next = this.getNextBoundary(context);
+		const next = this.getNextBoundaryForContext(context);
 
 		if (next === null) {
 			this.scheduleRetry();
@@ -111,15 +163,15 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 	}
 
 	private scheduleBoundary(boundary: Date): void {
-		const remaining = boundary.getTime() - Date.now();
+		const remaining = boundary.getTime() - this.clock.now();
 		if (remaining > MAX_TIMEOUT) {
-			this.timeout = setTimeout(() => {
+			this.timeout = this.clock.setTimeout(() => {
 				this.scheduleBoundary(boundary);
 			}, MAX_TIMEOUT);
 			return;
 		}
 
-		this.timeout = setTimeout(
+		this.timeout = this.clock.setTimeout(
 			() => {
 				this.emit("change", this.getCanonicalHoliday());
 				this.scheduleNext();
@@ -129,7 +181,7 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 	}
 
 	private scheduleRetry(): void {
-		this.timeout = setTimeout(() => {
+		this.timeout = this.clock.setTimeout(() => {
 			if (!this.isRunning) {
 				return;
 			}
@@ -140,7 +192,7 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 
 	private getDefaultContext(): HolidayRuleContext {
 		return {
-			date: new Date(),
+			date: new Date(this.clock.now()),
 			timeZone: this.getDefaultTimeZone(),
 		};
 	}
@@ -150,7 +202,7 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 			return this.cachedTimeZone;
 		}
 
-		const timeZone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+		const timeZone = this.resolveTimeZone();
 		if (!timeZone) {
 			throw new Error("Unable to resolve runtime timezone");
 		}
