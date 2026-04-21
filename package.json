@@ -6,7 +6,8 @@
 	"scripts": {
 		"check": "biome check AGENTS.md README.md TODO.md biome.json config.yml package.json tsconfig.json src",
 		"typecheck": "tsc --noEmit",
-		"format": "biome check --write src/"
+		"format": "biome check --write src/",
+		"test": "bash scripts/test.sh"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.4.10",
