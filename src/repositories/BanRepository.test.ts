@@ -1,114 +1,76 @@
-import { beforeEach, describe, expect, mock, test } from "bun:test";
+import {
+	afterAll,
+	beforeAll,
+	beforeEach,
+	describe,
+	expect,
+	test,
+} from "bun:test";
+import { migrateDatabase } from "../database/migrate";
 import BanRepository from "./BanRepository";
 
-const mockSql = mock((_strings: TemplateStringsArray, ..._values: unknown[]) =>
-	Promise.resolve<unknown[]>([]),
-);
-const mockUnsafe = mock((identifier: string) => identifier);
-
-const sql = Object.assign(mockSql, {
-	unsafe: mockUnsafe,
-}) as unknown as typeof Bun.sql;
+const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
+if (!DATABASE_URL_TESTING) throw new Error("DATABASE_URL_TESTING is not set");
+const sql = new Bun.SQL(DATABASE_URL_TESTING);
 
 describe("BanRepository", () => {
-	beforeEach(() => {
-		mockSql.mockReset();
-		mockSql.mockImplementation(
-			(_strings: TemplateStringsArray, ..._values: unknown[]) =>
-				Promise.resolve<unknown[]>([]),
-		);
-
-		mockUnsafe.mockReset();
-		mockUnsafe.mockImplementation((identifier: string) => identifier);
+	beforeAll(async () => {
+		await migrateDatabase(sql);
 	});
 
-	test("has() returns true when a record exists", async () => {
-		mockSql.mockResolvedValueOnce([{ user_id: "user-123" }]);
-
-		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
-		const result = await repo.has("user-123");
-
-		expect(result).toBe(true);
-		expect(mockSql).toHaveBeenCalledTimes(1);
-		expect(mockUnsafe).toHaveBeenCalledWith("gpt_user_bans");
-		expect(mockUnsafe).toHaveBeenCalledWith("user_id");
-		expect(mockSql.mock.calls[0]?.slice(1)).toEqual([
-			"gpt_user_bans",
-			"user_id",
-			"user-123",
-		]);
+	beforeEach(async () => {
+		await sql`TRUNCATE gpt_user_bans, music_user_bans, music_guild_bans`;
 	});
 
-	test("has() returns false when no record exists", async () => {
-		mockSql.mockResolvedValueOnce([]);
-
-		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
-		const result = await repo.has("user-123");
-
-		expect(result).toBe(false);
-		expect(mockSql).toHaveBeenCalledTimes(1);
-		expect(mockUnsafe).toHaveBeenCalledWith("gpt_user_bans");
-		expect(mockUnsafe).toHaveBeenCalledWith("user_id");
-		expect(mockSql.mock.calls[0]?.slice(1)).toEqual([
-			"gpt_user_bans",
-			"user_id",
-			"user-123",
-		]);
+	afterAll(async () => {
+		await sql.close();
 	});
 
-	test("add() inserts into a user ban table with the configured column", async () => {
+	test("has() returns true when record exists", async () => {
+		await sql`INSERT INTO gpt_user_bans (user_id) VALUES ('user-123')`;
 		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
+		expect(await repo.has("user-123")).toBe(true);
+	});
 
+	test("has() returns false when record does not exist", async () => {
+		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
+		expect(await repo.has("user-123")).toBe(false);
+	});
+
+	test("add() inserts record", async () => {
+		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
 		await repo.add("user-123");
-
-		expect(mockSql).toHaveBeenCalledTimes(1);
-		expect(mockUnsafe.mock.calls).toEqual([
-			["gpt_user_bans"],
-			["user_id"],
-			["user_id"],
-		]);
-		expect(mockSql.mock.calls[0]?.slice(1)).toEqual([
-			"gpt_user_bans",
-			"user_id",
-			"user-123",
-			"user_id",
-		]);
+		expect(await repo.has("user-123")).toBe(true);
 	});
 
-	test("remove() deletes from a guild ban table with the configured column", async () => {
-		const repo = new BanRepository(sql, "music_guild_bans", "guild_id");
-
-		await repo.remove("guild-123");
-
-		expect(mockSql).toHaveBeenCalledTimes(1);
-		expect(mockUnsafe.mock.calls).toEqual([["music_guild_bans"], ["guild_id"]]);
-		expect(mockSql.mock.calls[0]?.slice(1)).toEqual([
-			"music_guild_bans",
-			"guild_id",
-			"guild-123",
-		]);
+	test("add() is idempotent on duplicate", async () => {
+		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
+		await repo.add("user-123");
+		await expect(repo.add("user-123")).resolves.toBeUndefined();
 	});
 
-	test("list() maps rows to string ids using the configured column", async () => {
-		mockSql.mockResolvedValueOnce([
-			{ value: "guild-123" },
-			{ value: "guild-456" },
-		]);
+	test("remove() deletes record", async () => {
+		await sql`INSERT INTO gpt_user_bans (user_id) VALUES ('user-123')`;
+		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
+		await repo.remove("user-123");
+		expect(await repo.has("user-123")).toBe(false);
+	});
 
+	test("list() returns ids sorted ascending", async () => {
+		await sql`INSERT INTO gpt_user_bans (user_id) VALUES ('user-zzz'), ('user-aaa'), ('user-mmm')`;
+		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
+		expect(await repo.list()).toEqual(["user-aaa", "user-mmm", "user-zzz"]);
+	});
+
+	test("list() returns empty array when no records", async () => {
+		const repo = new BanRepository(sql, "gpt_user_bans", "user_id");
+		expect(await repo.list()).toEqual([]);
+	});
+
+	test("uses guild_id column for music_guild_bans", async () => {
 		const repo = new BanRepository(sql, "music_guild_bans", "guild_id");
-		const result = await repo.list();
-
-		expect(result).toEqual(["guild-123", "guild-456"]);
-		expect(mockSql).toHaveBeenCalledTimes(1);
-		expect(mockUnsafe.mock.calls).toEqual([
-			["guild_id"],
-			["music_guild_bans"],
-			["guild_id"],
-		]);
-		expect(mockSql.mock.calls[0]?.slice(1)).toEqual([
-			"guild_id",
-			"music_guild_bans",
-			"guild_id",
-		]);
+		await repo.add("guild-123");
+		expect(await repo.has("guild-123")).toBe(true);
+		expect(await repo.list()).toEqual(["guild-123"]);
 	});
 });
