@@ -1,10 +1,11 @@
 import { describe, expect, mock, test } from "bun:test";
 import type OpenAI from "openai";
+import type { ChatCompletion } from "openai/resources/chat/completions/completions";
 import ChatSessionService from "./ChatSessionService";
 
 function createOpenAiMock() {
 	const create = mock((_request: { model: string; messages: unknown[] }) =>
-		Promise.resolve({ choices: [] } as any),
+		Promise.resolve({ choices: [] } as unknown as ChatCompletion),
 	);
 	const openai = {
 		chat: {
@@ -18,7 +19,7 @@ function createOpenAiMock() {
 }
 
 function makeCompletion(content: string | null | undefined) {
-	return { choices: [{ message: { content } }] } as any;
+	return { choices: [{ message: { content } }] } as unknown as ChatCompletion;
 }
 
 function makeHistoryMessage(index: number, offset = 1) {
@@ -248,7 +249,7 @@ describe("ChatSessionService", () => {
 
 	test("resets isBusy in finally after in-flight failure", async () => {
 		const { create, openai } = createOpenAiMock();
-		const deferred = makeDeferred<any>();
+		const deferred = makeDeferred<ChatCompletion>();
 		create.mockImplementationOnce(() => deferred.promise);
 
 		const service = new ChatSessionService(openai, "gpt-test");
