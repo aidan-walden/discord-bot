@@ -24,4 +24,5 @@ Before running the test suite for the first time, the command `podman pull docke
 
 ## Testing
 
-Run `bun run test` (and **don't use** `bun test`).
+- Set the env var DATABASE_URL_TESTING to `postgresql://postgres:postgres@localhost:5432/test`
+- Run `bun run test` (and **don't use** `bun test`).
