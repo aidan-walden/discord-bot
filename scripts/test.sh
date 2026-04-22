@@ -12,4 +12,4 @@ echo "Waiting for postgres..."
 podman-compose -f compose.test.yml exec postgres \
   sh -c 'until pg_isready -U postgres -d test; do sleep 1; done'
 
-bun test
+DATABASE_URL_TESTING="${DATABASE_URL_TESTING:-postgresql://postgres:postgres@localhost:5432/test}" bun test
