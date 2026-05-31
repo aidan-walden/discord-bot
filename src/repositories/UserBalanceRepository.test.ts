@@ -68,4 +68,34 @@ describeWithDb("UserBalanceRepository", () => {
 		const result = await repo.applyProfit("user-789", -100);
 		expect(result.mostLostCents).toBe(300);
 	});
+
+	test("getByUserId() returns an existing balance", async () => {
+		const repo = new UserBalanceRepository(sql);
+		await repo.applyProfit("user-123", 250);
+		const result = await repo.getByUserId("user-123");
+		expect(result).toEqual({
+			userId: "user-123",
+			balanceCents: 250,
+			mostGainedCents: 250,
+			mostLostCents: 0,
+		});
+	});
+
+	test("getByUserId() returns null for an unknown user", async () => {
+		const repo = new UserBalanceRepository(sql);
+		await expect(repo.getByUserId("missing-user")).resolves.toBeNull();
+	});
+
+	test("getByUserId() does not create balance rows", async () => {
+		const repo = new UserBalanceRepository(sql);
+		await repo.getByUserId("missing-user");
+
+		const rows = await sql<{ count: string }[]>`
+			SELECT COUNT(*) AS count
+			FROM user_balances
+			WHERE user_id = ${"missing-user"}
+		`;
+
+		expect(rows[0]?.count).toBe("0");
+	});
 });
