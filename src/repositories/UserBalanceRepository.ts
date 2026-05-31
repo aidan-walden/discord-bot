@@ -8,6 +8,37 @@ export type UserBalance = {
 export default class UserBalanceRepository {
 	constructor(private readonly sql: typeof Bun.sql) {}
 
+	async getByUserId(userId: string): Promise<UserBalance | null> {
+		const rows = await this.sql<
+			{
+				user_id: string;
+				balance_cents: number;
+				most_gained_cents: number;
+				most_lost_cents: number;
+			}[]
+		>`
+			SELECT
+				user_id,
+				balance_cents,
+				most_gained_cents,
+				most_lost_cents
+			FROM user_balances
+			WHERE user_id = ${userId}
+		`;
+
+		const balance = rows[0];
+		if (!balance) {
+			return null;
+		}
+
+		return {
+			userId: balance.user_id,
+			balanceCents: balance.balance_cents,
+			mostGainedCents: balance.most_gained_cents,
+			mostLostCents: balance.most_lost_cents,
+		};
+	}
+
 	async applyProfit(userId: string, profitCents: number): Promise<UserBalance> {
 		const rows = await this.sql<
 			{
