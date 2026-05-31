@@ -127,11 +127,6 @@ export default class Bot extends Client {
 			console.warn(`Lavalink ${name}: Destroyed`);
 		});
 
-		this.music.on("playerEmpty", async (player) => {
-			this.music.destroyPlayer(player.guildId);
-			console.warn(`Lavalink: Player Empty, Destroyed`);
-		});
-
 		this.holidays.on("change", (holiday) => {
 			if (!holiday) {
 				console.log("No active holiday");
