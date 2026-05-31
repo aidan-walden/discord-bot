@@ -13,6 +13,10 @@ type RollRarityKey = Exclude<keyof CounterStrikeCaseDefinition, "price">;
 
 let cachedCases: CounterStrikeCaseCatalog | null = null;
 
+export function clearCaseCatalogCache(): void {
+	cachedCases = null;
+}
+
 export interface UnboxRunResult {
 	caseName: string;
 	finalSkin: CounterStrikeSkin;

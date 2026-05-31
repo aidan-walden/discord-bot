@@ -250,4 +250,15 @@ describe("HolidayProvider", () => {
 			"Unable to resolve runtime timezone",
 		);
 	});
+
+	test("getAllActiveHolidays() returns every holiday active on a date", () => {
+		const provider = new HolidayProvider({
+			clock: new FakeClock(toMillis("2024-11-29T12:00:00")),
+			resolveTimeZone: () => TEST_TIME_ZONE,
+		});
+
+		expect(
+			provider.getAllActiveHolidays(getContext("2024-11-29T12:00:00")),
+		).toEqual(new Set([Holiday.Thanksgiving, Holiday.USAElection]));
+	});
 });

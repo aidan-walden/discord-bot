@@ -10,10 +10,10 @@ import { migrateDatabase } from "../database/migrate";
 import UserBalanceRepository from "./UserBalanceRepository";
 
 const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
-if (!DATABASE_URL_TESTING) throw new Error("DATABASE_URL_TESTING is not set");
-const sql = new Bun.SQL(DATABASE_URL_TESTING);
+const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
-describe("UserBalanceRepository", () => {
+describeWithDb("UserBalanceRepository", () => {
+	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
 	beforeAll(async () => {
 		await migrateDatabase(sql);
 	});
