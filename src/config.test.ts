@@ -355,6 +355,42 @@ describe("loadConfig", () => {
 		});
 	});
 
+	test("ADMIN_USER_IDS defaults to empty array when omitted", async () => {
+		await withEnv({}, async () => {
+			const filePath = await writeTempConfig(
+				buildYaml({ adminUserIdsBlock: "" }),
+			);
+			const config = await loadConfig(filePath);
+
+			expect(config.ADMIN_USER_IDS).toEqual([]);
+		});
+	});
+
+	test("ADMIN_USER_IDS rejects non-array values", async () => {
+		await expectLoadConfigError(
+			buildYaml({ adminUserIdsBlock: 'ADMIN_USER_IDS: "not-an-array"' }),
+			"Invalid config value for ADMIN_USER_IDS: expected array of strings.",
+		);
+	});
+
+	test("reports unreadable config files", async () => {
+		await withEnv({}, async () => {
+			const tempDir = await mkdtemp(path.join(os.tmpdir(), "config-test-"));
+			tempDirs.push(tempDir);
+			const filePath = path.join(tempDir, "missing-config.yml");
+
+			try {
+				await loadConfig(filePath);
+				throw new Error("Expected loadConfig to throw.");
+			} catch (error) {
+				expect(error).toBeInstanceOf(Error);
+				expect((error as Error).message).toContain(
+					`Failed to read config file at ${filePath}:`,
+				);
+			}
+		});
+	});
+
 	describe("lavalink node validation", () => {
 		const lavalinkCases = [
 			{
