@@ -31,7 +31,6 @@
 ## Workflow
 - Run `bun install` after dependency changes to refresh `bun.lock` and `node_modules`.
 - Primary checks: `bun run test`, `bun run typecheck`, and `bun run check`.
-- Tests need Postgres 17. Locally `scripts/test.sh` brings it up via `podman-compose` from `compose.test.yml`; CI provides the same Postgres 17 as a GitHub Actions service container. Both expose it on `localhost:5432`, and the bot reads `DATABASE_URL_TESTING` for the test database. Keep the CI service container in sync with `compose.test.yml` (image, database, credentials, port).
-- GitHub Actions CI installs with `bun install --frozen-lockfile`, runs typecheck, runs `bun test` against the Postgres 17 service container, then runs `bun run check`.
+- GitHub Actions CI installs with `bun install --frozen-lockfile`, runs typecheck, runs `bun test` against Postgres 17, then runs `bun run check`.
 - `bun run check` includes `AGENTS.md`; keep this file present and broadly useful.
 - If you make architectural changes, replace outdated guidance here instead of appending.
