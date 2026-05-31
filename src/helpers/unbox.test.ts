@@ -1,4 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
+import type {
+	CounterStrikeCaseCatalog,
+	CounterStrikeCaseDefinition,
+	ScrapedSkin,
+} from "../models/CounterStrikeSkin";
 import {
 	clearCaseCatalogCache,
 	downgradeWear,
@@ -25,26 +30,83 @@ function createSeededRng(values: number[]) {
 	};
 }
 
+function createSkin(rarity: ScrapedSkin["rarity"], name: string): ScrapedSkin {
+	return {
+		name,
+		img: `https://example.test/${name}.png`,
+		rarity,
+		stattrak: true,
+		pricing: {
+			"Factory New": 10,
+			"Minimal Wear": 9,
+			"Field-Tested": 8,
+			"Well-Worn": 7,
+			"Battle-Scarred": 6,
+			Vanilla: 5,
+			"StatTrak Factory New": 20,
+			"StatTrak Minimal Wear": 19,
+			"StatTrak Field-Tested": 18,
+			"StatTrak Well-Worn": 17,
+			"StatTrak Battle-Scarred": 16,
+			"StatTrak Vanilla": 15,
+		},
+		minWear: 0,
+		maxWear: 0.07,
+	};
+}
+
+function createCaseDefinition(
+	name: string,
+	price: number,
+): CounterStrikeCaseDefinition {
+	return {
+		price,
+		blue: [createSkin("Blue", `${name} Blue`)],
+		purple: [createSkin("Purple", `${name} Purple`)],
+		pink: [createSkin("Pink", `${name} Pink`)],
+		red: [createSkin("Red", `${name} Red`)],
+		gold: [createSkin("Gold", `${name} Gold`)],
+	};
+}
+
+function createCatalogFixture(): CounterStrikeCaseCatalog {
+	return {
+		"Zulu Case": createCaseDefinition("Zulu", 1.25),
+		"Kilowatt Case": createCaseDefinition("Kilowatt", 2),
+	};
+}
+
+function mockSkinsJsonText(fileContents: string): void {
+	clearCaseCatalogCache();
+	spyOn(Bun, "file").mockImplementation(
+		() =>
+			({
+				text: async () => fileContents,
+			}) as ReturnType<typeof Bun.file>,
+	);
+}
+
+function mockSkinsJson(catalog: CounterStrikeCaseCatalog): void {
+	mockSkinsJsonText(JSON.stringify(catalog));
+}
+
 describe("unbox helpers", () => {
 	afterEach(() => {
+		clearCaseCatalogCache();
 		spyOn(Bun, "file").mockRestore();
 	});
 
 	test("loadCaseCatalog rejects invalid catalog roots", async () => {
-		const fileSpy = spyOn(Bun, "file").mockImplementation(
-			() =>
-				({
-					text: async () => "[]",
-				}) as ReturnType<typeof Bun.file>,
-		);
+		mockSkinsJsonText("[]");
 
-		await expect(loadCaseCatalog()).rejects.toThrow(
+		expect(loadCaseCatalog()).rejects.toThrow(
 			"Invalid skins.json: expected an object at root.",
 		);
-		fileSpy.mockRestore();
 	});
 
 	test("loadCaseCatalog returns the same cached object", async () => {
+		mockSkinsJson(createCatalogFixture());
+
 		const first = await loadCaseCatalog();
 		const second = await loadCaseCatalog();
 
@@ -52,21 +114,11 @@ describe("unbox helpers", () => {
 	});
 
 	test("runUnboxSimulation rejects empty catalogs", async () => {
-		clearCaseCatalogCache();
-		const fileSpy = spyOn(Bun, "file").mockImplementation(
-			() =>
-				({
-					text: async () => "{}",
-				}) as ReturnType<typeof Bun.file>,
-		);
+		mockSkinsJson({});
 
 		expect(runUnboxSimulation(null, () => 0)).rejects.toThrow(
 			"No cases are available in the catalog.",
 		);
-
-		fileSpy.mockRestore();
-		clearCaseCatalogCache();
-		await loadCaseCatalog();
 	});
 
 	test("maps wear buckets correctly", () => {
@@ -116,12 +168,11 @@ describe("unbox helpers", () => {
 	});
 
 	test("listCaseNames returns sorted case names", async () => {
+		mockSkinsJson(createCatalogFixture());
+
 		const caseNames = await listCaseNames();
 
-		expect(caseNames.length).toBeGreaterThan(0);
-		expect(caseNames).toEqual(
-			[...caseNames].sort((left, right) => left.localeCompare(right)),
-		);
+		expect(caseNames).toEqual(["Kilowatt Case", "Zulu Case"]);
 	});
 
 	test("formatRolledSkinsSummary renders rarity sections", () => {
@@ -143,12 +194,16 @@ describe("unbox helpers", () => {
 	});
 
 	test("runUnboxSimulation rejects unknown cases", async () => {
+		mockSkinsJson(createCatalogFixture());
+
 		expect(runUnboxSimulation("Definitely Missing Case")).rejects.toThrow(
 			"Unknown case: Definitely Missing Case",
 		);
 	});
 
 	test("runUnboxSimulation completes when a gold skin resolves", async () => {
+		mockSkinsJson(createCatalogFixture());
+
 		const result = await runUnboxSimulation(
 			"Kilowatt Case",
 			createSeededRng([0.998, 0, 0.99, 0]),
@@ -166,6 +221,8 @@ describe("unbox helpers", () => {
 	});
 
 	test("runUnboxSimulation accumulates non-gold rolls before finishing", async () => {
+		mockSkinsJson(createCatalogFixture());
+
 		const result = await runUnboxSimulation(
 			"Kilowatt Case",
 			createSeededRng([0.2, 0, 0.99, 0, 0.998, 0, 0.99, 0]),
