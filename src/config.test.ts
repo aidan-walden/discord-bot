@@ -1,8 +1,8 @@
-import { afterEach, describe, expect, test } from "bun:test";
+import { afterEach, describe, expect, spyOn, test } from "bun:test";
 import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
-import { loadConfig } from "./config";
+import { Config, type ConfigClock } from "./config";
 
 const tempDirs: string[] = [];
 const CONFIG_ENV_KEYS = [
@@ -31,6 +31,65 @@ const baseYaml = [
 ].join("\n");
 
 type EnvKey = (typeof CONFIG_ENV_KEYS)[number];
+type ConfigInstance = Awaited<ReturnType<typeof Config.load>>;
+
+type FakeTimer = {
+	id: number;
+	delay: number;
+	runAt: number;
+	callback: () => void;
+	cleared: boolean;
+	ran: boolean;
+};
+
+class FakeClock implements ConfigClock {
+	private nextId = 1;
+	private nowMs = 0;
+	private readonly timers: FakeTimer[] = [];
+
+	public setTimeout(callback: () => void, delay: number): NodeJS.Timeout {
+		const timer: FakeTimer = {
+			id: this.nextId++,
+			delay,
+			runAt: this.nowMs + Math.max(delay, 0),
+			callback,
+			cleared: false,
+			ran: false,
+		};
+		this.timers.push(timer);
+		return timer as unknown as NodeJS.Timeout;
+	}
+
+	public clearTimeout(timeout: NodeJS.Timeout): void {
+		const timer = timeout as unknown as FakeTimer;
+		timer.cleared = true;
+	}
+
+	public getPendingTimers(): FakeTimer[] {
+		return this.timers
+			.filter((timer) => !timer.cleared && !timer.ran)
+			.sort((left, right) => left.runAt - right.runAt);
+	}
+
+	public advanceBy(ms: number): void {
+		const targetMs = this.nowMs + ms;
+
+		while (true) {
+			const nextTimer = this.getPendingTimers().find(
+				(timer) => timer.runAt <= targetMs,
+			);
+			if (!nextTimer) {
+				break;
+			}
+
+			nextTimer.ran = true;
+			this.nowMs = nextTimer.runAt;
+			nextTimer.callback();
+		}
+
+		this.nowMs = targetMs;
+	}
+}
 
 type YamlOptions = {
 	BOT_TOKEN?: string;
@@ -107,6 +166,16 @@ async function writeTempConfig(yaml: string): Promise<string> {
 	return filePath;
 }
 
+async function readTempConfig(
+	filePath: string,
+): Promise<Record<string, unknown>> {
+	const parsed = Bun.YAML.parse(await Bun.file(filePath).text());
+	expect(Array.isArray(parsed)).toBe(false);
+	expect(typeof parsed).toBe("object");
+	expect(parsed).not.toBeNull();
+	return parsed as Record<string, unknown>;
+}
+
 async function withEnv(
 	overrides: Partial<Record<EnvKey, string | undefined>>,
 	run: () => Promise<void>,
@@ -143,8 +212,8 @@ async function expectLoadConfigError(
 		const filePath = await writeTempConfig(yaml);
 
 		try {
-			await loadConfig(filePath);
-			throw new Error("Expected loadConfig to throw.");
+			await Config.load(filePath);
+			throw new Error("Expected Config.load to throw.");
 		} catch (error) {
 			expect(error).toBeInstanceOf(Error);
 			expect((error as Error).message).toBe(expectedMessage);
@@ -160,7 +229,7 @@ afterEach(async () => {
 	);
 });
 
-describe("loadConfig", () => {
+describe("Config", () => {
 	test("buildYaml() returns same string as base yaml fixture", () => {
 		expect(buildYaml()).toBe(`${baseYaml}\n`);
 	});
@@ -170,87 +239,104 @@ describe("loadConfig", () => {
 			{
 				name: "BOT_TOKEN",
 				env: { BOT_TOKEN: "env-bot-token" },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.BOT_TOKEN).toBe("env-bot-token");
+				assert: (config: ConfigInstance) => {
+					expect(config.get("BOT_TOKEN")).toBe("env-bot-token");
 				},
 			},
 			{
 				name: "DATABASE_URL",
 				env: { DATABASE_URL: "postgres://env-db" },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.DATABASE_URL).toBe("postgres://env-db");
+				assert: (config: ConfigInstance) => {
+					expect(config.get("DATABASE_URL")).toBe("postgres://env-db");
 				},
 			},
 			{
 				name: "BOT_OWNER_ID",
 				env: { BOT_OWNER_ID: "env-owner" },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.BOT_OWNER_ID).toBe("env-owner");
+				assert: (config: ConfigInstance) => {
+					expect(config.get("BOT_OWNER_ID")).toBe("env-owner");
 				},
 			},
 			{
 				name: "OPENAI_MODEL",
 				env: { OPENAI_MODEL: "env-model" },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.OPENAI_MODEL).toBe("env-model");
+				assert: (config: ConfigInstance) => {
+					expect(config.get("OPENAI_MODEL")).toBe("env-model");
 				},
 			},
 			{
 				name: "OPENAI_API_TOKEN",
 				env: { OPENAI_API_TOKEN: "env-openai-token" },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.OPENAI_API_TOKEN).toBe("env-openai-token");
+				assert: (config: ConfigInstance) => {
+					expect(config.get("OPENAI_API_TOKEN")).toBe("env-openai-token");
 				},
 			},
 		] as const;
 
 		for (const testCase of precedenceCases) {
-			test(`${testCase.name} uses non-empty env value over file`, async () => {
+			test(`${testCase.name} uses env value over file`, async () => {
 				await withEnv(testCase.env, async () => {
 					const filePath = await writeTempConfig(buildYaml());
-					const config = await loadConfig(filePath);
+					const config = await Config.load(filePath);
 
 					testCase.assert(config);
 				});
 			});
 		}
 
-		const blankFallbackCases = [
+		const blankRequiredOverrideCases = [
 			{
 				name: "BOT_TOKEN",
-				env: { BOT_TOKEN: "   " },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.BOT_TOKEN).toBe("file-bot-token");
-				},
+				env: { BOT_TOKEN: "" },
+				expectedMessage:
+					"BOT_TOKEN is not set. Define BOT_TOKEN in environment or set BOT_TOKEN in config.yml.",
 			},
 			{
 				name: "DATABASE_URL",
-				env: { DATABASE_URL: "   " },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.DATABASE_URL).toBe("postgres://file-db");
-				},
+				env: { DATABASE_URL: "" },
+				expectedMessage:
+					"DATABASE_URL is not set. Define DATABASE_URL in environment or set DATABASE_URL in config.yml.",
 			},
 			{
 				name: "BOT_OWNER_ID",
-				env: { BOT_OWNER_ID: "   " },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.BOT_OWNER_ID).toBe("file-owner");
+				env: { BOT_OWNER_ID: "" },
+				expectedMessage:
+					"BOT_OWNER_ID is not set. Define BOT_OWNER_ID in environment or set BOT_OWNER_ID in config.yml.",
+			},
+		] as const;
+
+		for (const testCase of blankRequiredOverrideCases) {
+			test(`${testCase.name} uses blank env value over file and fails validation`, async () => {
+				await expectLoadConfigError(
+					buildYaml(),
+					testCase.expectedMessage,
+					testCase.env,
+				);
+			});
+		}
+
+		const blankOptionalOverrideCases = [
+			{
+				name: "OPENAI_MODEL",
+				env: { OPENAI_MODEL: "" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("OPENAI_MODEL")).toBe("");
 				},
 			},
 			{
-				name: "OPENAI_MODEL",
-				env: { OPENAI_MODEL: "   " },
-				assert: (config: Awaited<ReturnType<typeof loadConfig>>) => {
-					expect(config.OPENAI_MODEL).toBe("file-model");
+				name: "OPENAI_API_TOKEN",
+				env: { OPENAI_API_TOKEN: "" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("OPENAI_API_TOKEN")).toBe("");
 				},
 			},
 		] as const;
 
-		for (const testCase of blankFallbackCases) {
-			test(`${testCase.name} falls back to file when env value is blank`, async () => {
+		for (const testCase of blankOptionalOverrideCases) {
+			test(`${testCase.name} uses blank env value over file`, async () => {
 				await withEnv(testCase.env, async () => {
 					const filePath = await writeTempConfig(buildYaml());
-					const config = await loadConfig(filePath);
+					const config = await Config.load(filePath);
 
 					testCase.assert(config);
 				});
@@ -323,8 +409,8 @@ describe("loadConfig", () => {
 
 				await withEnv({}, async () => {
 					try {
-						await loadConfig(filePath);
-						throw new Error("Expected loadConfig to throw.");
+						await Config.load(filePath);
+						throw new Error("Expected Config.load to throw.");
 					} catch (error) {
 						expect(error).toBeInstanceOf(Error);
 						expect((error as Error).message).toBe(
@@ -349,9 +435,9 @@ describe("loadConfig", () => {
 					].join("\n"),
 				}),
 			);
-			const config = await loadConfig(filePath);
+			const config = await Config.load(filePath);
 
-			expect(config.ADMIN_USER_IDS).toEqual(["admin-a", "admin-b"]);
+			expect(config.get("ADMIN_USER_IDS")).toEqual(["admin-a", "admin-b"]);
 		});
 	});
 
@@ -360,9 +446,9 @@ describe("loadConfig", () => {
 			const filePath = await writeTempConfig(
 				buildYaml({ adminUserIdsBlock: "" }),
 			);
-			const config = await loadConfig(filePath);
+			const config = await Config.load(filePath);
 
-			expect(config.ADMIN_USER_IDS).toEqual([]);
+			expect(config.get("ADMIN_USER_IDS")).toEqual([]);
 		});
 	});
 
@@ -373,6 +459,178 @@ describe("loadConfig", () => {
 		);
 	});
 
+	test("get() returns cloned object and array values", async () => {
+		await withEnv({}, async () => {
+			const filePath = await writeTempConfig(buildYaml());
+			const config = await Config.load(filePath);
+
+			const adminUserIds = config.get("ADMIN_USER_IDS");
+			adminUserIds.push("mutated-admin");
+
+			const lavalink = config.get("lavalink");
+			lavalink.nodes[0] = {
+				name: "mutated-node",
+				url: "localhost:2334",
+				auth: "mutated-pass",
+				secure: true,
+			};
+
+			expect(config.get("ADMIN_USER_IDS")).toEqual(["admin-a", "admin-b"]);
+			expect(config.get("lavalink").nodes[0]?.name).toBe("file-node");
+		});
+	});
+
+	describe("set() persistence", () => {
+		test("updates get() immediately", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+
+				config.set("ADMIN_USER_IDS", ["new-admin"]);
+
+				expect(config.get("ADMIN_USER_IDS")).toEqual(["new-admin"]);
+			});
+		});
+
+		test("does not write to disk before five seconds", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+
+				config.set("ADMIN_USER_IDS", ["new-admin"]);
+				clock.advanceBy(4_999);
+
+				const persisted = await readTempConfig(filePath);
+				expect(persisted.ADMIN_USER_IDS).toEqual(["admin-a", "admin-b"]);
+			});
+		});
+
+		test("writes to disk after five seconds", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+
+				config.set("ADMIN_USER_IDS", ["new-admin"]);
+				clock.advanceBy(5_000);
+				await config.flush();
+
+				const persisted = await readTempConfig(filePath);
+				expect(persisted.ADMIN_USER_IDS).toEqual(["new-admin"]);
+			});
+		});
+
+		test("resets the write timeout when set() is called again", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+
+				config.set("ADMIN_USER_IDS", ["first-admin"]);
+				clock.advanceBy(4_999);
+				config.set("ADMIN_USER_IDS", ["second-admin"]);
+				clock.advanceBy(4_999);
+
+				let persisted = await readTempConfig(filePath);
+				expect(persisted.ADMIN_USER_IDS).toEqual(["admin-a", "admin-b"]);
+
+				clock.advanceBy(1);
+				await config.flush();
+
+				persisted = await readTempConfig(filePath);
+				expect(persisted.ADMIN_USER_IDS).toEqual(["second-admin"]);
+			});
+		});
+
+		test("writes file-backed state without env override values", async () => {
+			await withEnv(
+				{
+					BOT_TOKEN: "env-bot-token",
+					OPENAI_API_TOKEN: "env-openai-token",
+				},
+				async () => {
+					const clock = new FakeClock();
+					const filePath = await writeTempConfig(buildYaml());
+					const config = await Config.load(filePath, clock);
+
+					expect(config.get("BOT_TOKEN")).toBe("env-bot-token");
+					expect(config.get("OPENAI_API_TOKEN")).toBe("env-openai-token");
+
+					config.set("ADMIN_USER_IDS", ["new-admin"]);
+					clock.advanceBy(5_000);
+					await config.flush();
+
+					const persisted = await readTempConfig(filePath);
+					expect(persisted.BOT_TOKEN).toBe("file-bot-token");
+					expect(persisted.OPENAI_API_TOKEN).toBe("file-openai-token");
+					expect(persisted.ADMIN_USER_IDS).toEqual(["new-admin"]);
+				},
+			);
+		});
+
+		test("invalid set() values do not mutate state or schedule writes", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+
+				expect(() => config.set("BOT_TOKEN", "")).toThrow(
+					"BOT_TOKEN is not set. Define BOT_TOKEN in environment or set BOT_TOKEN in config.yml.",
+				);
+
+				expect(config.get("BOT_TOKEN")).toBe("file-bot-token");
+				expect(clock.getPendingTimers()).toEqual([]);
+
+				const persisted = await readTempConfig(filePath);
+				expect(persisted.BOT_TOKEN).toBe("file-bot-token");
+			});
+		});
+
+		test("undefined set() values warn without mutating state or scheduling writes", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+				const consoleWarn = spyOn(console, "warn").mockImplementation(
+					() => undefined,
+				);
+
+				try {
+					config.set("OPENAI_MODEL", undefined as never);
+
+					expect(consoleWarn).toHaveBeenCalledWith(
+						"undefined passed to Config.set for key OPENAI_MODEL, ignoring...",
+					);
+					expect(config.get("OPENAI_MODEL")).toBe("file-model");
+					expect(clock.getPendingTimers()).toEqual([]);
+
+					const persisted = await readTempConfig(filePath);
+					expect(persisted.OPENAI_MODEL).toBe("file-model");
+				} finally {
+					consoleWarn.mockRestore();
+				}
+			});
+		});
+
+		test("optional keys set to null are removed from persisted YAML", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath, clock);
+
+				config.set("OPENAI_MODEL", null);
+				clock.advanceBy(5_000);
+				await config.flush();
+
+				expect(config.get("OPENAI_MODEL")).toBeUndefined();
+				const persisted = await readTempConfig(filePath);
+				expect("OPENAI_MODEL" in persisted).toBe(false);
+			});
+		});
+	});
+
 	test("reports unreadable config files", async () => {
 		await withEnv({}, async () => {
 			const tempDir = await mkdtemp(path.join(os.tmpdir(), "config-test-"));
@@ -380,8 +638,8 @@ describe("loadConfig", () => {
 			const filePath = path.join(tempDir, "missing-config.yml");
 
 			try {
-				await loadConfig(filePath);
-				throw new Error("Expected loadConfig to throw.");
+				await Config.load(filePath);
+				throw new Error("Expected Config.load to throw.");
 			} catch (error) {
 				expect(error).toBeInstanceOf(Error);
 				expect((error as Error).message).toContain(

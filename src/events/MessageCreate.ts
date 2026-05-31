@@ -58,7 +58,7 @@ export default class MessageCreate implements BotEvent {
 		} catch (error) {
 			console.error("ChatGPT thread response failed:", error);
 			await message.reply(
-				`ChatGPT failed to respond. Please contact @<${bot.config.BOT_OWNER_ID}>`,
+				`ChatGPT failed to respond. Please contact @<${bot.config.get("BOT_OWNER_ID")}>`,
 			);
 		}
 	}

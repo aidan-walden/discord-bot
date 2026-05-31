@@ -178,7 +178,7 @@ export default class ChatGpt implements Command {
 		} catch (error) {
 			console.error("ChatGPT ask command failed:", error);
 			await thread.send(
-				`ChatGPT failed to respond. Please contact @<${interaction.client.bot.config.BOT_OWNER_ID}>`,
+				`ChatGPT failed to respond. Please contact @<${interaction.client.bot.config.get("BOT_OWNER_ID")}>`,
 			);
 		}
 	}

@@ -1,6 +1,6 @@
 import { parseArgs } from "node:util";
 import { Events } from "discord.js";
-import { loadConfig } from "./config";
+import { Config } from "./config";
 import Bot from "./models/Bot";
 import { startWebServer } from "./web/server";
 
@@ -32,7 +32,7 @@ if (values.sync && values.remove) {
 	process.exit(1);
 }
 
-const config = await loadConfig();
+const config = await Config.load();
 const client = new Bot(config, values.sync, values.remove, values.guild);
 await client.initialize();
 
@@ -40,5 +40,5 @@ client.once(Events.ClientReady, (readyClient) => {
 	console.log(`Logged in as ${readyClient.user.tag}`);
 });
 
-client.login(config.BOT_TOKEN);
+client.login(config.get("BOT_TOKEN"));
 startWebServer(client);

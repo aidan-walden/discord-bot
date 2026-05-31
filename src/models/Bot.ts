@@ -19,7 +19,7 @@ import {
 import { Kazagumo } from "kazagumo";
 import OpenAI from "openai";
 import { Connectors } from "shoukaku";
-import type { AppConfig } from "../config";
+import type { Config } from "../config";
 import { migrateDatabase } from "../database/migrate";
 import BanRepository from "../repositories/BanRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
@@ -35,7 +35,7 @@ export default class Bot extends Client {
 	readonly commands: Collection<string, Command>;
 	readonly music: Kazagumo;
 	readonly adminUserIds: ReadonlySet<string>;
-	readonly config: AppConfig;
+	readonly config: Config;
 	readonly db: typeof Bun.sql;
 	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
@@ -49,7 +49,7 @@ export default class Bot extends Client {
 	private readonly holidays: HolidayProvider;
 
 	constructor(
-		config: AppConfig,
+		config: Config,
 		shouldDeployCommands: boolean = false,
 		shouldRemoveCommands: boolean = false,
 		guildId: string | undefined = undefined,
@@ -67,10 +67,11 @@ export default class Bot extends Client {
 		this.shouldRemoveCommands = shouldRemoveCommands;
 		this.deployGuildId = guildId;
 		this.commands = new Collection<string, Command>();
-		this.adminUserIds = new Set(config.ADMIN_USER_IDS);
-		this.db = new Bun.SQL(config.DATABASE_URL);
-		this.openai = config.OPENAI_API_TOKEN
-			? new OpenAI({ apiKey: config.OPENAI_API_TOKEN })
+		this.adminUserIds = new Set(config.get("ADMIN_USER_IDS"));
+		this.db = new Bun.SQL(config.get("DATABASE_URL"));
+		const openaiApiToken = config.get("OPENAI_API_TOKEN");
+		this.openai = openaiApiToken
+			? new OpenAI({ apiKey: openaiApiToken })
 			: null;
 		this.permissions = new PermissionService(
 			this.adminUserIds,
@@ -81,7 +82,7 @@ export default class Bot extends Client {
 		this.balances = new UserBalanceRepository(this.db);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
-			config.OPENAI_MODEL,
+			config.get("OPENAI_MODEL"),
 		);
 
 		this.metrics = new MetricsCollector();
@@ -97,7 +98,7 @@ export default class Bot extends Client {
 				},
 			},
 			new Connectors.DiscordJS(this),
-			config.lavalink.nodes,
+			config.get("lavalink").nodes,
 		);
 
 		// Lavalink events
