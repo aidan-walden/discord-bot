@@ -358,6 +358,7 @@ function serializeConfigFile(configFile: AppConfigFile): string {
 
 export class Config {
 	private fileConfig: AppConfigFile;
+	private loadedConfig: AppConfig;
 	private dirty = false;
 	private activeWritePromise: Promise<void> | null = null;
 	private pendingWrite: NodeJS.Timeout | null = null;
@@ -370,7 +371,7 @@ export class Config {
 		private readonly clock: ConfigClock,
 	) {
 		this.fileConfig = cloneConfigFile(fileConfig);
-		validateConfigFile(
+		this.loadedConfig = validateConfigFile(
 			this.getEffectiveConfigFile(),
 			path.dirname(this.filePath),
 		);
@@ -402,12 +403,7 @@ export class Config {
 	}
 
 	public get<K extends keyof AppConfig>(key: K): AppConfig[K] {
-		return cloneConfigValue(
-			validateConfigFile(
-				this.getEffectiveConfigFile(),
-				path.dirname(this.filePath),
-			)[key],
-		);
+		return cloneConfigValue(this.loadedConfig[key]);
 	}
 
 	public set<K extends keyof AppConfig>(
@@ -429,12 +425,13 @@ export class Config {
 			this.setFileConfigValue(nextConfig, key, value);
 		}
 
-		validateConfigFile(
+		const nextLoadedConfig = validateConfigFile(
 			this.getEffectiveConfigFile(nextConfig),
 			path.dirname(this.filePath),
 		);
 
 		this.fileConfig = nextConfig;
+		this.loadedConfig = nextLoadedConfig;
 		this.dirty = true;
 		this.version += 1;
 		this.scheduleWrite();
