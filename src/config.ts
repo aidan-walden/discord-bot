@@ -24,6 +24,7 @@ interface AppConfigFile {
 	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS?: string[];
 	profilePicture?: ProfilePictureState;
+	baseProfilePicture?: string;
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
@@ -38,6 +39,7 @@ export interface AppConfig {
 	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS: string[];
 	profilePicture?: ProfilePictureState;
+	baseProfilePicture?: string;
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
@@ -151,7 +153,7 @@ function isHttpImageUrl(value: string): boolean {
 	}
 }
 
-function validateHolidayProfilePicturePath(
+function validateProfilePicturePath(
 	value: unknown,
 	key: string,
 	configDirectory: string,
@@ -179,6 +181,21 @@ function validateHolidayProfilePicturePath(
 	return profilePicturePath;
 }
 
+function validateBaseProfilePicture(
+	value: unknown,
+	configDirectory: string,
+): string | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	return validateProfilePicturePath(
+		value,
+		"baseProfilePicture",
+		configDirectory,
+	);
+}
+
 function validateHolidayProfilePictures(
 	value: unknown,
 	configDirectory: string,
@@ -201,7 +218,7 @@ function validateHolidayProfilePictures(
 			);
 		}
 
-		holidayProfilePictures[holiday] = validateHolidayProfilePicturePath(
+		holidayProfilePictures[holiday] = validateProfilePicturePath(
 			profilePicturePath,
 			`holidayProfilePictures.${holiday}`,
 			configDirectory,
@@ -239,6 +256,10 @@ function validateConfigFile(
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
+	const baseProfilePicture = validateBaseProfilePicture(
+		configFile.baseProfilePicture,
+		configDirectory,
+	);
 	const holidayProfilePictures = validateHolidayProfilePictures(
 		configFile.holidayProfilePictures,
 		configDirectory,
@@ -252,6 +273,7 @@ function validateConfigFile(
 		OPENAI_MODEL: configFile.OPENAI_MODEL,
 		ADMIN_USER_IDS: adminUserIds,
 		profilePicture,
+		baseProfilePicture,
 		holidayProfilePictures,
 		lavalink: {
 			nodes: lavalinkNodes,
@@ -307,6 +329,10 @@ function cloneConfigFile(configFile: AppConfigFile): AppConfigFile {
 
 	if (configFile.profilePicture !== undefined) {
 		clone.profilePicture = cloneConfigValue(configFile.profilePicture);
+	}
+
+	if (configFile.baseProfilePicture !== undefined) {
+		clone.baseProfilePicture = configFile.baseProfilePicture;
 	}
 
 	if (configFile.holidayProfilePictures !== undefined) {
@@ -480,6 +506,10 @@ export class Config {
 				return;
 			case "profilePicture":
 				configFile.profilePicture = clonedValue as AppConfig["profilePicture"];
+				return;
+			case "baseProfilePicture":
+				configFile.baseProfilePicture =
+					clonedValue as AppConfig["baseProfilePicture"];
 				return;
 			case "holidayProfilePictures":
 				configFile.holidayProfilePictures =
