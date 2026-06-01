@@ -801,6 +801,28 @@ describe("Config", () => {
 			});
 		});
 
+		test("get() returns loaded holiday profile pictures without revalidating file paths", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							'  XMAS: "./xmas.png"',
+						].join("\n"),
+					}),
+				);
+				const imagePath = path.join(path.dirname(filePath), "xmas.png");
+				await writeTempFile(filePath, "xmas.png");
+				const config = await Config.load(filePath);
+
+				await rm(imagePath);
+
+				expect(config.get("holidayProfilePictures")).toEqual({
+					[Holiday.Xmas]: "./xmas.png",
+				});
+			});
+		});
+
 		test("loads valid direct image URLs", async () => {
 			await withEnv({}, async () => {
 				const filePath = await writeTempConfig(
