@@ -19,7 +19,7 @@ import {
 import { Kazagumo } from "kazagumo";
 import OpenAI from "openai";
 import { Connectors } from "shoukaku";
-import type { Config } from "../config";
+import type { Config, ProfilePictureState } from "../config";
 import { migrateDatabase } from "../database/migrate";
 import BanRepository from "../repositories/BanRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
@@ -157,6 +157,28 @@ export default class Bot extends Client {
 
 			this.holidays.start();
 		});
+	}
+
+	async setProfilePicture(
+		profilePicturePath: string,
+		force: boolean,
+	): Promise<void> {
+		if (this.config.get("profilePicture")?.forced === true && !force) {
+			return;
+		}
+
+		if (!this.user) {
+			throw new Error("Bot user not found");
+		}
+
+		const profilePicture: ProfilePictureState = {
+			path: profilePicturePath,
+			forced: force,
+		};
+
+		await this.user.setAvatar(profilePicturePath);
+		this.config.set("profilePicture", profilePicture);
+		await this.config.flush();
 	}
 
 	/**
