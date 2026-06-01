@@ -1,8 +1,9 @@
 import { afterEach, describe, expect, spyOn, test } from "bun:test";
-import { mkdtemp, rm } from "node:fs/promises";
+import { mkdir, mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Config, type ConfigClock } from "./config";
+import Holiday from "./models/Holiday";
 
 const tempDirs: string[] = [];
 const CONFIG_ENV_KEYS = [
@@ -99,6 +100,7 @@ type YamlOptions = {
 	OPENAI_MODEL?: string;
 	adminUserIdsBlock?: string;
 	profilePictureBlock?: string;
+	holidayProfilePicturesBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
 };
@@ -112,6 +114,7 @@ function buildYaml(options: YamlOptions = {}) {
 		OPENAI_MODEL = "file-model",
 		adminUserIdsBlock,
 		profilePictureBlock,
+		holidayProfilePicturesBlock,
 		lavalinkBlock,
 		omitKeys = [],
 	} = options;
@@ -147,6 +150,13 @@ function buildYaml(options: YamlOptions = {}) {
 		lines.push(profilePictureBlock);
 	}
 
+	if (
+		holidayProfilePicturesBlock !== undefined &&
+		holidayProfilePicturesBlock.length > 0
+	) {
+		lines.push(holidayProfilePicturesBlock);
+	}
+
 	if (lavalinkBlock === undefined) {
 		lines.push(
 			"lavalink:",
@@ -170,6 +180,14 @@ async function writeTempConfig(yaml: string): Promise<string> {
 	const filePath = path.join(tempDir, "config.yml");
 	await Bun.write(filePath, yaml);
 	return filePath;
+}
+
+async function writeTempFile(
+	configPath: string,
+	relativePath: string,
+	contents = "image",
+): Promise<void> {
+	await Bun.write(path.join(path.dirname(configPath), relativePath), contents);
 }
 
 async function readTempConfig(
@@ -474,8 +492,14 @@ describe("Config", () => {
 						'  path: "./avatars/current.png"',
 						"  forced: true",
 					].join("\n"),
+					holidayProfilePicturesBlock: [
+						"holidayProfilePictures:",
+						'  XMAS: "./avatars/xmas.png"',
+					].join("\n"),
 				}),
 			);
+			await mkdir(path.join(path.dirname(filePath), "avatars"));
+			await writeTempFile(filePath, "avatars/xmas.png");
 			const config = await Config.load(filePath);
 
 			const adminUserIds = config.get("ADMIN_USER_IDS");
@@ -495,11 +519,20 @@ describe("Config", () => {
 			}
 			profilePicture.path = "./avatars/mutated.png";
 
+			const holidayProfilePictures = config.get("holidayProfilePictures");
+			if (!holidayProfilePictures) {
+				throw new Error("Expected holidayProfilePictures to be set.");
+			}
+			holidayProfilePictures[Holiday.Xmas] = "./avatars/mutated.png";
+
 			expect(config.get("ADMIN_USER_IDS")).toEqual(["admin-a", "admin-b"]);
 			expect(config.get("lavalink").nodes[0]?.name).toBe("file-node");
 			expect(config.get("profilePicture")).toEqual({
 				path: "./avatars/current.png",
 				forced: true,
+			});
+			expect(config.get("holidayProfilePictures")).toEqual({
+				[Holiday.Xmas]: "./avatars/xmas.png",
 			});
 		});
 	});
@@ -733,6 +766,220 @@ describe("Config", () => {
 				expect(profilePicture).toEqual({
 					path: "https://example.com/avatar.png",
 					forced: false,
+				});
+			});
+		});
+	});
+
+	describe("holidayProfilePictures validation", () => {
+		test("defaults to undefined when omitted", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("holidayProfilePictures")).toBeUndefined();
+			});
+		});
+
+		test("loads valid local file paths relative to the config file", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							'  XMAS: "./xmas.png"',
+						].join("\n"),
+					}),
+				);
+				await writeTempFile(filePath, "xmas.png");
+
+				const config = await Config.load(filePath);
+
+				expect(config.get("holidayProfilePictures")).toEqual({
+					[Holiday.Xmas]: "./xmas.png",
+				});
+			});
+		});
+
+		test("loads valid direct image URLs", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							'  HALLOWEEN: "https://example.com/avatar.webp"',
+						].join("\n"),
+					}),
+				);
+
+				const config = await Config.load(filePath);
+
+				expect(config.get("holidayProfilePictures")).toEqual({
+					[Holiday.Halloween]: "https://example.com/avatar.webp",
+				});
+			});
+		});
+
+		test("loads multiple valid holidays with omitted holidays unset", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							'  XMAS: "./xmas.png"',
+							'  THANKSGIVING: "https://example.com/thanksgiving.jpg"',
+						].join("\n"),
+					}),
+				);
+				await writeTempFile(filePath, "xmas.png");
+
+				const config = await Config.load(filePath);
+
+				expect(config.get("holidayProfilePictures")).toEqual({
+					[Holiday.Xmas]: "./xmas.png",
+					[Holiday.Thanksgiving]: "https://example.com/thanksgiving.jpg",
+				});
+				expect(
+					config.get("holidayProfilePictures")?.[Holiday.Halloween],
+				).toBeUndefined();
+			});
+		});
+
+		test("rejects unknown holiday keys", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					holidayProfilePicturesBlock: [
+						"holidayProfilePictures:",
+						'  VALENTINES_DAY: "https://example.com/avatar.png"',
+					].join("\n"),
+				}),
+				"Invalid config value for holidayProfilePictures.VALENTINES_DAY: expected a holiday defined in Holiday.ts.",
+			);
+		});
+
+		test("rejects invalid block shapes", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					holidayProfilePicturesBlock: "holidayProfilePictures: []",
+				}),
+				"Invalid config value for holidayProfilePictures: expected object.",
+			);
+		});
+
+		const invalidValueCases = [
+			{
+				name: "null member",
+				value: "null",
+			},
+			{
+				name: "empty member",
+				value: '""',
+			},
+			{
+				name: "non-string member",
+				value: "123",
+			},
+		] as const;
+
+		for (const testCase of invalidValueCases) {
+			test(`rejects ${testCase.name}`, async () => {
+				await expectLoadConfigError(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							`  XMAS: ${testCase.value}`,
+						].join("\n"),
+					}),
+					"Invalid config value for holidayProfilePictures.XMAS: expected non-empty string.",
+				);
+			});
+		}
+
+		test("rejects missing local paths", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					holidayProfilePicturesBlock: [
+						"holidayProfilePictures:",
+						'  XMAS: "./missing.png"',
+					].join("\n"),
+				}),
+				"Invalid config value for holidayProfilePictures.XMAS: expected an existing local file path or direct HTTP(S) image URL.",
+			);
+		});
+
+		test("rejects directory paths", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							'  XMAS: "./avatars"',
+						].join("\n"),
+					}),
+				);
+				await mkdir(path.join(path.dirname(filePath), "avatars"));
+
+				try {
+					await Config.load(filePath);
+					throw new Error("Expected Config.load to throw.");
+				} catch (error) {
+					expect(error).toBeInstanceOf(Error);
+					expect((error as Error).message).toBe(
+						"Invalid config value for holidayProfilePictures.XMAS: expected an existing local file path or direct HTTP(S) image URL.",
+					);
+				}
+			});
+		});
+
+		const invalidUrlCases = [
+			{
+				name: "non-image URL",
+				value: "https://example.com/avatar.txt",
+			},
+			{
+				name: "non-http URL",
+				value: "ftp://example.com/avatar.png",
+			},
+		] as const;
+
+		for (const testCase of invalidUrlCases) {
+			test(`rejects ${testCase.name}`, async () => {
+				await expectLoadConfigError(
+					buildYaml({
+						holidayProfilePicturesBlock: [
+							"holidayProfilePictures:",
+							`  XMAS: ${JSON.stringify(testCase.value)}`,
+						].join("\n"),
+					}),
+					"Invalid config value for holidayProfilePictures.XMAS: expected an existing local file path or direct HTTP(S) image URL.",
+				);
+			});
+		}
+
+		test("writes holiday profile pictures without changing existing config semantically", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const before = await readTempConfig(filePath);
+				await writeTempFile(filePath, "xmas.png");
+				const config = await Config.load(filePath);
+
+				config.set("holidayProfilePictures", {
+					[Holiday.Xmas]: "./xmas.png",
+					[Holiday.AprilFools]: "https://example.com/april-fools.avif",
+				});
+				await config.flush();
+
+				const after = await readTempConfig(filePath);
+				const {
+					holidayProfilePictures: _beforeHolidayProfilePictures,
+					...beforeRest
+				} = before;
+				const { holidayProfilePictures, ...afterRest } = after;
+
+				expect(afterRest).toEqual(beforeRest);
+				expect(holidayProfilePictures).toEqual({
+					[Holiday.Xmas]: "./xmas.png",
+					[Holiday.AprilFools]: "https://example.com/april-fools.avif",
 				});
 			});
 		});

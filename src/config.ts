@@ -1,4 +1,6 @@
+import { statSync } from "node:fs";
 import path from "node:path";
+import Holiday from "./models/Holiday";
 
 export interface LavalinkNodeConfig {
 	name: string;
@@ -12,6 +14,8 @@ export interface ProfilePictureState {
 	forced: boolean;
 }
 
+export type HolidayProfilePicturesConfig = Partial<Record<Holiday, string>>;
+
 interface AppConfigFile {
 	BOT_TOKEN?: string;
 	BOT_OWNER_ID?: string;
@@ -20,6 +24,7 @@ interface AppConfigFile {
 	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS?: string[];
 	profilePicture?: ProfilePictureState;
+	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -33,6 +38,7 @@ export interface AppConfig {
 	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS: string[];
 	profilePicture?: ProfilePictureState;
+	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -52,6 +58,8 @@ const REAL_CLOCK: ConfigClock = {
 	setTimeout: (callback, delay) => setTimeout(callback, delay),
 	clearTimeout: (timeout) => clearTimeout(timeout),
 };
+const HOLIDAY_VALUES = new Set<string>(Object.values(Holiday));
+const IMAGE_URL_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|avif)$/i;
 
 function ensureString(value: unknown, key: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
@@ -131,7 +139,82 @@ function validateProfilePicture(
 	};
 }
 
-function validateConfigFile(configFile: AppConfigFile): AppConfig {
+function isHttpImageUrl(value: string): boolean {
+	try {
+		const url = new URL(value);
+		return (
+			(url.protocol === "http:" || url.protocol === "https:") &&
+			IMAGE_URL_PATH_PATTERN.test(url.pathname)
+		);
+	} catch {
+		return false;
+	}
+}
+
+function validateHolidayProfilePicturePath(
+	value: unknown,
+	key: string,
+	configDirectory: string,
+): string {
+	const profilePicturePath = ensureString(value, key);
+
+	if (isHttpImageUrl(profilePicturePath)) {
+		return profilePicturePath;
+	}
+
+	const resolvedPath = path.isAbsolute(profilePicturePath)
+		? profilePicturePath
+		: path.resolve(configDirectory, profilePicturePath);
+
+	try {
+		if (!statSync(resolvedPath).isFile()) {
+			throw new Error("not a file");
+		}
+	} catch {
+		throw new Error(
+			`Invalid config value for ${key}: expected an existing local file path or direct HTTP(S) image URL.`,
+		);
+	}
+
+	return profilePicturePath;
+}
+
+function validateHolidayProfilePictures(
+	value: unknown,
+	configDirectory: string,
+): HolidayProfilePicturesConfig | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error(
+			"Invalid config value for holidayProfilePictures: expected object.",
+		);
+	}
+
+	const holidayProfilePictures: Record<string, string> = {};
+	for (const [holiday, profilePicturePath] of Object.entries(value)) {
+		if (!HOLIDAY_VALUES.has(holiday)) {
+			throw new Error(
+				`Invalid config value for holidayProfilePictures.${holiday}: expected a holiday defined in Holiday.ts.`,
+			);
+		}
+
+		holidayProfilePictures[holiday] = validateHolidayProfilePicturePath(
+			profilePicturePath,
+			`holidayProfilePictures.${holiday}`,
+			configDirectory,
+		);
+	}
+
+	return holidayProfilePictures;
+}
+
+function validateConfigFile(
+	configFile: AppConfigFile,
+	configDirectory: string,
+): AppConfig {
 	const botToken = configFile.BOT_TOKEN;
 	if (typeof botToken !== "string" || botToken.trim().length === 0) {
 		throw new Error(
@@ -156,6 +239,10 @@ function validateConfigFile(configFile: AppConfigFile): AppConfig {
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
+	const holidayProfilePictures = validateHolidayProfilePictures(
+		configFile.holidayProfilePictures,
+		configDirectory,
+	);
 
 	return {
 		BOT_TOKEN: botToken,
@@ -165,6 +252,7 @@ function validateConfigFile(configFile: AppConfigFile): AppConfig {
 		OPENAI_MODEL: configFile.OPENAI_MODEL,
 		ADMIN_USER_IDS: adminUserIds,
 		profilePicture,
+		holidayProfilePictures,
 		lavalink: {
 			nodes: lavalinkNodes,
 		},
@@ -219,6 +307,12 @@ function cloneConfigFile(configFile: AppConfigFile): AppConfigFile {
 
 	if (configFile.profilePicture !== undefined) {
 		clone.profilePicture = cloneConfigValue(configFile.profilePicture);
+	}
+
+	if (configFile.holidayProfilePictures !== undefined) {
+		clone.holidayProfilePictures = cloneConfigValue(
+			configFile.holidayProfilePictures,
+		);
 	}
 
 	if (configFile.lavalink !== undefined) {
@@ -276,7 +370,10 @@ export class Config {
 		private readonly clock: ConfigClock,
 	) {
 		this.fileConfig = cloneConfigFile(fileConfig);
-		validateConfigFile(this.getEffectiveConfigFile());
+		validateConfigFile(
+			this.getEffectiveConfigFile(),
+			path.dirname(this.filePath),
+		);
 	}
 
 	public static async load(
@@ -306,7 +403,10 @@ export class Config {
 
 	public get<K extends keyof AppConfig>(key: K): AppConfig[K] {
 		return cloneConfigValue(
-			validateConfigFile(this.getEffectiveConfigFile())[key],
+			validateConfigFile(
+				this.getEffectiveConfigFile(),
+				path.dirname(this.filePath),
+			)[key],
 		);
 	}
 
@@ -329,7 +429,10 @@ export class Config {
 			this.setFileConfigValue(nextConfig, key, value);
 		}
 
-		validateConfigFile(this.getEffectiveConfigFile(nextConfig));
+		validateConfigFile(
+			this.getEffectiveConfigFile(nextConfig),
+			path.dirname(this.filePath),
+		);
 
 		this.fileConfig = nextConfig;
 		this.dirty = true;
@@ -380,6 +483,10 @@ export class Config {
 				return;
 			case "profilePicture":
 				configFile.profilePicture = clonedValue as AppConfig["profilePicture"];
+				return;
+			case "holidayProfilePictures":
+				configFile.holidayProfilePictures =
+					clonedValue as AppConfig["holidayProfilePictures"];
 				return;
 			case "lavalink":
 				configFile.lavalink = clonedValue as AppConfig["lavalink"];
