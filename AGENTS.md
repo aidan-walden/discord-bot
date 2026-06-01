@@ -31,6 +31,7 @@
 ## Workflow
 - Run `bun install` after dependency changes to refresh `bun.lock` and `node_modules`.
 - Primary checks: `bun run test`, `bun run typecheck`, and `bun run check`.
+- Use `bun run format` for automated formatting and lint fixes; do not make formatting-only changes by hand.
 - GitHub Actions CI installs with `bun install --frozen-lockfile`, runs typecheck, runs `bun test` against Postgres 17, then runs `bun run check`.
 - `bun run check` includes `AGENTS.md`; keep this file present and broadly useful.
 - If you make architectural changes, replace outdated guidance here instead of appending.

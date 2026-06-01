@@ -6,7 +6,7 @@
 	"scripts": {
 		"check": "biome check AGENTS.md README.md TODO.md biome.json config.yml package.json tsconfig.json src",
 		"typecheck": "tsc --noEmit",
-		"format": "biome check --write src/",
+		"format": "bun run typecheck && biome lint --write",
 		"test": "bash scripts/test.sh"
 	},
 	"devDependencies": {
