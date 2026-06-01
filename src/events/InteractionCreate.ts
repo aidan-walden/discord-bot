@@ -1,11 +1,11 @@
-import type { Interaction } from "discord.js";
+import type { ClientEvents, Interaction } from "discord.js";
 import { Events } from "discord.js";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
 
 export default class InteractionCreate implements BotEvent {
 	once: boolean = false;
-	event: (typeof Events)[keyof typeof Events] = Events.InteractionCreate;
+	event: keyof ClientEvents = Events.InteractionCreate;
 	async execute(bot: Bot, interaction: Interaction): Promise<void> {
 		if (interaction.isAutocomplete()) {
 			const command = bot.commands.get(interaction.commandName);

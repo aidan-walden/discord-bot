@@ -1,11 +1,16 @@
-import { Events, type VoiceBasedChannel, type VoiceState } from "discord.js";
+import {
+	type ClientEvents,
+	Events,
+	type VoiceBasedChannel,
+	type VoiceState,
+} from "discord.js";
 import type { KazagumoPlayer } from "kazagumo";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
 
 export default class VoiceStateUpdate implements BotEvent {
 	once = false;
-	event: (typeof Events)[keyof typeof Events] = Events.VoiceStateUpdate;
+	event: keyof ClientEvents = Events.VoiceStateUpdate;
 
 	async execute(
 		bot: Bot,

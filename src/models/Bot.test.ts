@@ -4,6 +4,8 @@ import os from "node:os";
 import path from "node:path";
 import { Config } from "../config";
 import Bot from "./Bot";
+import { BotEvents } from "./BotEvents";
+import Holiday from "./Holiday";
 
 const tempDirs: string[] = [];
 
@@ -55,6 +57,12 @@ async function readProfilePicture(filePath: string) {
 		unknown
 	>;
 	return parsed.profilePicture;
+}
+
+async function closeBot(bot: Bot): Promise<void> {
+	bot.holidays.stop();
+	bot.destroy();
+	await bot.db.close();
 }
 
 afterEach(async () => {
@@ -165,5 +173,45 @@ describe("Bot.setProfilePicture", () => {
 		}
 
 		expect(await readProfilePicture(filePath)).toBeUndefined();
+	});
+});
+
+describe("Bot holiday events", () => {
+	test("forwards HolidayProvider changes to the bot event emitter", async () => {
+		const filePath = await writeTempConfig(buildYaml());
+		const config = await Config.load(filePath);
+		const bot = new Bot(config);
+		const events: Array<Holiday | null> = [];
+
+		try {
+			bot.on(BotEvents.HolidayChange, (holiday) => {
+				events.push(holiday);
+			});
+
+			bot.holidays.emit("change", Holiday.Xmas);
+
+			expect(events).toEqual([Holiday.Xmas]);
+		} finally {
+			await closeBot(bot);
+		}
+	});
+
+	test("forwards the initial HolidayProvider start event to registered bot listeners", async () => {
+		const filePath = await writeTempConfig(buildYaml());
+		const config = await Config.load(filePath);
+		const bot = new Bot(config);
+		const events: Array<Holiday | null> = [];
+
+		try {
+			bot.on(BotEvents.HolidayChange, (holiday) => {
+				events.push(holiday);
+			});
+
+			bot.holidays.start();
+
+			expect(events).toHaveLength(1);
+		} finally {
+			await closeBot(bot);
+		}
 	});
 });
