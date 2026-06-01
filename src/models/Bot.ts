@@ -28,7 +28,12 @@ import HolidayProvider from "../services/HolidayProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
+import { BotEvents } from "./BotEvents";
 import type Command from "./Command";
+
+function isRuntimeTypescriptModule(file: string): boolean {
+	return file.endsWith(".ts") && !file.endsWith(".test.ts");
+}
 
 export default class Bot extends Client {
 	override readonly bot: Bot = this;
@@ -42,11 +47,11 @@ export default class Bot extends Client {
 	readonly chatSessions: ChatSessionService;
 	readonly balances: UserBalanceRepository;
 	readonly metrics: MetricsCollector;
+	readonly holidays: HolidayProvider;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
 	private readonly deployGuildId: string | undefined;
-	private readonly holidays: HolidayProvider;
 
 	constructor(
 		config: Config,
@@ -129,11 +134,7 @@ export default class Bot extends Client {
 		});
 
 		this.holidays.on("change", (holiday) => {
-			if (!holiday) {
-				console.log("No active holiday");
-			} else {
-				console.log(`Current holiday: ${holiday}`);
-			}
+			this.emit(BotEvents.HolidayChange, holiday);
 		});
 	}
 
@@ -186,8 +187,8 @@ export default class Bot extends Client {
 	 * @param {string} rootDir - The root directory to search for event files.
 	 */
 	private async registerEvents(rootDir: string): Promise<void> {
-		const eventFiles = (await fs.readdir(rootDir)).filter((file) =>
-			file.endsWith(".ts"),
+		const eventFiles = (await fs.readdir(rootDir)).filter(
+			isRuntimeTypescriptModule,
 		);
 		for (const file of eventFiles) {
 			const filePath = path.join(rootDir, file);
@@ -216,7 +217,7 @@ export default class Bot extends Client {
 		for (const folder of commandFolders) {
 			const commandFolderPath = path.join(rootDir, folder);
 			const commandFiles = (await fs.readdir(commandFolderPath)).filter(
-				(file) => file.endsWith(".ts"),
+				isRuntimeTypescriptModule,
 			);
 			for (const file of commandFiles) {
 				const filePath = path.join(commandFolderPath, file);

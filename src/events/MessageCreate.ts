@@ -1,11 +1,11 @@
-import { Events, type Message } from "discord.js";
+import { type ClientEvents, Events, type Message } from "discord.js";
 import { sendLongMessage } from "../helpers/sendLongMessage";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
 
 export default class MessageCreate implements BotEvent {
 	once = false;
-	event: (typeof Events)[keyof typeof Events] = Events.MessageCreate;
+	event: keyof ClientEvents = Events.MessageCreate;
 
 	async execute(bot: Bot, message: Message): Promise<void> {
 		if (
