@@ -100,6 +100,7 @@ type YamlOptions = {
 	OPENAI_MODEL?: string;
 	adminUserIdsBlock?: string;
 	profilePictureBlock?: string;
+	baseProfilePictureBlock?: string;
 	holidayProfilePicturesBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
@@ -114,6 +115,7 @@ function buildYaml(options: YamlOptions = {}) {
 		OPENAI_MODEL = "file-model",
 		adminUserIdsBlock,
 		profilePictureBlock,
+		baseProfilePictureBlock,
 		holidayProfilePicturesBlock,
 		lavalinkBlock,
 		omitKeys = [],
@@ -148,6 +150,13 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (profilePictureBlock !== undefined && profilePictureBlock.length > 0) {
 		lines.push(profilePictureBlock);
+	}
+
+	if (
+		baseProfilePictureBlock !== undefined &&
+		baseProfilePictureBlock.length > 0
+	) {
+		lines.push(baseProfilePictureBlock);
 	}
 
 	if (
@@ -767,6 +776,168 @@ describe("Config", () => {
 					path: "https://example.com/avatar.png",
 					forced: false,
 				});
+			});
+		});
+	});
+
+	describe("baseProfilePicture validation", () => {
+		test("defaults to undefined when omitted", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("baseProfilePicture")).toBeUndefined();
+			});
+		});
+
+		test("loads valid local file paths relative to the config file", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						baseProfilePictureBlock: 'baseProfilePicture: "./base.png"',
+					}),
+				);
+				await writeTempFile(filePath, "base.png");
+
+				const config = await Config.load(filePath);
+
+				expect(config.get("baseProfilePicture")).toBe("./base.png");
+			});
+		});
+
+		test("loads valid direct image URLs", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						baseProfilePictureBlock:
+							'baseProfilePicture: "https://example.com/avatar.webp"',
+					}),
+				);
+
+				const config = await Config.load(filePath);
+
+				expect(config.get("baseProfilePicture")).toBe(
+					"https://example.com/avatar.webp",
+				);
+			});
+		});
+
+		const invalidValueCases = [
+			{
+				name: "null value",
+				value: "null",
+			},
+			{
+				name: "empty value",
+				value: '""',
+			},
+			{
+				name: "non-string value",
+				value: "123",
+			},
+		] as const;
+
+		for (const testCase of invalidValueCases) {
+			test(`rejects ${testCase.name}`, async () => {
+				await expectLoadConfigError(
+					buildYaml({
+						baseProfilePictureBlock: `baseProfilePicture: ${testCase.value}`,
+					}),
+					"Invalid config value for baseProfilePicture: expected non-empty string.",
+				);
+			});
+		}
+
+		test("rejects missing local paths", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					baseProfilePictureBlock: 'baseProfilePicture: "./missing.png"',
+				}),
+				"Invalid config value for baseProfilePicture: expected an existing local file path or direct HTTP(S) image URL.",
+			);
+		});
+
+		test("rejects directory paths", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						baseProfilePictureBlock: 'baseProfilePicture: "./avatars"',
+					}),
+				);
+				await mkdir(path.join(path.dirname(filePath), "avatars"));
+
+				try {
+					await Config.load(filePath);
+					throw new Error("Expected Config.load to throw.");
+				} catch (error) {
+					expect(error).toBeInstanceOf(Error);
+					expect((error as Error).message).toBe(
+						"Invalid config value for baseProfilePicture: expected an existing local file path or direct HTTP(S) image URL.",
+					);
+				}
+			});
+		});
+
+		const invalidUrlCases = [
+			{
+				name: "non-image URL",
+				value: "https://example.com/avatar.txt",
+			},
+			{
+				name: "non-http URL",
+				value: "ftp://example.com/avatar.png",
+			},
+		] as const;
+
+		for (const testCase of invalidUrlCases) {
+			test(`rejects ${testCase.name}`, async () => {
+				await expectLoadConfigError(
+					buildYaml({
+						baseProfilePictureBlock: `baseProfilePicture: ${JSON.stringify(
+							testCase.value,
+						)}`,
+					}),
+					"Invalid config value for baseProfilePicture: expected an existing local file path or direct HTTP(S) image URL.",
+				);
+			});
+		}
+
+		test("writes base profile picture without changing existing config semantically", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const before = await readTempConfig(filePath);
+				await writeTempFile(filePath, "base.png");
+				const config = await Config.load(filePath);
+
+				config.set("baseProfilePicture", "./base.png");
+				await config.flush();
+
+				const after = await readTempConfig(filePath);
+				const { baseProfilePicture: _beforeBaseProfilePicture, ...beforeRest } =
+					before;
+				const { baseProfilePicture, ...afterRest } = after;
+
+				expect(afterRest).toEqual(beforeRest);
+				expect(baseProfilePicture).toBe("./base.png");
+			});
+		});
+
+		test("removes persisted base profile picture when set to null", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						baseProfilePictureBlock:
+							'baseProfilePicture: "https://example.com/avatar.png"',
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				config.set("baseProfilePicture", null);
+				await config.flush();
+
+				expect(config.get("baseProfilePicture")).toBeUndefined();
+				const persisted = await readTempConfig(filePath);
+				expect("baseProfilePicture" in persisted).toBe(false);
 			});
 		});
 	});
