@@ -98,6 +98,7 @@ type YamlOptions = {
 	OPENAI_API_TOKEN?: string;
 	OPENAI_MODEL?: string;
 	adminUserIdsBlock?: string;
+	profilePictureBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
 };
@@ -110,6 +111,7 @@ function buildYaml(options: YamlOptions = {}) {
 		OPENAI_API_TOKEN = "file-openai-token",
 		OPENAI_MODEL = "file-model",
 		adminUserIdsBlock,
+		profilePictureBlock,
 		lavalinkBlock,
 		omitKeys = [],
 	} = options;
@@ -139,6 +141,10 @@ function buildYaml(options: YamlOptions = {}) {
 		lines.push("ADMIN_USER_IDS:", '  - "admin-a"', '  - "admin-b"');
 	} else if (adminUserIdsBlock.length > 0) {
 		lines.push(adminUserIdsBlock);
+	}
+
+	if (profilePictureBlock !== undefined && profilePictureBlock.length > 0) {
+		lines.push(profilePictureBlock);
 	}
 
 	if (lavalinkBlock === undefined) {
@@ -461,7 +467,15 @@ describe("Config", () => {
 
 	test("get() returns cloned object and array values", async () => {
 		await withEnv({}, async () => {
-			const filePath = await writeTempConfig(buildYaml());
+			const filePath = await writeTempConfig(
+				buildYaml({
+					profilePictureBlock: [
+						"profilePicture:",
+						'  path: "./avatars/current.png"',
+						"  forced: true",
+					].join("\n"),
+				}),
+			);
 			const config = await Config.load(filePath);
 
 			const adminUserIds = config.get("ADMIN_USER_IDS");
@@ -475,8 +489,18 @@ describe("Config", () => {
 				secure: true,
 			};
 
+			const profilePicture = config.get("profilePicture");
+			if (!profilePicture) {
+				throw new Error("Expected profilePicture to be set.");
+			}
+			profilePicture.path = "./avatars/mutated.png";
+
 			expect(config.get("ADMIN_USER_IDS")).toEqual(["admin-a", "admin-b"]);
 			expect(config.get("lavalink").nodes[0]?.name).toBe("file-node");
+			expect(config.get("profilePicture")).toEqual({
+				path: "./avatars/current.png",
+				forced: true,
+			});
 		});
 	});
 
@@ -627,6 +651,89 @@ describe("Config", () => {
 				expect(config.get("OPENAI_MODEL")).toBeUndefined();
 				const persisted = await readTempConfig(filePath);
 				expect("OPENAI_MODEL" in persisted).toBe(false);
+			});
+		});
+	});
+
+	describe("profilePicture validation", () => {
+		test("loads valid profile picture state", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						profilePictureBlock: [
+							"profilePicture:",
+							'  path: "./avatars/current.png"',
+							"  forced: true",
+						].join("\n"),
+					}),
+				);
+
+				const config = await Config.load(filePath);
+
+				expect(config.get("profilePicture")).toEqual({
+					path: "./avatars/current.png",
+					forced: true,
+				});
+			});
+		});
+
+		test("defaults to undefined when omitted", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("profilePicture")).toBeUndefined();
+			});
+		});
+
+		test("rejects invalid path", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					profilePictureBlock: [
+						"profilePicture:",
+						'  path: ""',
+						"  forced: true",
+					].join("\n"),
+				}),
+				"Invalid config value for profilePicture.path: expected non-empty string.",
+			);
+		});
+
+		test("rejects invalid forced flag", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					profilePictureBlock: [
+						"profilePicture:",
+						'  path: "./avatars/current.png"',
+						'  forced: "true"',
+					].join("\n"),
+				}),
+				"Invalid config value for profilePicture.forced: expected boolean.",
+			);
+		});
+
+		test("writes profile picture state without changing existing config semantically", async () => {
+			await withEnv({}, async () => {
+				const clock = new FakeClock();
+				const filePath = await writeTempConfig(buildYaml());
+				const before = await readTempConfig(filePath);
+				const config = await Config.load(filePath, clock);
+
+				config.set("profilePicture", {
+					path: "https://example.com/avatar.png",
+					forced: false,
+				});
+				await config.flush();
+
+				const after = await readTempConfig(filePath);
+				const { profilePicture: _beforeProfilePicture, ...beforeRest } = before;
+				const { profilePicture, ...afterRest } = after;
+
+				expect(afterRest).toEqual(beforeRest);
+				expect(profilePicture).toEqual({
+					path: "https://example.com/avatar.png",
+					forced: false,
+				});
 			});
 		});
 	});

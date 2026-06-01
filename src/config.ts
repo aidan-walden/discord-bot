@@ -7,6 +7,11 @@ export interface LavalinkNodeConfig {
 	secure: boolean;
 }
 
+export interface ProfilePictureState {
+	path: string;
+	forced: boolean;
+}
+
 interface AppConfigFile {
 	BOT_TOKEN?: string;
 	BOT_OWNER_ID?: string;
@@ -14,6 +19,7 @@ interface AppConfigFile {
 	OPENAI_API_TOKEN?: string;
 	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS?: string[];
+	profilePicture?: ProfilePictureState;
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -26,6 +32,7 @@ export interface AppConfig {
 	OPENAI_API_TOKEN?: string;
 	OPENAI_MODEL?: string;
 	ADMIN_USER_IDS: string[];
+	profilePicture?: ProfilePictureState;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -104,6 +111,26 @@ function validateAdminUserIds(value: unknown): string[] {
 	return [...new Set(adminUserIds)];
 }
 
+function validateProfilePicture(
+	value: unknown,
+): ProfilePictureState | undefined {
+	if (value === undefined) {
+		return undefined;
+	}
+
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error(
+			"Invalid config value for profilePicture: expected object.",
+		);
+	}
+
+	const profilePicture = value as Record<string, unknown>;
+	return {
+		path: ensureString(profilePicture.path, "profilePicture.path"),
+		forced: ensureBoolean(profilePicture.forced, "profilePicture.forced"),
+	};
+}
+
 function validateConfigFile(configFile: AppConfigFile): AppConfig {
 	const botToken = configFile.BOT_TOKEN;
 	if (typeof botToken !== "string" || botToken.trim().length === 0) {
@@ -128,6 +155,7 @@ function validateConfigFile(configFile: AppConfigFile): AppConfig {
 
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
+	const profilePicture = validateProfilePicture(configFile.profilePicture);
 
 	return {
 		BOT_TOKEN: botToken,
@@ -136,6 +164,7 @@ function validateConfigFile(configFile: AppConfigFile): AppConfig {
 		OPENAI_API_TOKEN: configFile.OPENAI_API_TOKEN,
 		OPENAI_MODEL: configFile.OPENAI_MODEL,
 		ADMIN_USER_IDS: adminUserIds,
+		profilePicture,
 		lavalink: {
 			nodes: lavalinkNodes,
 		},
@@ -186,6 +215,10 @@ function cloneConfigFile(configFile: AppConfigFile): AppConfigFile {
 
 	if (configFile.ADMIN_USER_IDS !== undefined) {
 		clone.ADMIN_USER_IDS = cloneConfigValue(configFile.ADMIN_USER_IDS);
+	}
+
+	if (configFile.profilePicture !== undefined) {
+		clone.profilePicture = cloneConfigValue(configFile.profilePicture);
 	}
 
 	if (configFile.lavalink !== undefined) {
@@ -344,6 +377,9 @@ export class Config {
 				return;
 			case "ADMIN_USER_IDS":
 				configFile.ADMIN_USER_IDS = clonedValue as AppConfig["ADMIN_USER_IDS"];
+				return;
+			case "profilePicture":
+				configFile.profilePicture = clonedValue as AppConfig["profilePicture"];
 				return;
 			case "lavalink":
 				configFile.lavalink = clonedValue as AppConfig["lavalink"];
