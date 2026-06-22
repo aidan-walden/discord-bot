@@ -492,60 +492,6 @@ describe("Config", () => {
 		);
 	});
 
-	test("get() returns cloned object and array values", async () => {
-		await withEnv({}, async () => {
-			const filePath = await writeTempConfig(
-				buildYaml({
-					profilePictureBlock: [
-						"profilePicture:",
-						'  path: "./avatars/current.png"',
-						"  forced: true",
-					].join("\n"),
-					holidayProfilePicturesBlock: [
-						"holidayProfilePictures:",
-						'  XMAS: "./avatars/xmas.png"',
-					].join("\n"),
-				}),
-			);
-			await mkdir(path.join(path.dirname(filePath), "avatars"));
-			await writeTempFile(filePath, "avatars/xmas.png");
-			const config = await Config.load(filePath);
-
-			const adminUserIds = config.get("ADMIN_USER_IDS");
-			adminUserIds.push("mutated-admin");
-
-			const lavalink = config.get("lavalink");
-			lavalink.nodes[0] = {
-				name: "mutated-node",
-				url: "localhost:2334",
-				auth: "mutated-pass",
-				secure: true,
-			};
-
-			const profilePicture = config.get("profilePicture");
-			if (!profilePicture) {
-				throw new Error("Expected profilePicture to be set.");
-			}
-			profilePicture.path = "./avatars/mutated.png";
-
-			const holidayProfilePictures = config.get("holidayProfilePictures");
-			if (!holidayProfilePictures) {
-				throw new Error("Expected holidayProfilePictures to be set.");
-			}
-			holidayProfilePictures[Holiday.Xmas] = "./avatars/mutated.png";
-
-			expect(config.get("ADMIN_USER_IDS")).toEqual(["admin-a", "admin-b"]);
-			expect(config.get("lavalink").nodes[0]?.name).toBe("file-node");
-			expect(config.get("profilePicture")).toEqual({
-				path: "./avatars/current.png",
-				forced: true,
-			});
-			expect(config.get("holidayProfilePictures")).toEqual({
-				[Holiday.Xmas]: "./avatars/xmas.png",
-			});
-		});
-	});
-
 	describe("set() persistence", () => {
 		test("updates get() immediately", async () => {
 			await withEnv({}, async () => {

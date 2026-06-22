@@ -373,7 +373,7 @@ export class Config {
 	}
 
 	public get<K extends keyof AppConfig>(key: K): AppConfig[K] {
-		return cloneConfigValue(this.loadedConfig[key]);
+		return this.loadedConfig[key];
 	}
 
 	public set<K extends keyof AppConfig>(
