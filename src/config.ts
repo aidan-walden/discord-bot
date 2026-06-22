@@ -289,51 +289,7 @@ function getEnvironmentOverrides(): AppConfigFile {
 }
 
 function cloneConfigFile(configFile: AppConfigFile): AppConfigFile {
-	const clone: AppConfigFile = {};
-
-	if (configFile.BOT_TOKEN !== undefined) {
-		clone.BOT_TOKEN = configFile.BOT_TOKEN;
-	}
-
-	if (configFile.DATABASE_URL !== undefined) {
-		clone.DATABASE_URL = configFile.DATABASE_URL;
-	}
-
-	if (configFile.BOT_OWNER_ID !== undefined) {
-		clone.BOT_OWNER_ID = configFile.BOT_OWNER_ID;
-	}
-
-	if (configFile.OPENAI_API_TOKEN !== undefined) {
-		clone.OPENAI_API_TOKEN = configFile.OPENAI_API_TOKEN;
-	}
-
-	if (configFile.OPENAI_MODEL !== undefined) {
-		clone.OPENAI_MODEL = configFile.OPENAI_MODEL;
-	}
-
-	if (configFile.ADMIN_USER_IDS !== undefined) {
-		clone.ADMIN_USER_IDS = cloneConfigValue(configFile.ADMIN_USER_IDS);
-	}
-
-	if (configFile.profilePicture !== undefined) {
-		clone.profilePicture = cloneConfigValue(configFile.profilePicture);
-	}
-
-	if (configFile.baseProfilePicture !== undefined) {
-		clone.baseProfilePicture = configFile.baseProfilePicture;
-	}
-
-	if (configFile.holidayProfilePictures !== undefined) {
-		clone.holidayProfilePictures = cloneConfigValue(
-			configFile.holidayProfilePictures,
-		);
-	}
-
-	if (configFile.lavalink !== undefined) {
-		clone.lavalink = cloneConfigValue(configFile.lavalink);
-	}
-
-	return clone;
+	return structuredClone(configFile);
 }
 
 function cloneConfigValue<T>(value: T): T {
