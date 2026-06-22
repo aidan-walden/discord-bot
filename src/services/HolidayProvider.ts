@@ -39,19 +39,24 @@ function getRuntimeTimeZone(): string | null | undefined {
 	return Intl.DateTimeFormat().resolvedOptions().timeZone;
 }
 
-export function findNextHolidayBoundary(
+function getContextForYear(
 	context: HolidayRuleContext,
-	getContextForYear: (
-		context: HolidayRuleContext,
-		year: number,
-	) => HolidayRuleContext = (currentContext, year) => ({
-		...currentContext,
-		date: DateTime.fromJSDate(currentContext.date, {
-			zone: currentContext.timeZone,
-		})
+	year: number,
+): HolidayRuleContext {
+	return {
+		...context,
+		date: DateTime.fromJSDate(context.date, { zone: context.timeZone })
 			.set({ year })
 			.toJSDate(),
-	}),
+	};
+}
+
+export function findNextHolidayBoundary(
+	context: HolidayRuleContext,
+	mapContextToYear: (
+		context: HolidayRuleContext,
+		year: number,
+	) => HolidayRuleContext = getContextForYear,
 ): Date | null {
 	const year = getContextYear(context);
 	const candidateYears = [year, year + 1];
@@ -59,7 +64,7 @@ export function findNextHolidayBoundary(
 
 	for (const candidateYear of candidateYears) {
 		for (const { getRange } of HOLIDAY_RULES) {
-			const range = getRange(getContextForYear(context, candidateYear));
+			const range = getRange(mapContextToYear(context, candidateYear));
 			if (range === null) {
 				continue;
 			}
@@ -97,7 +102,7 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 		this.resolveTimeZone = options.resolveTimeZone ?? getRuntimeTimeZone;
 		this.getNextBoundaryForContext =
 			options.getNextBoundary ??
-			((context) => findNextHolidayBoundary(context, this.getContextForYear));
+			((context) => findNextHolidayBoundary(context, getContextForYear));
 	}
 
 	public getAllActiveHolidays(
@@ -209,16 +214,5 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 
 		this.cachedTimeZone = timeZone;
 		return timeZone;
-	}
-	private getContextForYear(
-		context: HolidayRuleContext,
-		year: number,
-	): HolidayRuleContext {
-		return {
-			...context,
-			date: DateTime.fromJSDate(context.date, { zone: context.timeZone })
-				.set({ year })
-				.toJSDate(),
-		};
 	}
 }
