@@ -3,11 +3,15 @@ import { mkdtemp, rm } from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { Config } from "../config";
+import { ProfilePictureValidationError } from "../helpers/profilePicture";
 import Bot from "./Bot";
 import { BotEvents } from "./BotEvents";
 import Holiday from "./Holiday";
 
 const tempDirs: string[] = [];
+const originalFetch = globalThis.fetch;
+const originalWarn = console.warn;
+const originalError = console.error;
 
 function buildYaml(profilePictureBlock: string = "") {
 	const lines = [
@@ -66,6 +70,9 @@ async function closeBot(bot: Bot): Promise<void> {
 }
 
 afterEach(async () => {
+	globalThis.fetch = originalFetch;
+	console.warn = originalWarn;
+	console.error = originalError;
 	await Promise.all(
 		tempDirs
 			.splice(0)
@@ -87,6 +94,9 @@ describe("Bot.setProfilePicture", () => {
 		const config = await Config.load(filePath);
 		const setAvatar = mock(async () => undefined);
 		const bot = createBotDouble(config, setAvatar);
+		globalThis.fetch = mock(async () => {
+			throw new Error("fetch should not be called");
+		}) as unknown as typeof fetch;
 
 		await Bot.prototype.setProfilePicture.call(
 			bot,
@@ -110,6 +120,11 @@ describe("Bot.setProfilePicture", () => {
 		const config = await Config.load(filePath);
 		const setAvatar = mock(async () => undefined);
 		const bot = createBotDouble(config, setAvatar);
+		globalThis.fetch = mock(async () => {
+			return new Response(null, {
+				headers: { "content-type": "image/png" },
+			});
+		}) as unknown as typeof fetch;
 
 		await Bot.prototype.setProfilePicture.call(
 			bot,
@@ -126,6 +141,50 @@ describe("Bot.setProfilePicture", () => {
 			path: "https://example.com/avatar.png",
 			forced: true,
 		});
+	});
+
+	test("rejects remote profile pictures with non-image MIME before Discord update", async () => {
+		const filePath = await writeTempConfig(buildYaml());
+		const config = await Config.load(filePath);
+		const setAvatar = mock(async () => undefined);
+		const bot = createBotDouble(config, setAvatar);
+		globalThis.fetch = mock(async () => {
+			return new Response(null, {
+				headers: { "content-type": "text/html" },
+			});
+		}) as unknown as typeof fetch;
+
+		await expect(
+			Bot.prototype.setProfilePicture.call(
+				bot,
+				"https://example.com/avatar.png",
+				true,
+			),
+		).rejects.toBeInstanceOf(ProfilePictureValidationError);
+
+		expect(setAvatar).not.toHaveBeenCalled();
+		expect(config.get("profilePicture")).toBeUndefined();
+		expect(await readProfilePicture(filePath)).toBeUndefined();
+	});
+
+	test("does not fetch MIME type for local profile picture paths", async () => {
+		const filePath = await writeTempConfig(buildYaml());
+		const config = await Config.load(filePath);
+		const setAvatar = mock(async () => undefined);
+		const bot = createBotDouble(config, setAvatar);
+		const fetchMock = mock(async () => {
+			throw new Error("fetch should not be called");
+		});
+		globalThis.fetch = fetchMock as unknown as typeof fetch;
+
+		await Bot.prototype.setProfilePicture.call(
+			bot,
+			"./avatars/current.png",
+			true,
+		);
+
+		expect(fetchMock).not.toHaveBeenCalled();
+		expect(setAvatar).toHaveBeenCalledWith("./avatars/current.png");
 	});
 
 	test("does not write state when Discord rejects the avatar update", async () => {
@@ -173,6 +232,104 @@ describe("Bot.setProfilePicture", () => {
 		}
 
 		expect(await readProfilePicture(filePath)).toBeUndefined();
+	});
+});
+
+describe("Bot.releaseProfilePictureOverride", () => {
+	test("preserves the current path and clears forced state", async () => {
+		const filePath = await writeTempConfig(
+			buildYaml(
+				[
+					"profilePicture:",
+					'  path: "https://example.com/avatar.png"',
+					"  forced: true",
+				].join("\n"),
+			),
+		);
+		const config = await Config.load(filePath);
+		const bot = createBotDouble(config);
+
+		await Bot.prototype.releaseProfilePictureOverride.call(bot);
+
+		expect(config.get("profilePicture")).toEqual({
+			path: "https://example.com/avatar.png",
+			forced: false,
+		});
+		expect(await readProfilePicture(filePath)).toEqual({
+			path: "https://example.com/avatar.png",
+			forced: false,
+		});
+	});
+});
+
+describe("Bot.applyHolidayProfilePicture", () => {
+	type ConfigValues = {
+		baseProfilePicture?: string;
+		holidayProfilePictures?: Partial<Record<Holiday, string>>;
+	};
+
+	function createHolidayBotDouble(values: ConfigValues): Bot {
+		return {
+			config: {
+				get: mock((key: keyof ConfigValues) => values[key]),
+			},
+			setProfilePicture: mock(async () => undefined),
+		} as unknown as Bot;
+	}
+
+	test("sets configured holiday profile picture with force false", async () => {
+		const bot = createHolidayBotDouble({
+			baseProfilePicture: "./base.png",
+			holidayProfilePictures: {
+				[Holiday.Xmas]: "./xmas.png",
+			},
+		});
+
+		await Bot.prototype.applyHolidayProfilePicture.call(bot, Holiday.Xmas);
+
+		expect(bot.setProfilePicture).toHaveBeenCalledWith("./xmas.png", false);
+	});
+
+	test("warns and skips invalid configured remote image MIME", async () => {
+		const bot = createHolidayBotDouble({
+			baseProfilePicture: "./base.png",
+			holidayProfilePictures: {
+				[Holiday.Xmas]: "https://example.com/xmas.png",
+			},
+		});
+		bot.setProfilePicture = mock(async () => {
+			throw new ProfilePictureValidationError("Invalid MIME type.");
+		});
+		console.warn = mock(() => undefined);
+		console.error = mock(() => undefined);
+
+		await Bot.prototype.applyHolidayProfilePicture.call(bot, Holiday.Xmas);
+
+		expect(console.warn).toHaveBeenCalledWith(
+			"Skipping configured holiday profile picture because Invalid MIME type.",
+		);
+		expect(console.error).not.toHaveBeenCalled();
+	});
+
+	test("logs unexpected profile picture update failures as errors", async () => {
+		const bot = createHolidayBotDouble({
+			baseProfilePicture: "./base.png",
+			holidayProfilePictures: {
+				[Holiday.Xmas]: "./xmas.png",
+			},
+		});
+		const error = new Error("Discord rejected avatar");
+		bot.setProfilePicture = mock(async () => {
+			throw error;
+		});
+		console.error = mock(() => undefined);
+
+		await Bot.prototype.applyHolidayProfilePicture.call(bot, Holiday.Xmas);
+
+		expect(console.error).toHaveBeenCalledWith(
+			"Failed to update holiday profile picture:",
+			error,
+		);
 	});
 });
 

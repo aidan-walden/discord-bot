@@ -1,5 +1,6 @@
 import { statSync } from "node:fs";
 import path from "node:path";
+import { isHttpImageUrl } from "./helpers/profilePicture";
 import Holiday from "./models/Holiday";
 
 export interface LavalinkNodeConfig {
@@ -61,7 +62,6 @@ const REAL_CLOCK: ConfigClock = {
 	clearTimeout: (timeout) => clearTimeout(timeout),
 };
 const HOLIDAY_VALUES = new Set<string>(Object.values(Holiday));
-const IMAGE_URL_PATH_PATTERN = /\.(?:png|jpe?g|gif|webp|avif)$/i;
 
 function ensureString(value: unknown, key: string): string {
 	if (typeof value !== "string" || value.trim().length === 0) {
@@ -139,18 +139,6 @@ function validateProfilePicture(
 		path: ensureString(profilePicture.path, "profilePicture.path"),
 		forced: ensureBoolean(profilePicture.forced, "profilePicture.forced"),
 	};
-}
-
-function isHttpImageUrl(value: string): boolean {
-	try {
-		const url = new URL(value);
-		return (
-			(url.protocol === "http:" || url.protocol === "https:") &&
-			IMAGE_URL_PATH_PATTERN.test(url.pathname)
-		);
-	} catch {
-		return false;
-	}
 }
 
 function validateProfilePicturePath(

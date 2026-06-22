@@ -9,28 +9,6 @@ export default class HolidayChange implements BotEvent {
 	event: keyof ClientEvents = BotEvents.HolidayChange;
 
 	async execute(bot: Bot, holiday: Holiday | null): Promise<void> {
-		const holidayProfilePictures = bot.config.get("holidayProfilePictures");
-		if (!holidayProfilePictures) {
-			return;
-		}
-
-		const baseProfilePicture = bot.config.get("baseProfilePicture");
-		if (!baseProfilePicture) {
-			console.warn(
-				"holidayProfilePictures is configured but baseProfilePicture is not. Skipping profile picture for holiday...",
-			);
-			return;
-		}
-
-		const profilePicture =
-			holiday === null
-				? baseProfilePicture
-				: (holidayProfilePictures[holiday] ?? baseProfilePicture);
-
-		try {
-			await bot.setProfilePicture(profilePicture, false);
-		} catch (error) {
-			console.error("Failed to update holiday profile picture:", error);
-		}
+		await bot.applyHolidayProfilePicture(holiday);
 	}
 }

@@ -21,6 +21,10 @@ import OpenAI from "openai";
 import { Connectors } from "shoukaku";
 import type { Config, ProfilePictureState } from "../config";
 import { migrateDatabase } from "../database/migrate";
+import {
+	ProfilePictureValidationError,
+	validateRemoteProfilePictureMime,
+} from "../helpers/profilePicture";
 import BanRepository from "../repositories/BanRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import ChatSessionService from "../services/ChatSessionService";
@@ -30,6 +34,7 @@ import PermissionService from "../services/PermissionService";
 import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
 import type Command from "./Command";
+import type Holiday from "./Holiday";
 
 function isRuntimeTypescriptModule(file: string): boolean {
 	return file.endsWith(".ts") && !file.endsWith(".test.ts");
@@ -168,6 +173,8 @@ export default class Bot extends Client {
 			return;
 		}
 
+		await validateRemoteProfilePictureMime(profilePicturePath);
+
 		if (!this.user) {
 			throw new Error("Bot user not found");
 		}
@@ -180,6 +187,52 @@ export default class Bot extends Client {
 		await this.user.setAvatar(profilePicturePath);
 		this.config.set("profilePicture", profilePicture);
 		await this.config.flush();
+	}
+
+	async releaseProfilePictureOverride(): Promise<void> {
+		const profilePicture = this.config.get("profilePicture");
+		if (!profilePicture) {
+			return;
+		}
+
+		this.config.set("profilePicture", {
+			...profilePicture,
+			forced: false,
+		});
+		await this.config.flush();
+	}
+
+	async applyHolidayProfilePicture(holiday: Holiday | null): Promise<void> {
+		const holidayProfilePictures = this.config.get("holidayProfilePictures");
+		if (!holidayProfilePictures) {
+			return;
+		}
+
+		const baseProfilePicture = this.config.get("baseProfilePicture");
+		if (!baseProfilePicture) {
+			console.warn(
+				"holidayProfilePictures is configured but baseProfilePicture is not. Skipping profile picture for holiday...",
+			);
+			return;
+		}
+
+		const profilePicture =
+			holiday === null
+				? baseProfilePicture
+				: (holidayProfilePictures[holiday] ?? baseProfilePicture);
+
+		try {
+			await this.setProfilePicture(profilePicture, false);
+		} catch (error) {
+			if (error instanceof ProfilePictureValidationError) {
+				console.warn(
+					`Skipping configured holiday profile picture because ${error.message}`,
+				);
+				return;
+			}
+
+			console.error("Failed to update holiday profile picture:", error);
+		}
 	}
 
 	/**
