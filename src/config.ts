@@ -436,7 +436,7 @@ export class Config {
 		if (value === null) {
 			delete nextConfig[key];
 		} else {
-			this.setFileConfigValue(nextConfig, key, value);
+			nextConfig[key] = cloneConfigValue(value) as AppConfigFile[K];
 		}
 
 		const nextLoadedConfig = validateConfigFile(
@@ -463,50 +463,6 @@ export class Config {
 
 	private getEffectiveConfigFile(configFile: AppConfigFile = this.fileConfig) {
 		return applyEnvironmentOverrides(configFile, this.environmentOverrides);
-	}
-
-	private setFileConfigValue<K extends keyof AppConfig>(
-		configFile: AppConfigFile,
-		key: K,
-		value: NonNullable<AppConfig[K]>,
-	): void {
-		const clonedValue = cloneConfigValue(value);
-
-		switch (key) {
-			case "BOT_TOKEN":
-				configFile.BOT_TOKEN = clonedValue as AppConfig["BOT_TOKEN"];
-				return;
-			case "DATABASE_URL":
-				configFile.DATABASE_URL = clonedValue as AppConfig["DATABASE_URL"];
-				return;
-			case "BOT_OWNER_ID":
-				configFile.BOT_OWNER_ID = clonedValue as AppConfig["BOT_OWNER_ID"];
-				return;
-			case "OPENAI_API_TOKEN":
-				configFile.OPENAI_API_TOKEN =
-					clonedValue as AppConfig["OPENAI_API_TOKEN"];
-				return;
-			case "OPENAI_MODEL":
-				configFile.OPENAI_MODEL = clonedValue as AppConfig["OPENAI_MODEL"];
-				return;
-			case "ADMIN_USER_IDS":
-				configFile.ADMIN_USER_IDS = clonedValue as AppConfig["ADMIN_USER_IDS"];
-				return;
-			case "profilePicture":
-				configFile.profilePicture = clonedValue as AppConfig["profilePicture"];
-				return;
-			case "baseProfilePicture":
-				configFile.baseProfilePicture =
-					clonedValue as AppConfig["baseProfilePicture"];
-				return;
-			case "holidayProfilePictures":
-				configFile.holidayProfilePictures =
-					clonedValue as AppConfig["holidayProfilePictures"];
-				return;
-			case "lavalink":
-				configFile.lavalink = clonedValue as AppConfig["lavalink"];
-				return;
-		}
 	}
 
 	private scheduleWrite(): void {
