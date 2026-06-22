@@ -6,6 +6,33 @@ import HOLIDAY_RULES, { type HolidayRuleContext } from "./HolidayRules";
 
 const TEST_TIME_ZONE = "America/New_York";
 
+const EXAMPLES: Record<Holiday, { active: string[]; inactive: string[] }> = {
+	[Holiday.Xmas]: {
+		active: ["2024-12-15"],
+		inactive: ["2024-11-30"],
+	},
+	[Holiday.Thanksgiving]: {
+		active: ["2024-11-29", "2025-11-28"],
+		inactive: ["2024-11-01", "2024-12-01"],
+	},
+	[Holiday.USAElection]: {
+		active: ["2024-11-10"],
+		inactive: ["2025-11-10"],
+	},
+	[Holiday.Halloween]: {
+		active: ["2024-10-15"],
+		inactive: ["2024-09-30"],
+	},
+	[Holiday.IndependenceDay]: {
+		active: ["2026-07-06"],
+		inactive: ["2026-06-30"],
+	},
+	[Holiday.AprilFools]: {
+		active: ["2026-04-01"],
+		inactive: ["2026-04-02"],
+	},
+};
+
 interface OverlapTestCase {
 	isoDate: string;
 	expectedCanonical: Holiday;
@@ -25,9 +52,9 @@ describe("HolidayRules", () => {
 		for (const rule of HOLIDAY_RULES) {
 			describe(rule.holiday, () => {
 				test("active and inactive examples are non-empty", () => {
-					expect(rule.examples).not.toBeEmptyObject();
-					expect(rule.examples.active.length).toBeGreaterThan(0);
-					expect(rule.examples.inactive.length).toBeGreaterThan(0);
+					expect(EXAMPLES[rule.holiday]).not.toBeEmptyObject();
+					expect(EXAMPLES[rule.holiday].active.length).toBeGreaterThan(0);
+					expect(EXAMPLES[rule.holiday].inactive.length).toBeGreaterThan(0);
 				});
 			});
 		}
@@ -46,7 +73,7 @@ describe("HolidayRules", () => {
 
 		for (const rule of HOLIDAY_RULES) {
 			describe(rule.holiday, () => {
-				for (const { isoDate } of rule.examples.active) {
+				for (const isoDate of EXAMPLES[rule.holiday].active) {
 					test(`treats ${isoDate} as active`, () => {
 						const context = getExampleContext(isoDate);
 						const range = rule.getRange(context);
@@ -69,7 +96,7 @@ describe("HolidayRules", () => {
 					});
 				}
 
-				for (const { isoDate } of rule.examples.inactive) {
+				for (const isoDate of EXAMPLES[rule.holiday].inactive) {
 					test(`treats ${isoDate} as inactive`, () => {
 						const context = getExampleContext(isoDate);
 						const range = rule.getRange(context);
