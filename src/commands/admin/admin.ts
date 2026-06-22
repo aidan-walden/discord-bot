@@ -1,0 +1,316 @@
+import {
+	ActionRowBuilder,
+	ButtonBuilder,
+	type ButtonInteraction,
+	ButtonStyle,
+	type ChatInputCommandInteraction,
+	ComponentType,
+	type Guild,
+	GuildMember,
+	MessageFlags,
+	ModalBuilder,
+	type ModalSubmitInteraction,
+	SlashCommandBuilder,
+	TextInputBuilder,
+	TextInputStyle,
+} from "discord.js";
+import type Command from "../../models/Command";
+
+type Bot = ChatInputCommandInteraction["client"]["bot"];
+
+type Field = {
+	id: string;
+	label: string;
+	min: number;
+	max: number;
+	required?: boolean;
+};
+
+type Action = {
+	id: string;
+	label: string;
+	style: ButtonStyle;
+	title: string;
+	fields: Field[];
+	needsGuild?: boolean;
+	run(
+		values: Record<string, string>,
+		ctx: { modal: ModalSubmitInteraction; bot: Bot; guild: Guild },
+	): Promise<string>;
+};
+
+const ID_FIELD = (id: string, label: string): Field => ({
+	id,
+	label,
+	min: 15,
+	max: 20,
+});
+
+function snowflake(value: string | undefined, label: string): string {
+	const v = value?.trim() ?? "";
+	if (!/^\d{15,20}$/.test(v)) {
+		throw new Error(`\`${value}\` is not a valid ${label}.`);
+	}
+	return v;
+}
+
+// Data-driven panel: one entry per button. Adding an action means adding a row here.
+const ACTIONS: Action[] = [
+	{
+		id: "kick_voice",
+		label: "⛔ Kick from Voice",
+		style: ButtonStyle.Danger,
+		title: "Kick from Voice",
+		fields: [ID_FIELD("user_id", "User ID")],
+		needsGuild: true,
+		run: async ({ user_id }, { guild }) => {
+			const id = snowflake(user_id, "user ID");
+			const member = await guild.members.fetch(id);
+			if (!member.voice.channel) {
+				throw new Error(`<@${id}> is not in a voice channel.`);
+			}
+			await member.voice.disconnect();
+			return `Kicked <@${id}> from voice.`;
+		},
+	},
+	{
+		id: "delete_message",
+		label: "🗑️ Delete Message",
+		style: ButtonStyle.Danger,
+		title: "Delete Message",
+		fields: [ID_FIELD("message_id", "Message ID")],
+		run: async ({ message_id }, { modal }) => {
+			const id = snowflake(message_id, "message ID");
+			const channel = modal.channel;
+			if (!channel?.isTextBased() || channel.isDMBased()) {
+				throw new Error("Can't delete messages in this channel.");
+			}
+			await channel.messages.delete(id);
+			return `Deleted message \`${id}\`.`;
+		},
+	},
+	{
+		id: "change_nick",
+		label: "👤 Change Nickname",
+		style: ButtonStyle.Primary,
+		title: "Change Nickname",
+		fields: [
+			ID_FIELD("user_id", "User ID"),
+			{ id: "nickname", label: "New Nickname", min: 1, max: 32 },
+		],
+		needsGuild: true,
+		run: async ({ user_id, nickname }, { guild }) => {
+			const id = snowflake(user_id, "user ID");
+			const member = await guild.members.fetch(id);
+			await member.setNickname(nickname ?? null);
+			return `Set <@${id}>'s nickname to **${nickname}**.`;
+		},
+	},
+	{
+		id: "ban_gpt",
+		label: "🚫 Ban from GPT",
+		style: ButtonStyle.Danger,
+		title: "Ban from GPT",
+		fields: [ID_FIELD("user_id", "User ID")],
+		run: async ({ user_id }, { bot }) => {
+			const id = snowflake(user_id, "user ID");
+			await bot.permissions.gptUserBans.add(id);
+			return `Banned <@${id}> from GPT.`;
+		},
+	},
+	{
+		id: "pardon_gpt",
+		label: "✅ Pardon from GPT",
+		style: ButtonStyle.Success,
+		title: "Pardon from GPT",
+		fields: [ID_FIELD("user_id", "User ID")],
+		run: async ({ user_id }, { bot }) => {
+			const id = snowflake(user_id, "user ID");
+			await bot.permissions.gptUserBans.remove(id);
+			return `Pardoned <@${id}> from GPT.`;
+		},
+	},
+	{
+		id: "ban_music",
+		label: "🚫 Ban from 🎵Music",
+		style: ButtonStyle.Danger,
+		title: "Ban from Music",
+		fields: [ID_FIELD("user_id", "User ID")],
+		run: async ({ user_id }, { bot }) => {
+			const id = snowflake(user_id, "user ID");
+			await bot.permissions.musicUserBans.add(id);
+			return `Banned <@${id}> from music.`;
+		},
+	},
+	{
+		id: "pardon_music",
+		label: "✅ Pardon from 🎵Music",
+		style: ButtonStyle.Success,
+		title: "Pardon from Music",
+		fields: [ID_FIELD("user_id", "User ID")],
+		run: async ({ user_id }, { bot }) => {
+			const id = snowflake(user_id, "user ID");
+			await bot.permissions.musicUserBans.remove(id);
+			return `Pardoned <@${id}> from music.`;
+		},
+	},
+	{
+		id: "ban_guild_music",
+		label: "🚫 Ban Guild from 🎵Music",
+		style: ButtonStyle.Danger,
+		title: "Ban Guild from Music",
+		fields: [ID_FIELD("guild_id", "Guild ID")],
+		run: async ({ guild_id }, { bot }) => {
+			const id = snowflake(guild_id, "guild ID");
+			await bot.permissions.musicGuildBans.add(id);
+			return `Banned guild \`${id}\` from music.`;
+		},
+	},
+	{
+		id: "pardon_guild_music",
+		label: "✅ Pardon Guild from 🎵Music",
+		style: ButtonStyle.Success,
+		title: "Pardon Guild from Music",
+		fields: [ID_FIELD("guild_id", "Guild ID")],
+		run: async ({ guild_id }, { bot }) => {
+			const id = snowflake(guild_id, "guild ID");
+			await bot.permissions.musicGuildBans.remove(id);
+			return `Pardoned guild \`${id}\` from music.`;
+		},
+	},
+];
+
+const ACTIONS_BY_ID = new Map(ACTIONS.map((action) => [action.id, action]));
+
+// Button rows (≤5 buttons each), mirroring the old panel grouping.
+const ROWS: string[][] = [
+	["kick_voice", "delete_message", "change_nick"],
+	["ban_gpt", "pardon_gpt"],
+	["ban_music", "pardon_music", "ban_guild_music", "pardon_guild_music"],
+];
+
+function buildPanel(): ActionRowBuilder<ButtonBuilder>[] {
+	return ROWS.map((ids) =>
+		new ActionRowBuilder<ButtonBuilder>().addComponents(
+			ids.flatMap((id) => {
+				const action = ACTIONS_BY_ID.get(id);
+				if (!action) return [];
+				return [
+					new ButtonBuilder()
+						.setCustomId(action.id)
+						.setLabel(action.label)
+						.setStyle(action.style),
+				];
+			}),
+		),
+	);
+}
+
+function buildModal(action: Action, customId: string): ModalBuilder {
+	const modal = new ModalBuilder().setCustomId(customId).setTitle(action.title);
+	for (const field of action.fields) {
+		modal.addComponents(
+			new ActionRowBuilder<TextInputBuilder>().addComponents(
+				new TextInputBuilder()
+					.setCustomId(field.id)
+					.setLabel(field.label)
+					.setStyle(TextInputStyle.Short)
+					.setMinLength(field.min)
+					.setMaxLength(field.max)
+					.setRequired(field.required ?? true),
+			),
+		);
+	}
+	return modal;
+}
+
+export default class Admin implements Command {
+	data = new SlashCommandBuilder()
+		.setName("admin")
+		.setDescription("Admin control panel.");
+
+	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
+		const bot = interaction.client.bot;
+		if (!bot.permissions.isAdminUser(interaction.user.id)) {
+			await interaction.reply({
+				content: "You don't have permission to use this command.",
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
+
+		if (
+			!interaction.inGuild() ||
+			!(interaction.member instanceof GuildMember) ||
+			!interaction.channel?.isTextBased()
+		) {
+			await interaction.reply({
+				content: "You can't use that command here.",
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
+
+		const response = await interaction.reply({
+			content: "Admin Panel. Select an option within 60 seconds.",
+			components: buildPanel(),
+			flags: MessageFlags.Ephemeral,
+		});
+
+		const collector = response.createMessageComponentCollector({
+			componentType: ComponentType.Button,
+			time: 60_000,
+		});
+
+		collector.on("collect", (button) => this.handleButton(button, bot));
+	}
+
+	private async handleButton(
+		button: ButtonInteraction,
+		bot: Bot,
+	): Promise<void> {
+		const action = ACTIONS_BY_ID.get(button.customId);
+		if (!action) return;
+
+		const modalId = `${button.customId}:${button.id}`;
+		await button.showModal(buildModal(action, modalId));
+
+		let modal: ModalSubmitInteraction;
+		try {
+			modal = await button.awaitModalSubmit({
+				time: 60_000,
+				filter: (i) => i.customId === modalId && i.user.id === button.user.id,
+			});
+		} catch {
+			return; // dismissed or timed out
+		}
+
+		const guild = modal.guild;
+		if (action.needsGuild && !guild) {
+			await modal.reply({
+				content: "This action only works in a server.",
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
+
+		const values = Object.fromEntries(
+			action.fields.map((f) => [f.id, modal.fields.getTextInputValue(f.id)]),
+		);
+
+		// guild is non-null for needsGuild actions (guarded above); others ignore it.
+		try {
+			const result = await action.run(values, {
+				modal,
+				bot,
+				guild: guild as Guild,
+			});
+			await modal.reply({ content: result, flags: MessageFlags.Ephemeral });
+		} catch (error) {
+			await modal.reply({
+				content: error instanceof Error ? error.message : "Action failed.",
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+	}
+}
