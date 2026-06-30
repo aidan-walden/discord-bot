@@ -21,7 +21,7 @@
 	},
 	"dependencies": {
 		"discord.js": "^14.25.1",
-		"hono": "^4.12.10",
+		"hono": "^4.12.27",
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
 		"openai": "^6.8.1",
