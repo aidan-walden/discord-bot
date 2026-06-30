@@ -20,7 +20,7 @@
 - [ ] CI/CD Infrastructure (in progress)
   - [x] Full test case coverage
   - [x] Dockerfile
-  - [ ] Non-root user support
+  - [x] Non-root user support
   - [ ] Distroless
   - [ ] Docker compose example
   - [ ] GitHub Actions
