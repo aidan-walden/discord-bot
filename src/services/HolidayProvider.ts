@@ -53,10 +53,6 @@ function getContextForYear(
 
 export function findNextHolidayBoundary(
 	context: HolidayRuleContext,
-	mapContextToYear: (
-		context: HolidayRuleContext,
-		year: number,
-	) => HolidayRuleContext = getContextForYear,
 ): Date | null {
 	const year = getContextYear(context);
 	const candidateYears = [year, year + 1];
@@ -64,7 +60,7 @@ export function findNextHolidayBoundary(
 
 	for (const candidateYear of candidateYears) {
 		for (const { getRange } of HOLIDAY_RULES) {
-			const range = getRange(mapContextToYear(context, candidateYear));
+			const range = getRange(getContextForYear(context, candidateYear));
 			if (range === null) {
 				continue;
 			}
@@ -102,7 +98,7 @@ export default class HolidayProvider extends EventEmitter<HolidayProviderEvents>
 		this.resolveTimeZone = options.resolveTimeZone ?? getRuntimeTimeZone;
 		this.getNextBoundaryForContext =
 			options.getNextBoundary ??
-			((context) => findNextHolidayBoundary(context, getContextForYear));
+			((context) => findNextHolidayBoundary(context));
 	}
 
 	public getAllActiveHolidays(
