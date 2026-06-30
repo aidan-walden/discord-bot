@@ -24,7 +24,7 @@
 		"hono": "^4.12.10",
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
-		"openai": "^6.8.1",
+		"openai": "^6.45.0",
 		"shoukaku": "shipgirlproject/Shoukaku#ec4060e3b84acf5bfadb473a0ba80fb2db7c4e42"
 	},
 	"trustedDependencies": [
