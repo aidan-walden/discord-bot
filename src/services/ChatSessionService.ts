@@ -78,15 +78,6 @@ export default class ChatSessionService {
 		);
 	}
 
-	closeSessionByThreadId(threadChannelId: string): void {
-		const session = this.sessionsByThreadId.get(threadChannelId);
-		if (!session) {
-			return;
-		}
-
-		this.closeSession(session);
-	}
-
 	async prompt(session: ChatSession, input: string): Promise<string> {
 		if (!this.openai || !this.model) {
 			throw new Error(this.getUnavailableReason());
