@@ -25,5 +25,5 @@
   - [ ] Docker compose example
   - [ ] GitHub Actions
   - [ ] Deployment workflow
-  - [ ] Healthchecks
+  - [x] Healthchecks
 - [ ] Admin WebUI
