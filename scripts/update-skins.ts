@@ -68,6 +68,10 @@ function buildExpected(skins: ByMykelSkin[]): ExpectedCatalog {
 		const bucket = getBucket(skin);
 		if (!bucket || !skin.crates) continue;
 		const name = normalizeName(skin.name);
+		// Vanilla knives (bare "Navaja Knife", no "| pattern") aren't listed on
+		// stash.clash.gg, so we can never scrape a price for them — tracking them
+		// would flag those cases stale forever. Every real skin has "weapon | finish".
+		if (!name.includes("|")) continue;
 		for (const crate of skin.crates) {
 			// ponytail: weapon cases are the only stash.clash.gg-scrapable containers;
 			// filter by the "Case" naming convention to skip souvenir packages / capsules.
