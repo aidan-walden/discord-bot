@@ -10,7 +10,10 @@ type EqualizerBand = {
 	gain: number;
 };
 
-function generateBands(startingBand: number, zeroed = false): EqualizerBand[] {
+export function generateBands(
+	startingBand: number,
+	zeroed = false,
+): EqualizerBand[] {
 	const bands: EqualizerBand[] = [];
 	if (zeroed) {
 		for (let i = startingBand; i < 15; i++) {
