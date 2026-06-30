@@ -1,0 +1,12 @@
+node_modules
+.git
+.env
+.serena
+.claude
+.cursor
+.agents
+.github
+csgo-skins-scraper
+scripts
+*.md
+compose.test.yml
