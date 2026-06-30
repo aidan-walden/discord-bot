@@ -7,7 +7,8 @@
 		"check": "biome check AGENTS.md README.md TODO.md biome.json config.yml package.json tsconfig.json src",
 		"typecheck": "tsc --noEmit",
 		"format": "bun run typecheck && biome lint --write",
-		"test": "bash scripts/test.sh"
+		"test": "bash scripts/test.sh",
+		"update-skins": "bun scripts/update-skins.ts"
 	},
 	"devDependencies": {
 		"@biomejs/biome": "2.5.1",
