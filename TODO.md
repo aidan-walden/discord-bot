@@ -18,8 +18,10 @@
 - [x] ChatGPT
 - [x] CSGO Unboxing
 - [ ] CI/CD Infrastructure (in progress)
-  - [ ] Full test case coverage
-  - [ ] Dockerfile
+  - [x] Full test case coverage
+  - [x] Dockerfile
+  - [ ] Non-root user support
+  - [ ] Distroless
   - [ ] Docker compose example
   - [ ] GitHub Actions
   - [ ] Deployment workflow
