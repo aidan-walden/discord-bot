@@ -37,6 +37,8 @@ export default class Unbox implements Command {
 		const balance = await interaction.client.bot.balances.applyProfit(
 			interaction.user.id,
 			result.profitCents,
+			Math.round(result.totalSpent * 100),
+			Math.round(result.totalGained * 100),
 		);
 
 		const floatDisplay =

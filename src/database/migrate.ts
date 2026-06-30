@@ -26,6 +26,9 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 			balance_cents INTEGER NOT NULL DEFAULT 0,
 			most_gained_cents INTEGER NOT NULL DEFAULT 0,
 			most_lost_cents INTEGER NOT NULL DEFAULT 0,
+			total_spent_cents INTEGER NOT NULL DEFAULT 0,
+			total_gained_cents INTEGER NOT NULL DEFAULT 0,
+			unbox_count INTEGER NOT NULL DEFAULT 0,
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`;
