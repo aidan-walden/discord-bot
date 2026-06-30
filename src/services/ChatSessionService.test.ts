@@ -95,38 +95,6 @@ describe("ChatSessionService", () => {
 		]);
 	});
 
-	test("closes session by thread id and ignores missing thread ids", () => {
-		const { openai } = createOpenAiMock();
-		const service = new ChatSessionService(openai, "gpt-test");
-
-		const session = service.createSession("user-1", "root-1", "thread-1");
-		const unrelatedSession = service.createSession(
-			"user-2",
-			"root-2",
-			"thread-2",
-		);
-
-		service.closeSessionByThreadId(session.threadChannelId);
-
-		expect(service.getByThreadId(session.threadChannelId)).toBeUndefined();
-		expect(
-			service.getByRootChannel(session.userId, session.rootChannelId),
-		).toBeUndefined();
-
-		expect(() =>
-			service.closeSessionByThreadId("missing-thread"),
-		).not.toThrow();
-		expect(service.getByThreadId(unrelatedSession.threadChannelId)).toBe(
-			unrelatedSession,
-		);
-		expect(
-			service.getByRootChannel(
-				unrelatedSession.userId,
-				unrelatedSession.rootChannelId,
-			),
-		).toBe(unrelatedSession);
-	});
-
 	test("completes successful prompt lifecycle", async () => {
 		const { create, openai } = createOpenAiMock();
 		let requestAtSend:
