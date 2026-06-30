@@ -12,6 +12,9 @@ const ZERO_BALANCE: UserBalance = {
 	balanceCents: 0,
 	mostGainedCents: 0,
 	mostLostCents: 0,
+	totalSpentCents: 0,
+	totalGainedCents: 0,
+	unboxCount: 0,
 };
 
 export default class Bal implements Command {
