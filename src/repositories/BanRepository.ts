@@ -3,21 +3,6 @@ type BanColumnName = "user_id" | "guild_id";
 
 export default class BanRepository {
 	constructor(
-		sql: typeof Bun.sql,
-		tableName: "gpt_user_bans",
-		columnName: "user_id",
-	);
-	constructor(
-		sql: typeof Bun.sql,
-		tableName: "music_user_bans",
-		columnName: "user_id",
-	);
-	constructor(
-		sql: typeof Bun.sql,
-		tableName: "music_guild_bans",
-		columnName: "guild_id",
-	);
-	constructor(
 		private readonly sql: typeof Bun.sql,
 		private readonly tableName: BanTableName,
 		private readonly columnName: BanColumnName,

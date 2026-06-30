@@ -60,7 +60,6 @@ describe("api routes", () => {
 
 		expect(response.status).toBe(200);
 		expect(response.json()).resolves.toEqual({
-			count: 2,
 			guilds: [
 				{
 					name: "Guild One",

@@ -22,12 +22,7 @@ guilds.get("/listGuilds", (c) => {
 		};
 	});
 
-	const response = {
-		count: guilds.length,
-		guilds: guilds,
-	};
-
-	return c.json(response);
+	return c.json({ guilds });
 });
 
 export default guilds;
