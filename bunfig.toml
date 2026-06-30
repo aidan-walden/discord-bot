@@ -1,0 +1,38 @@
+[test]
+coverage = true
+coverageSkipTestFiles = true
+coverageReporter = ["text"]
+
+# Trivial Discord/HTTP wiring with no branching logic worth testing. These are
+# deliberately excluded so the coverage gate stays meaningful (see CLAUDE.md /
+# the test-coverage plan). underwater.ts is NOT excluded — it has real EQ math.
+coveragePathIgnorePatterns = [
+  "src/index.ts",
+  "src/database/migrate.ts",
+  "src/web/server.ts",
+  "src/web/context.ts",
+  "src/commands/music/clear.ts",
+  "src/commands/music/loop.ts",
+  "src/commands/music/pause.ts",
+  "src/commands/music/pitch.ts",
+  "src/commands/music/play.ts",
+  "src/commands/music/queue.ts",
+  "src/commands/music/resetfilters.ts",
+  "src/commands/music/resume.ts",
+  "src/commands/music/rotation.ts",
+  "src/commands/music/skip.ts",
+  "src/commands/music/speed.ts",
+  "src/commands/music/stop.ts",
+  "src/commands/music/volume.ts",
+  "src/commands/util/ping.ts",
+  "src/commands/util/unbox.ts",
+  "src/models/Holiday.ts",
+  "src/models/BotEvent.ts",
+  "src/models/BotEvents.ts",
+  "src/models/Command.ts",
+  "src/models/CounterStrikeSkin.ts",
+]
+
+# Below the measured global (≈97% lines / ≈89% funcs) so the suite stays green but
+# a new untested logic module fails the gate. Bump these as coverage rises.
+coverageThreshold = { line = 0.92, function = 0.85 }

@@ -26,7 +26,7 @@ type Field = {
 	required?: boolean;
 };
 
-type Action = {
+export type Action = {
 	id: string;
 	label: string;
 	style: ButtonStyle;
@@ -46,7 +46,7 @@ const ID_FIELD = (id: string, label: string): Field => ({
 	max: 20,
 });
 
-function snowflake(value: string | undefined, label: string): string {
+export function snowflake(value: string | undefined, label: string): string {
 	const v = value?.trim() ?? "";
 	if (!/^\d{15,20}$/.test(v)) {
 		throw new Error(`\`${value}\` is not a valid ${label}.`);
@@ -55,7 +55,7 @@ function snowflake(value: string | undefined, label: string): string {
 }
 
 // Data-driven panel: one entry per button. Adding an action means adding a row here.
-const ACTIONS: Action[] = [
+export const ACTIONS: Action[] = [
 	{
 		id: "kick_voice",
 		label: "⛔ Kick from Voice",
@@ -180,16 +180,18 @@ const ACTIONS: Action[] = [
 	},
 ];
 
-const ACTIONS_BY_ID = new Map(ACTIONS.map((action) => [action.id, action]));
+export const ACTIONS_BY_ID = new Map(
+	ACTIONS.map((action) => [action.id, action]),
+);
 
 // Button rows (≤5 buttons each), mirroring the old panel grouping.
-const ROWS: string[][] = [
+export const ROWS: string[][] = [
 	["kick_voice", "delete_message", "change_nick"],
 	["ban_gpt", "pardon_gpt"],
 	["ban_music", "pardon_music", "ban_guild_music", "pardon_guild_music"],
 ];
 
-function buildPanel(): ActionRowBuilder<ButtonBuilder>[] {
+export function buildPanel(): ActionRowBuilder<ButtonBuilder>[] {
 	return ROWS.map((ids) =>
 		new ActionRowBuilder<ButtonBuilder>().addComponents(
 			ids.flatMap((id) => {
