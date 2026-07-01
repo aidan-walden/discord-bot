@@ -12,6 +12,8 @@ const CONFIG_ENV_KEYS = [
 	"BOT_OWNER_ID",
 	"OPENAI_API_TOKEN",
 	"OPENAI_MODEL",
+	"SPOTIFY_CLIENT_ID",
+	"SPOTIFY_CLIENT_SECRET",
 ] as const;
 
 const baseYaml = [
