@@ -17,6 +17,12 @@ export interface ProfilePictureState {
 
 export type HolidayProfilePicturesConfig = Partial<Record<Holiday, string>>;
 
+export interface DeafenTrackerConfig {
+	enabled: boolean;
+	muted_is_deafened: boolean;
+	users: string[];
+}
+
 interface AppConfigFile {
 	BOT_TOKEN?: string;
 	BOT_OWNER_ID?: string;
@@ -27,6 +33,11 @@ interface AppConfigFile {
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
+	deafentracker?: {
+		enabled?: boolean;
+		muted_is_deafened?: boolean;
+		users?: string[];
+	};
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -42,6 +53,7 @@ export interface AppConfig {
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
+	deafentracker: DeafenTrackerConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -119,6 +131,49 @@ function validateAdminUserIds(value: unknown): string[] {
 		ensureString(userId, `ADMIN_USER_IDS[${index}]`),
 	);
 	return [...new Set(adminUserIds)];
+}
+
+function validateDeafenTrackerUsers(value: unknown): string[] {
+	if (value === undefined) {
+		return [];
+	}
+
+	if (!Array.isArray(value)) {
+		throw new Error(
+			"Invalid config value for deafentracker.users: expected array of strings.",
+		);
+	}
+
+	const users = value.map((userId, index) =>
+		ensureString(userId, `deafentracker.users[${index}]`),
+	);
+	return [...new Set(users)];
+}
+
+function validateDeafenTracker(value: unknown): DeafenTrackerConfig {
+	if (value === undefined) {
+		return { enabled: false, muted_is_deafened: false, users: [] };
+	}
+
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Invalid config value for deafentracker: expected object.");
+	}
+
+	const record = value as Record<string, unknown>;
+	return {
+		enabled:
+			record.enabled === undefined
+				? false
+				: ensureBoolean(record.enabled, "deafentracker.enabled"),
+		muted_is_deafened:
+			record.muted_is_deafened === undefined
+				? false
+				: ensureBoolean(
+						record.muted_is_deafened,
+						"deafentracker.muted_is_deafened",
+					),
+		users: validateDeafenTrackerUsers(record.users),
+	};
 }
 
 function validateProfilePicture(
@@ -242,6 +297,7 @@ function validateConfigFile(
 	}
 
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
+	const deafentracker = validateDeafenTracker(configFile.deafentracker);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
 	const baseProfilePicture = validateBaseProfilePicture(
@@ -263,6 +319,7 @@ function validateConfigFile(
 		profilePicture,
 		baseProfilePicture,
 		holidayProfilePictures,
+		deafentracker,
 		lavalink: {
 			nodes: lavalinkNodes,
 		},

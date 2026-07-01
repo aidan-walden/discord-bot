@@ -26,8 +26,12 @@ import {
 	validateRemoteProfilePictureMime,
 } from "../helpers/profilePicture";
 import BanRepository from "../repositories/BanRepository";
+import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import ChatSessionService from "../services/ChatSessionService";
+import DeafenTrackerService, {
+	isDeafenTrackerActive,
+} from "../services/DeafenTrackerService";
 import HolidayProvider from "../services/HolidayProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import PermissionService from "../services/PermissionService";
@@ -51,6 +55,8 @@ export default class Bot extends Client {
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
 	readonly balances: UserBalanceRepository;
+	readonly deafenSessions: DeafenSessionRepository;
+	readonly deafenTracker: DeafenTrackerService;
 	readonly metrics: MetricsCollector;
 	readonly holidays: HolidayProvider;
 
@@ -64,14 +70,18 @@ export default class Bot extends Client {
 		shouldRemoveCommands: boolean = false,
 		guildId: string | undefined = undefined,
 	) {
-		super({
-			intents: [
-				GatewayIntentBits.Guilds,
-				GatewayIntentBits.GuildMessages,
-				GatewayIntentBits.MessageContent,
-				GatewayIntentBits.GuildVoiceStates,
-			],
-		});
+		const intents = [
+			GatewayIntentBits.Guilds,
+			GatewayIntentBits.GuildMessages,
+			GatewayIntentBits.MessageContent,
+			GatewayIntentBits.GuildVoiceStates,
+		];
+		// The privileged presence intent is only requested when the deafen tracker is
+		// actually active, so the bot does not require the portal toggle otherwise.
+		if (isDeafenTrackerActive(config.get("deafentracker"))) {
+			intents.push(GatewayIntentBits.GuildPresences);
+		}
+		super({ intents });
 		this.config = config;
 		this.shouldDeployCommands = shouldDeployCommands;
 		this.shouldRemoveCommands = shouldRemoveCommands;
@@ -90,6 +100,8 @@ export default class Bot extends Client {
 			new BanRepository(this.db, "music_guild_bans", "guild_id"),
 		);
 		this.balances = new UserBalanceRepository(this.db);
+		this.deafenSessions = new DeafenSessionRepository(this.db);
+		this.deafenTracker = new DeafenTrackerService(this.deafenSessions);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
 			config.get("OPENAI_MODEL"),

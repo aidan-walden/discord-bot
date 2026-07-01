@@ -102,6 +102,7 @@ type YamlOptions = {
 	profilePictureBlock?: string;
 	baseProfilePictureBlock?: string;
 	holidayProfilePicturesBlock?: string;
+	deafentrackerBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
 };
@@ -117,6 +118,7 @@ function buildYaml(options: YamlOptions = {}) {
 		profilePictureBlock,
 		baseProfilePictureBlock,
 		holidayProfilePicturesBlock,
+		deafentrackerBlock,
 		lavalinkBlock,
 		omitKeys = [],
 	} = options;
@@ -164,6 +166,10 @@ function buildYaml(options: YamlOptions = {}) {
 		holidayProfilePicturesBlock.length > 0
 	) {
 		lines.push(holidayProfilePicturesBlock);
+	}
+
+	if (deafentrackerBlock !== undefined && deafentrackerBlock.length > 0) {
+		lines.push(deafentrackerBlock);
 	}
 
 	if (lavalinkBlock === undefined) {
@@ -490,6 +496,123 @@ describe("Config", () => {
 			buildYaml({ adminUserIdsBlock: 'ADMIN_USER_IDS: "not-an-array"' }),
 			"Invalid config value for ADMIN_USER_IDS: expected array of strings.",
 		);
+	});
+
+	describe("deafentracker validation", () => {
+		test("defaults to disabled with no users when block omitted", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("deafentracker")).toEqual({
+					enabled: false,
+					muted_is_deafened: false,
+					users: [],
+				});
+			});
+		});
+
+		test("parses provided values", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						deafentrackerBlock: [
+							"deafentracker:",
+							"  enabled: true",
+							"  muted_is_deafened: true",
+							"  users:",
+							'    - "user-a"',
+							'    - "user-b"',
+						].join("\n"),
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				expect(config.get("deafentracker")).toEqual({
+					enabled: true,
+					muted_is_deafened: true,
+					users: ["user-a", "user-b"],
+				});
+			});
+		});
+
+		test("defaults individual keys when only some are provided", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						deafentrackerBlock: ["deafentracker:", "  enabled: true"].join(
+							"\n",
+						),
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				expect(config.get("deafentracker")).toEqual({
+					enabled: true,
+					muted_is_deafened: false,
+					users: [],
+				});
+			});
+		});
+
+		test("removes duplicate users and keeps first-seen order", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						deafentrackerBlock: [
+							"deafentracker:",
+							"  users:",
+							'    - "user-a"',
+							'    - "user-a"',
+							'    - "user-b"',
+						].join("\n"),
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				expect(config.get("deafentracker").users).toEqual(["user-a", "user-b"]);
+			});
+		});
+
+		test("rejects a non-object deafentracker", async () => {
+			await expectLoadConfigError(
+				buildYaml({ deafentrackerBlock: 'deafentracker: "nope"' }),
+				"Invalid config value for deafentracker: expected object.",
+			);
+		});
+
+		test("rejects a non-boolean enabled", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					deafentrackerBlock: ["deafentracker:", '  enabled: "yes"'].join("\n"),
+				}),
+				"Invalid config value for deafentracker.enabled: expected boolean.",
+			);
+		});
+
+		test("rejects a non-boolean muted_is_deafened", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					deafentrackerBlock: [
+						"deafentracker:",
+						'  muted_is_deafened: "yes"',
+					].join("\n"),
+				}),
+				"Invalid config value for deafentracker.muted_is_deafened: expected boolean.",
+			);
+		});
+
+		test("rejects non-array users", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					deafentrackerBlock: [
+						"deafentracker:",
+						'  users: "not-an-array"',
+					].join("\n"),
+				}),
+				"Invalid config value for deafentracker.users: expected array of strings.",
+			);
+		});
 	});
 
 	describe("set() persistence", () => {

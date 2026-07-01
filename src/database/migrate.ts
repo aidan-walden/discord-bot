@@ -32,4 +32,33 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS deafen_sessions (
+			id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+			user_id TEXT NOT NULL,
+			guild_id TEXT NOT NULL,
+			started_at TIMESTAMPTZ NOT NULL,
+			ended_at TIMESTAMPTZ NOT NULL,
+			duration_seconds INTEGER NOT NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`;
+
+	await sql`
+		CREATE INDEX IF NOT EXISTS idx_deafen_sessions_user_guild
+			ON deafen_sessions (user_id, guild_id)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS deafen_summaries (
+			user_id TEXT NOT NULL,
+			guild_id TEXT NOT NULL,
+			longest_deafen_seconds INTEGER NOT NULL DEFAULT 0,
+			total_deafen_seconds INTEGER NOT NULL DEFAULT 0,
+			session_count INTEGER NOT NULL DEFAULT 0,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+			PRIMARY KEY (user_id, guild_id)
+		)
+	`;
 }
