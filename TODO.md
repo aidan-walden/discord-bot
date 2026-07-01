@@ -22,7 +22,7 @@
   - [x] Dockerfile
   - [x] Non-root user support
   - [ ] Distroless
-  - [ ] Docker compose example
+  - [x] Docker compose example
   - [ ] GitHub Actions
   - [ ] Deployment workflow
   - [x] Healthchecks
