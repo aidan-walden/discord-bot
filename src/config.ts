@@ -29,6 +29,8 @@ interface AppConfigFile {
 	DATABASE_URL?: string;
 	OPENAI_API_TOKEN?: string;
 	OPENAI_MODEL?: string;
+	SPOTIFY_CLIENT_ID?: string;
+	SPOTIFY_CLIENT_SECRET?: string;
 	ADMIN_USER_IDS?: string[];
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
@@ -49,6 +51,8 @@ export interface AppConfig {
 	BOT_OWNER_ID: string;
 	OPENAI_API_TOKEN?: string;
 	OPENAI_MODEL?: string;
+	SPOTIFY_CLIENT_ID?: string;
+	SPOTIFY_CLIENT_SECRET?: string;
 	ADMIN_USER_IDS: string[];
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
@@ -315,6 +319,8 @@ function validateConfigFile(
 		DATABASE_URL: databaseUrl,
 		OPENAI_API_TOKEN: configFile.OPENAI_API_TOKEN,
 		OPENAI_MODEL: configFile.OPENAI_MODEL,
+		SPOTIFY_CLIENT_ID: configFile.SPOTIFY_CLIENT_ID,
+		SPOTIFY_CLIENT_SECRET: configFile.SPOTIFY_CLIENT_SECRET,
 		ADMIN_USER_IDS: adminUserIds,
 		profilePicture,
 		baseProfilePicture,
@@ -335,6 +341,8 @@ function getEnvironmentOverrides(): AppConfigFile {
 		"BOT_OWNER_ID",
 		"OPENAI_API_TOKEN",
 		"OPENAI_MODEL",
+		"SPOTIFY_CLIENT_ID",
+		"SPOTIFY_CLIENT_SECRET",
 	] as const) {
 		const value = process.env[key];
 		if (value !== undefined) {
