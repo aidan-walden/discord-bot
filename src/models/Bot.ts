@@ -5,6 +5,7 @@
 
 import fs from "node:fs/promises";
 import path from "node:path";
+import { SpotifyApi } from "@spotify/web-api-ts-sdk";
 import {
 	Client,
 	type ClientEvents,
@@ -28,13 +29,16 @@ import {
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
+import AppleMusicService from "../services/AppleMusicService";
 import ChatSessionService from "../services/ChatSessionService";
 import DeafenTrackerService, {
 	isDeafenTrackerActive,
 } from "../services/DeafenTrackerService";
 import HolidayProvider from "../services/HolidayProvider";
 import MetricsCollector from "../services/MetricsCollector";
+import MusicLinkService from "../services/MusicLinkService";
 import PermissionService from "../services/PermissionService";
+import SpotifyService from "../services/SpotifyService";
 import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
 import type Command from "./Command";
@@ -54,6 +58,9 @@ export default class Bot extends Client {
 	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
+	readonly spotify: SpotifyService;
+	readonly appleMusic: AppleMusicService;
+	readonly musicLinks: MusicLinkService;
 	readonly balances: UserBalanceRepository;
 	readonly deafenSessions: DeafenSessionRepository;
 	readonly deafenTracker: DeafenTrackerService;
@@ -106,6 +113,16 @@ export default class Bot extends Client {
 			this.openai,
 			config.get("OPENAI_MODEL"),
 		);
+
+		const spotifyClientId = config.get("SPOTIFY_CLIENT_ID");
+		const spotifyClientSecret = config.get("SPOTIFY_CLIENT_SECRET");
+		const spotifyClient =
+			spotifyClientId && spotifyClientSecret
+				? SpotifyApi.withClientCredentials(spotifyClientId, spotifyClientSecret)
+				: null;
+		this.spotify = new SpotifyService(spotifyClient);
+		this.appleMusic = new AppleMusicService();
+		this.musicLinks = new MusicLinkService(this.spotify, this.appleMusic);
 
 		this.metrics = new MetricsCollector();
 		this.holidays = new HolidayProvider();

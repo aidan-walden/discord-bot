@@ -21,10 +21,12 @@
 		"typescript": "^5"
 	},
 	"dependencies": {
+		"@spotify/web-api-ts-sdk": "^1.2.0",
 		"discord.js": "^14.25.1",
 		"hono": "^4.12.27",
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
+		"node-apple-music": "^1.2.2",
 		"openai": "^6.45.0",
 		"shoukaku": "shipgirlproject/Shoukaku#ec4060e3b84acf5bfadb473a0ba80fb2db7c4e42"
 	},

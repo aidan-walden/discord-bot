@@ -14,9 +14,10 @@
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
-- Runtime config comes from `config.yml`, with env vars able to override `BOT_TOKEN`, `DATABASE_URL`, `BOT_OWNER_ID`, and OpenAI settings.
+- Runtime config comes from `config.yml`, with env vars able to override `BOT_TOKEN`, `DATABASE_URL`, `BOT_OWNER_ID`, OpenAI settings, and Spotify credentials.
 - Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
 - `OPENAI_API_TOKEN` and `OPENAI_MODEL` are optional together; ChatGPT commands stay registered but report unavailable when unset.
+- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.
