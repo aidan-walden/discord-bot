@@ -249,6 +249,9 @@ export default class Bot extends Client {
 			// Create instance of event class before accessing its properties
 			const EventClass = (await import(filePath)).default as new () => BotEvent;
 			const event = new EventClass();
+			if (event.isEnabled && !event.isEnabled(this)) {
+				continue;
+			}
 			if (event.once) {
 				this.once(event.event as keyof ClientEvents, (...args) =>
 					event.execute(this, ...args),
