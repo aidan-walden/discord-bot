@@ -9,5 +9,10 @@ import type Bot from "./Bot";
 export default interface BotEvent {
 	once: boolean;
 	event: keyof ClientEvents;
+	/**
+	 * Optional registration gate. When present and it returns false, the event is
+	 * skipped during registration (the handler is never attached).
+	 */
+	isEnabled?(bot: Bot): boolean;
 	execute(bot: Bot, ...args: unknown[]): Promise<void>;
 }
