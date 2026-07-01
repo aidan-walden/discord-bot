@@ -4,6 +4,11 @@ OPENAI_API_TOKEN: ""
 OPENAI_MODEL: ""
 ADMIN_USER_IDS: []
 
+deafentracker:
+  enabled: false
+  muted_is_deafened: false
+  users: []
+
 lavalink:
   nodes:
     - name: "localhost"
