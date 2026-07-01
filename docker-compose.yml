@@ -1,0 +1,51 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      lavalink:
+        condition: service_healthy
+    environment:
+      BOT_TOKEN: ${BOT_TOKEN}
+      BOT_OWNER_ID: ${BOT_OWNER_ID}
+      DATABASE_URL: postgres://bot:bot@postgres:5432/bot
+      OPENAI_API_TOKEN: ${OPENAI_API_TOKEN:-}
+      OPENAI_MODEL: ${OPENAI_MODEL:-}
+    volumes:
+      # lavalink.nodes and ADMIN_USER_IDS have no env var override, so config.yml
+      # must be provided. Point the lavalink node at "lavalink:2333" for this stack.
+      - ./config.yml:/app/config.yml
+    ports:
+      - "3000:3000"
+
+  postgres:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: bot
+      POSTGRES_USER: bot
+      POSTGRES_PASSWORD: bot
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bot -d bot"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  lavalink:
+    image: ghcr.io/lavalink-devs/lavalink:4
+    restart: unless-stopped
+    environment:
+      SERVER_PORT: 2333
+      LAVALINK_SERVER_PASSWORD: youshallnotpass
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q --spider http://localhost:2333/version"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres-data:
