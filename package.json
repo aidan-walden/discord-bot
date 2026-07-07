@@ -11,7 +11,7 @@
 		"update-skins": "bun scripts/update-skins.ts"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.1",
+		"@biomejs/biome": "2.5.2",
 		"@types/bun": "latest",
 		"@types/luxon": "^3.7.2",
 		"lefthook": "^2.1.9",
