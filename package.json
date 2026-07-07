@@ -23,7 +23,7 @@
 	"dependencies": {
 		"@spotify/web-api-ts-sdk": "^1.2.0",
 		"discord.js": "^14.25.1",
-		"hono": "^4.12.27",
+		"hono": "^4.12.28",
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
 		"node-apple-music": "^1.2.2",
