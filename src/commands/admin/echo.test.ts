@@ -7,7 +7,10 @@ function buildInteraction(options: {
 	sendable?: boolean;
 	msg?: string;
 	sendError?: Error;
-}): ChatInputCommandInteraction {
+}): {
+	interaction: ChatInputCommandInteraction;
+	send: ReturnType<typeof mock>;
+} {
 	const msg = options.msg ?? "Hello, world!";
 	const send = mock(async () => {
 		if (options.sendError) {
@@ -16,7 +19,7 @@ function buildInteraction(options: {
 		return undefined;
 	});
 
-	return {
+	const interaction = {
 		user: { id: "u1" },
 		channel: {
 			isSendable: () => options.sendable ?? true,
@@ -32,11 +35,13 @@ function buildInteraction(options: {
 		},
 		reply: mock(async () => undefined),
 	} as unknown as ChatInputCommandInteraction;
+
+	return { interaction, send };
 }
 
 describe("Echo", () => {
 	test("rejects non-admins", async () => {
-		const interaction = buildInteraction({ admin: false });
+		const { interaction } = buildInteraction({ admin: false });
 
 		await new Echo().execute(interaction);
 
@@ -47,7 +52,7 @@ describe("Echo", () => {
 	});
 
 	test("rejects when the channel isn't sendable", async () => {
-		const interaction = buildInteraction({ sendable: false });
+		const { interaction } = buildInteraction({ sendable: false });
 
 		await new Echo().execute(interaction);
 
@@ -58,11 +63,11 @@ describe("Echo", () => {
 	});
 
 	test("sends the message and replies ephemeral on success", async () => {
-		const interaction = buildInteraction({ msg: "Hi there" });
+		const { interaction, send } = buildInteraction({ msg: "Hi there" });
 
 		await new Echo().execute(interaction);
 
-		expect(interaction.channel?.send).toHaveBeenCalledWith("Hi there");
+		expect(send).toHaveBeenCalledWith("Hi there");
 		expect(interaction.reply).toHaveBeenCalledWith({
 			content: "Message sent.",
 			flags: MessageFlags.Ephemeral,
@@ -70,7 +75,7 @@ describe("Echo", () => {
 	});
 
 	test("replies ephemeral with an error when sending fails", async () => {
-		const interaction = buildInteraction({
+		const { interaction } = buildInteraction({
 			sendError: new Error("Missing Permissions"),
 		});
 
