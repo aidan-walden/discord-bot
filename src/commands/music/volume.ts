@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -38,6 +39,6 @@ export default class Volume implements Command {
 		}
 
 		await player.setVolume(newVol);
-		await interaction.reply({ content: `Set volume to **${newVol}**` });
+		await interaction.reply({ content: `Set volume to ${bold(`${newVol}`)}` });
 	}
 }

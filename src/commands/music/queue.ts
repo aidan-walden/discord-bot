@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	SlashCommandBuilder,
 } from "discord.js";
@@ -21,7 +22,8 @@ export default class Queue implements Command {
 		// Limit the queue to 2000 characters to avoid Discord message length limit
 		const queueString = player.queue
 			.map(
-				(track, index) => `**${index + 1}**. ${track.title} by ${track.author}`,
+				(track, index) =>
+					`${bold(`${index + 1}`)}. ${track.title} by ${track.author}`,
 			)
 			.join("\n")
 			.slice(0, 2000);

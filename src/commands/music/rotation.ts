@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -39,7 +40,7 @@ export default class Rotation implements Command {
 
 		await player.shoukaku.setRotation({ rotationHz: newSpeed });
 		await interaction.reply({
-			content: `Set rotation speed to **${newSpeed}Hz**`,
+			content: `Set rotation speed to ${bold(`${newSpeed}Hz`)}`,
 		});
 	}
 }

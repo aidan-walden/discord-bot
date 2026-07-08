@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	SlashCommandBuilder,
 } from "discord.js";
@@ -51,7 +52,7 @@ export default class Underwater implements Command {
 		);
 		await player.shoukaku.setEqualizer(generateBands(5, isEnabled));
 		await interaction.reply({
-			content: `Toggled underwater to **${!isEnabled}**`,
+			content: `Toggled underwater to ${bold(`${!isEnabled}`)}`,
 		});
 	}
 }
