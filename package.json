@@ -11,7 +11,7 @@
 		"update-skins": "bun scripts/update-skins.ts"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.1",
+		"@biomejs/biome": "2.5.2",
 		"@types/bun": "latest",
 		"@types/luxon": "^3.7.2",
 		"lefthook": "^2.1.9",
@@ -22,8 +22,8 @@
 	},
 	"dependencies": {
 		"@spotify/web-api-ts-sdk": "^1.2.0",
-		"discord.js": "^14.25.1",
 		"hono": "^4.12.28",
+		"discord.js": "^14.26.4",
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
 		"node-apple-music": "^1.2.2",
