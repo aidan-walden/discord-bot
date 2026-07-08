@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -39,6 +40,8 @@ export default class Speed implements Command {
 
 		const timescale = player.filters.timescale ?? {};
 		await player.shoukaku.setTimescale({ ...timescale, speed: newSpeed / 100 });
-		await interaction.reply({ content: `Set speed to **${newSpeed}%**` });
+		await interaction.reply({
+			content: `Set speed to ${bold(`${newSpeed}%`)}`,
+		});
 	}
 }

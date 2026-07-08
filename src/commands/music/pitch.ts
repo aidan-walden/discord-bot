@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -39,6 +40,8 @@ export default class Pitch implements Command {
 
 		const timescale = player.filters.timescale ?? {};
 		await player.shoukaku.setTimescale({ ...timescale, pitch: newPitch / 100 });
-		await interaction.reply({ content: `Set pitch to **${newPitch}%**` });
+		await interaction.reply({
+			content: `Set pitch to ${bold(`${newPitch}%`)}`,
+		});
 	}
 }

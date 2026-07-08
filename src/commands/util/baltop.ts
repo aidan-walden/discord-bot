@@ -3,6 +3,7 @@ import {
 	EmbedBuilder,
 	MessageFlags,
 	SlashCommandBuilder,
+	userMention,
 } from "discord.js";
 import { formatCurrency } from "../../helpers/unbox";
 import type Command from "../../models/Command";
@@ -27,7 +28,7 @@ export default class Baltop implements Command {
 			top.map((entry, index) => ({
 				name: `#${index + 1}`,
 				value:
-					`<@${entry.userId}> — ` +
+					`${userMention(entry.userId)} — ` +
 					`Balance: ${formatCurrency(entry.balanceCents / 100)} · ` +
 					`Spent: ${formatCurrency(entry.totalSpentCents / 100)} · ` +
 					`Gained: ${formatCurrency(entry.totalGainedCents / 100)} · ` +

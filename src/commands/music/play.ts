@@ -1,4 +1,5 @@
 import {
+	bold,
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -71,12 +72,12 @@ export default class Play implements Command {
 		if (!player.playing && player.queue.size === 0) {
 			await player.play(song);
 			await interaction.reply({
-				content: `Now playing **${song.title}** by **${song.author}**`,
+				content: `Now playing ${bold(song.title)} by ${bold(String(song.author))}`,
 			});
 		} else {
 			player.queue.add(song);
 			await interaction.reply({
-				content: `Added **${song.title}** to the queue`,
+				content: `Added ${bold(song.title)} to the queue`,
 			});
 		}
 	}

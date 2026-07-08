@@ -1,4 +1,5 @@
 import path from "node:path";
+import { codeBlock } from "discord.js";
 import type {
 	CounterStrikeCaseCatalog,
 	CounterStrikeCaseDefinition,
@@ -322,5 +323,5 @@ export function formatRolledSkinsSummary(
 		return `${rarity}s:\n${lines.join("\n")}`;
 	});
 
-	return `\`\`\`\n${sections.join("\n")}\n\`\`\``;
+	return codeBlock(sections.join("\n"));
 }

@@ -3,6 +3,7 @@ import {
 	type AutocompleteInteraction,
 	ButtonBuilder,
 	ButtonStyle,
+	bold,
 	type ChatInputCommandInteraction,
 	EmbedBuilder,
 	SlashCommandBuilder,
@@ -116,9 +117,9 @@ export default class Unbox implements Command {
 
 		const reply = await interaction.editReply({
 			content:
-				`Your new balance: **${formatCurrency(balance.balanceCents / 100)}**\n` +
-				`Most gained in one run: **${formatCurrency(balance.mostGainedCents / 100)}**\n` +
-				`Most lost in one run: **${formatCurrency(balance.mostLostCents / 100)}**`,
+				`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
+				`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
+				`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
 			embeds: [embed],
 			components: [row],
 		});
@@ -133,9 +134,9 @@ export default class Unbox implements Command {
 
 			await confirmation.update({
 				content:
-					`Your new balance: **${formatCurrency(balance.balanceCents / 100)}**\n` +
-					`Most gained in one run: **${formatCurrency(balance.mostGainedCents / 100)}**\n` +
-					`Most lost in one run: **${formatCurrency(balance.mostLostCents / 100)}**`,
+					`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
+					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
+					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
 				embeds: [embed],
 				components: [],
 			});
@@ -148,9 +149,9 @@ export default class Unbox implements Command {
 		} catch {
 			await interaction.editReply({
 				content:
-					`Your new balance: **${formatCurrency(balance.balanceCents / 100)}**\n` +
-					`Most gained in one run: **${formatCurrency(balance.mostGainedCents / 100)}**\n` +
-					`Most lost in one run: **${formatCurrency(balance.mostLostCents / 100)}**`,
+					`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
+					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
+					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
 				embeds: [embed],
 				components: [],
 			});

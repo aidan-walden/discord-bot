@@ -3,16 +3,19 @@ import {
 	ButtonBuilder,
 	type ButtonInteraction,
 	ButtonStyle,
+	bold,
 	type ChatInputCommandInteraction,
 	ComponentType,
 	type Guild,
 	GuildMember,
+	inlineCode,
 	MessageFlags,
 	ModalBuilder,
 	type ModalSubmitInteraction,
 	SlashCommandBuilder,
 	TextInputBuilder,
 	TextInputStyle,
+	userMention,
 } from "discord.js";
 import type Command from "../../models/Command";
 
@@ -49,7 +52,7 @@ const ID_FIELD = (id: string, label: string): Field => ({
 export function snowflake(value: string | undefined, label: string): string {
 	const v = value?.trim() ?? "";
 	if (!/^\d{15,20}$/.test(v)) {
-		throw new Error(`\`${value}\` is not a valid ${label}.`);
+		throw new Error(`${inlineCode(String(value))} is not a valid ${label}.`);
 	}
 	return v;
 }
@@ -67,10 +70,10 @@ export const ACTIONS: Action[] = [
 			const id = snowflake(user_id, "user ID");
 			const member = await guild.members.fetch(id);
 			if (!member.voice.channel) {
-				throw new Error(`<@${id}> is not in a voice channel.`);
+				throw new Error(`${userMention(id)} is not in a voice channel.`);
 			}
 			await member.voice.disconnect();
-			return `Kicked <@${id}> from voice.`;
+			return `Kicked ${userMention(id)} from voice.`;
 		},
 	},
 	{
@@ -86,7 +89,7 @@ export const ACTIONS: Action[] = [
 				throw new Error("Can't delete messages in this channel.");
 			}
 			await channel.messages.delete(id);
-			return `Deleted message \`${id}\`.`;
+			return `Deleted message ${inlineCode(id)}.`;
 		},
 	},
 	{
@@ -103,7 +106,7 @@ export const ACTIONS: Action[] = [
 			const id = snowflake(user_id, "user ID");
 			const member = await guild.members.fetch(id);
 			await member.setNickname(nickname ?? null);
-			return `Set <@${id}>'s nickname to **${nickname}**.`;
+			return `Set ${userMention(id)}'s nickname to ${bold(String(nickname))}.`;
 		},
 	},
 	{
@@ -115,7 +118,7 @@ export const ACTIONS: Action[] = [
 		run: async ({ user_id }, { bot }) => {
 			const id = snowflake(user_id, "user ID");
 			await bot.permissions.gptUserBans.add(id);
-			return `Banned <@${id}> from GPT.`;
+			return `Banned ${userMention(id)} from GPT.`;
 		},
 	},
 	{
@@ -127,7 +130,7 @@ export const ACTIONS: Action[] = [
 		run: async ({ user_id }, { bot }) => {
 			const id = snowflake(user_id, "user ID");
 			await bot.permissions.gptUserBans.remove(id);
-			return `Pardoned <@${id}> from GPT.`;
+			return `Pardoned ${userMention(id)} from GPT.`;
 		},
 	},
 	{
@@ -139,7 +142,7 @@ export const ACTIONS: Action[] = [
 		run: async ({ user_id }, { bot }) => {
 			const id = snowflake(user_id, "user ID");
 			await bot.permissions.musicUserBans.add(id);
-			return `Banned <@${id}> from music.`;
+			return `Banned ${userMention(id)} from music.`;
 		},
 	},
 	{
@@ -151,7 +154,7 @@ export const ACTIONS: Action[] = [
 		run: async ({ user_id }, { bot }) => {
 			const id = snowflake(user_id, "user ID");
 			await bot.permissions.musicUserBans.remove(id);
-			return `Pardoned <@${id}> from music.`;
+			return `Pardoned ${userMention(id)} from music.`;
 		},
 	},
 	{
@@ -163,7 +166,7 @@ export const ACTIONS: Action[] = [
 		run: async ({ guild_id }, { bot }) => {
 			const id = snowflake(guild_id, "guild ID");
 			await bot.permissions.musicGuildBans.add(id);
-			return `Banned guild \`${id}\` from music.`;
+			return `Banned guild ${inlineCode(id)} from music.`;
 		},
 	},
 	{
@@ -175,7 +178,7 @@ export const ACTIONS: Action[] = [
 		run: async ({ guild_id }, { bot }) => {
 			const id = snowflake(guild_id, "guild ID");
 			await bot.permissions.musicGuildBans.remove(id);
-			return `Pardoned guild \`${id}\` from music.`;
+			return `Pardoned guild ${inlineCode(id)} from music.`;
 		},
 	},
 ];
