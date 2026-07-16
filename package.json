@@ -15,22 +15,28 @@
 		"@types/bun": "latest",
 		"@types/luxon": "^3.7.2",
 		"lefthook": "^2.1.9",
-		"tsup": "^8.5.1"
+		"tsup": "^8.5.1",
+		"typescript-language-server": "^5.3.0"
 	},
 	"peerDependencies": {
 		"typescript": "^5"
 	},
 	"dependencies": {
+		"@discordjs/voice": "^0.19.2",
 		"@spotify/web-api-ts-sdk": "^1.2.0",
-		"hono": "^4.12.28",
+		"canvaskit-wasm": "^0.41.1",
 		"discord.js": "^14.26.4",
+		"ffmpeg-static": "^5.3.0",
+		"hono": "^4.12.28",
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
 		"node-apple-music": "^1.2.2",
 		"openai": "^6.45.0",
-		"shoukaku": "shipgirlproject/Shoukaku#ec4060e3b84acf5bfadb473a0ba80fb2db7c4e42"
+		"shoukaku": "shipgirlproject/Shoukaku#ec4060e3b84acf5bfadb473a0ba80fb2db7c4e42",
+		"tiktok-tts": "^1.1.17"
 	},
 	"trustedDependencies": [
+		"ffmpeg-static",
 		"shoukaku"
 	]
 }
