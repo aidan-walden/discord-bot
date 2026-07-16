@@ -1,7 +1,7 @@
 const albumCache = new Map<string, string[]>();
 
 type Fetcher = (
-	input: RequestInfo | URL,
+	input: string | URL | Request,
 	init?: RequestInit,
 ) => Promise<Response>;
 
