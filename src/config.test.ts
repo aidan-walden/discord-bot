@@ -12,8 +12,10 @@ const CONFIG_ENV_KEYS = [
 	"BOT_OWNER_ID",
 	"OPENAI_API_TOKEN",
 	"OPENAI_MODEL",
+	"TIKTOK_SESSION_ID",
 	"SPOTIFY_CLIENT_ID",
 	"SPOTIFY_CLIENT_SECRET",
+	"IMGUR_CLIENT_ID",
 ] as const;
 
 const baseYaml = [
@@ -22,6 +24,7 @@ const baseYaml = [
 	'BOT_OWNER_ID: "file-owner"',
 	'OPENAI_API_TOKEN: "file-openai-token"',
 	'OPENAI_MODEL: "file-model"',
+	'TIKTOK_SESSION_ID: "file-tiktok-session"',
 	"ADMIN_USER_IDS:",
 	'  - "admin-a"',
 	'  - "admin-b"',
@@ -100,6 +103,7 @@ type YamlOptions = {
 	BOT_OWNER_ID?: string;
 	OPENAI_API_TOKEN?: string;
 	OPENAI_MODEL?: string;
+	TIKTOK_SESSION_ID?: string;
 	adminUserIdsBlock?: string;
 	profilePictureBlock?: string;
 	baseProfilePictureBlock?: string;
@@ -116,6 +120,7 @@ function buildYaml(options: YamlOptions = {}) {
 		BOT_OWNER_ID = "file-owner",
 		OPENAI_API_TOKEN = "file-openai-token",
 		OPENAI_MODEL = "file-model",
+		TIKTOK_SESSION_ID = "file-tiktok-session",
 		adminUserIdsBlock,
 		profilePictureBlock,
 		baseProfilePictureBlock,
@@ -144,6 +149,10 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (!omitKeys.includes("OPENAI_MODEL")) {
 		lines.push(`OPENAI_MODEL: ${JSON.stringify(OPENAI_MODEL)}`);
+	}
+
+	if (!omitKeys.includes("TIKTOK_SESSION_ID")) {
+		lines.push(`TIKTOK_SESSION_ID: ${JSON.stringify(TIKTOK_SESSION_ID)}`);
 	}
 
 	if (adminUserIdsBlock === undefined) {
@@ -312,6 +321,13 @@ describe("Config", () => {
 					expect(config.get("OPENAI_API_TOKEN")).toBe("env-openai-token");
 				},
 			},
+			{
+				name: "TIKTOK_SESSION_ID",
+				env: { TIKTOK_SESSION_ID: "env-tiktok-session" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("TIKTOK_SESSION_ID")).toBe("env-tiktok-session");
+				},
+			},
 		] as const;
 
 		for (const testCase of precedenceCases) {
@@ -369,6 +385,13 @@ describe("Config", () => {
 				env: { OPENAI_API_TOKEN: "" },
 				assert: (config: ConfigInstance) => {
 					expect(config.get("OPENAI_API_TOKEN")).toBe("");
+				},
+			},
+			{
+				name: "TIKTOK_SESSION_ID",
+				env: { TIKTOK_SESSION_ID: "" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("TIKTOK_SESSION_ID")).toBe("");
 				},
 			},
 		] as const;
