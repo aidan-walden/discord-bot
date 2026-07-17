@@ -37,7 +37,7 @@ const content = `${userMention(user.id)} is not in a voice channel.`;
 | Spoiler, quote | `spoiler`, `blockQuote`, `quote` |
 | Masked link | `hyperlink(text, url[, title])` |
 | Escape user-controlled Markdown | `escapeMarkdown(content)` |
-| Escape user-controlled mentions | `escapeMentions(content)` |
+| Prevent user-controlled mentions | `allowedMentions: { parse: [] }` on the sent message |
 
 ## Examples
 
@@ -59,8 +59,13 @@ const content = [
     codeBlock("json", JSON.stringify(payload, null, 2)),
     `Search: ${escapeMarkdown(query)}`,
 ].join("\n");
+
+await channel.send({
+    content: escapeMarkdown(userSuppliedContent),
+    allowedMentions: { parse: [] },
+});
 ```
 
 Do not write literal Discord syntax such as `<@...>`, `<#...>`, `<@&...>`, `<:...:>`, `<t:...>`, `**...**`, `` `...` ``, `||...||`, `> ...`, or `[text](url)` when a formatter exists.
 
-Raw user-supplied content is not formatting. Escape it when rendering it in a context where Markdown or mentions would be unsafe; do not mutate it otherwise.
+Raw user-supplied content is not formatting. Escape it with `escapeMarkdown` when rendering it in a context where Markdown would be unsafe. To prevent user-controlled mentions, send the message with `allowedMentions: { parse: [] }`; `discord.js` does not export an `escapeMentions` formatter. Do not mutate raw content otherwise.
