@@ -6,6 +6,7 @@ import {
 	bold,
 	type ChatInputCommandInteraction,
 	ComponentType,
+	escapeMarkdown,
 	type Guild,
 	GuildMember,
 	inlineCode,
@@ -52,7 +53,9 @@ const ID_FIELD = (id: string, label: string): Field => ({
 export function snowflake(value: string | undefined, label: string): string {
 	const v = value?.trim() ?? "";
 	if (!/^\d{15,20}$/.test(v)) {
-		throw new Error(`${inlineCode(String(value))} is not a valid ${label}.`);
+		throw new Error(
+			`${inlineCode(escapeMarkdown(String(value)))} is not a valid ${label}.`,
+		);
 	}
 	return v;
 }
@@ -106,7 +109,7 @@ export const ACTIONS: Action[] = [
 			const id = snowflake(user_id, "user ID");
 			const member = await guild.members.fetch(id);
 			await member.setNickname(nickname ?? null);
-			return `Set ${userMention(id)}'s nickname to ${bold(String(nickname))}.`;
+			return `Set ${userMention(id)}'s nickname to ${bold(escapeMarkdown(String(nickname)))}.`;
 		},
 	},
 	{

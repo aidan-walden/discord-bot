@@ -1,5 +1,6 @@
 import {
 	type ChatInputCommandInteraction,
+	escapeMarkdown,
 	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
@@ -55,7 +56,7 @@ export default class Nick implements Command {
 		}
 
 		await interaction.reply({
-			content: `Nickname changed to ${nickname}.`,
+			content: `Nickname changed to ${escapeMarkdown(nickname)}.`,
 			flags: MessageFlags.Ephemeral,
 		});
 	}

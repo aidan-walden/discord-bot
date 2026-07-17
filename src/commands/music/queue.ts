@@ -1,6 +1,7 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
+	escapeMarkdown,
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
@@ -23,7 +24,7 @@ export default class Queue implements Command {
 		const queueString = player.queue
 			.map(
 				(track, index) =>
-					`${bold(`${index + 1}`)}. ${track.title} by ${track.author}`,
+					`${bold(`${index + 1}`)}. ${escapeMarkdown(track.title)} by ${escapeMarkdown(String(track.author))}`,
 			)
 			.join("\n")
 			.slice(0, 2000);

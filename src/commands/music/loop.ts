@@ -1,6 +1,7 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
+	escapeMarkdown,
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
@@ -26,7 +27,7 @@ export default class Loop implements Command {
 
 		if (!isLoopingTrack) {
 			await interaction.reply({
-				content: `Now looping: ${bold(player.queue.current?.title ?? "current track")}`,
+				content: `Now looping: ${bold(escapeMarkdown(player.queue.current?.title ?? "current track"))}`,
 			});
 			return;
 		}

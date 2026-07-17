@@ -1,6 +1,7 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
+	escapeMarkdown,
 	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
@@ -72,12 +73,12 @@ export default class Play implements Command {
 		if (!player.playing && player.queue.size === 0) {
 			await player.play(song);
 			await interaction.reply({
-				content: `Now playing ${bold(song.title)} by ${bold(String(song.author))}`,
+				content: `Now playing ${bold(escapeMarkdown(song.title))} by ${bold(escapeMarkdown(String(song.author)))}`,
 			});
 		} else {
 			player.queue.add(song);
 			await interaction.reply({
-				content: `Added ${bold(song.title)} to the queue`,
+				content: `Added ${bold(escapeMarkdown(song.title))} to the queue`,
 			});
 		}
 	}

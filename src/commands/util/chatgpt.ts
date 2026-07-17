@@ -1,11 +1,13 @@
 import {
 	type AnyThreadChannel,
 	type ChatInputCommandInteraction,
+	channelMention,
 	InteractionContextType,
 	MessageFlags,
 	SlashCommandBuilder,
 	TextChannel,
 	ThreadAutoArchiveDuration,
+	userMention,
 } from "discord.js";
 import { sendLongMessage } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
@@ -134,7 +136,7 @@ export default class ChatGpt implements Command {
 
 			if (!thread) {
 				const seedMessage = await activeChannel.send({
-					content: `Starting a ChatGPT session for ${interaction.user}.`,
+					content: `Starting a ChatGPT session for ${userMention(interaction.user.id)}.`,
 				});
 				thread = await seedMessage.startThread({
 					name: getThreadDisplayName(interaction.user.username),
@@ -161,12 +163,14 @@ export default class ChatGpt implements Command {
 
 		if (session.isBusy) {
 			await interaction.editReply(
-				`OpenAI is still processing your previous message in ${thread}.`,
+				`OpenAI is still processing your previous message in ${channelMention(thread.id)}.`,
 			);
 			return;
 		}
 
-		await interaction.editReply(`ChatGPT is responding in ${thread}.`);
+		await interaction.editReply(
+			`ChatGPT is responding in ${channelMention(thread.id)}.`,
+		);
 
 		try {
 			await thread.sendTyping();
@@ -178,7 +182,7 @@ export default class ChatGpt implements Command {
 		} catch (error) {
 			console.error("ChatGPT ask command failed:", error);
 			await thread.send(
-				`ChatGPT failed to respond. Please contact @<${interaction.client.bot.config.get("BOT_OWNER_ID")}>`,
+				`ChatGPT failed to respond. Please contact ${userMention(interaction.client.bot.config.get("BOT_OWNER_ID"))}`,
 			);
 		}
 	}
@@ -224,7 +228,9 @@ export default class ChatGpt implements Command {
 			session.threadChannelId,
 		);
 		if (thread) {
-			await thread.send(`ChatGPT session ended by ${interaction.user}.`);
+			await thread.send(
+				`ChatGPT session ended by ${userMention(interaction.user.id)}.`,
+			);
 		}
 
 		await interaction.editReply("Ended your active ChatGPT session.");

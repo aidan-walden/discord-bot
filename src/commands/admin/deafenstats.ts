@@ -1,9 +1,11 @@
 import {
 	type ChatInputCommandInteraction,
 	EmbedBuilder,
+	escapeMarkdown,
 	GuildMember,
 	MessageFlags,
 	SlashCommandBuilder,
+	userMention,
 } from "discord.js";
 import type Command from "../../models/Command";
 
@@ -50,14 +52,14 @@ export default class DeafenStats implements Command {
 
 		if (!summary) {
 			await interaction.reply({
-				content: `No deafen data recorded for ${member.toString()}.`,
+				content: `No deafen data recorded for ${userMention(member.id)}.`,
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
 
 		const embed = new EmbedBuilder()
-			.setTitle(`Deafen Tracker — ${member.displayName}`)
+			.setTitle(`Deafen Tracker — ${escapeMarkdown(member.displayName)}`)
 			.addFields(
 				{
 					name: "Total Deafened",

@@ -67,10 +67,26 @@ describe("Echo", () => {
 
 		await new Echo().execute(interaction);
 
-		expect(send).toHaveBeenCalledWith("Hi there");
+		expect(send).toHaveBeenCalledWith({
+			content: "Hi there",
+			allowedMentions: { parse: [] },
+		});
 		expect(interaction.reply).toHaveBeenCalledWith({
 			content: "Message sent.",
 			flags: MessageFlags.Ephemeral,
+		});
+	});
+
+	test("escapes Markdown and disables mentions in echoed text", async () => {
+		const { interaction, send } = buildInteraction({
+			msg: "**important** @everyone",
+		});
+
+		await new Echo().execute(interaction);
+
+		expect(send).toHaveBeenCalledWith({
+			content: "\\*\\*important\\*\\* @everyone",
+			allowedMentions: { parse: [] },
 		});
 	});
 

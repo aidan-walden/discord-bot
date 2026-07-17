@@ -12,7 +12,9 @@ describe("sendLongMessage", () => {
 
 		await sendLongMessage(channel, "hello");
 
-		expect(calls).toEqual([{ content: "hello" }]);
+		expect(calls).toEqual([
+			{ content: "hello", allowedMentions: { parse: [] } },
+		]);
 	});
 
 	test("passes through base message options", async () => {
@@ -47,8 +49,14 @@ describe("sendLongMessage", () => {
 		await sendLongMessage(channel, content);
 
 		expect(calls).toHaveLength(2);
-		expect(calls[0]).toEqual({ content: firstLine });
-		expect(calls[1]).toEqual({ content: secondLine });
+		expect(calls[0]).toEqual({
+			content: firstLine,
+			allowedMentions: { parse: [] },
+		});
+		expect(calls[1]).toEqual({
+			content: secondLine,
+			allowedMentions: { parse: [] },
+		});
 	});
 
 	test("splits long messages at the hard limit when no newline exists", async () => {
@@ -65,5 +73,23 @@ describe("sendLongMessage", () => {
 		expect(calls).toHaveLength(2);
 		expect((calls[0]?.content as string).length).toBe(2000);
 		expect((calls[1]?.content as string).length).toBe(500);
+	});
+
+	test("escapes Markdown and disables mentions", async () => {
+		const calls: Array<Record<string, unknown>> = [];
+		const channel = {
+			send: async (options: Record<string, unknown>) => {
+				calls.push(options);
+			},
+		} as never;
+
+		await sendLongMessage(channel, "**important** @everyone");
+
+		expect(calls).toEqual([
+			{
+				content: "\\*\\*important\\*\\* @everyone",
+				allowedMentions: { parse: [] },
+			},
+		]);
 	});
 });

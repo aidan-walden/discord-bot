@@ -197,7 +197,10 @@ describe("MessageCreate", () => {
 
 		expect(channel.sendTyping).toHaveBeenCalledTimes(1);
 		expect(bot.chatSessions.prompt).toHaveBeenCalledWith(session, "hello");
-		expect(channel.send).toHaveBeenCalledWith({ content: "the answer" });
+		expect(channel.send).toHaveBeenCalledWith({
+			content: "the answer",
+			allowedMentions: { parse: [] },
+		});
 	});
 
 	test("replies with an owner mention when the prompt throws", async () => {
@@ -215,7 +218,7 @@ describe("MessageCreate", () => {
 		await new MessageCreate().execute(bot, message);
 
 		expect(message.reply).toHaveBeenCalledWith(
-			"ChatGPT failed to respond. Please contact @<owner-1>",
+			"ChatGPT failed to respond. Please contact <@owner-1>",
 		);
 		errorSpy.mockRestore();
 	});

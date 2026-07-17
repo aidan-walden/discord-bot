@@ -2,6 +2,7 @@ import {
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
+	userMention,
 } from "discord.js";
 import { formatCurrency } from "../../helpers/unbox";
 import type Command from "../../models/Command";
@@ -37,7 +38,7 @@ export default class Bal implements Command {
 		const label =
 			targetUser.id === interaction.user.id
 				? "Your balance"
-				: `${targetUser.toString()}'s balance`;
+				: `${userMention(targetUser.id)}'s balance`;
 
 		await interaction.reply({
 			content: `${label}: ${formatCurrency(balance.balanceCents / 100)}`,

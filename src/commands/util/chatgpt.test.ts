@@ -212,7 +212,7 @@ describe("ChatGpt handleAsk", () => {
 		});
 		await new ChatGpt().execute(interaction);
 		expect(thread.send).toHaveBeenCalledWith(
-			"ChatGPT failed to respond. Please contact @<owner-1>",
+			"ChatGPT failed to respond. Please contact <@owner-1>",
 		);
 		errorSpy.mockRestore();
 	});

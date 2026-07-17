@@ -1,5 +1,6 @@
 import {
 	type ChatInputCommandInteraction,
+	escapeMarkdown,
 	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
@@ -33,7 +34,10 @@ export default class Echo implements Command {
 		}
 
 		try {
-			await interaction.channel.send(msg);
+			await interaction.channel.send({
+				content: escapeMarkdown(msg),
+				allowedMentions: { parse: [] },
+			});
 		} catch (error) {
 			console.error("Failed to send echo message:", error);
 			await interaction.reply({

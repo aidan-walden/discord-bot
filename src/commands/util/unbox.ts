@@ -6,6 +6,7 @@ import {
 	bold,
 	type ChatInputCommandInteraction,
 	EmbedBuilder,
+	escapeMarkdown,
 	SlashCommandBuilder,
 } from "discord.js";
 import { sendLongMessage } from "../../helpers/sendLongMessage";
@@ -48,11 +49,15 @@ export default class Unbox implements Command {
 				: result.finalSkin.floatValue.toFixed(6);
 		const embed = new EmbedBuilder()
 			.setColor(getRarityColor(result.finalSkin.rarity))
-			.setTitle(result.displayName)
-			.setDescription(`Unboxing ${result.caseName}`)
+			.setTitle(escapeMarkdown(result.displayName))
+			.setDescription(`Unboxing ${escapeMarkdown(result.caseName)}`)
 			.setThumbnail(result.finalSkin.imageUrl)
 			.addFields(
-				{ name: "Exterior", value: result.finalSkin.wear, inline: true },
+				{
+					name: "Exterior",
+					value: escapeMarkdown(result.finalSkin.wear),
+					inline: true,
+				},
 				{
 					name: "Price",
 					value: formatCurrency(result.finalSkin.price),

@@ -6,6 +6,7 @@ import {
 	ComponentType,
 	EmbedBuilder,
 	Events,
+	escapeMarkdown,
 	type Message,
 } from "discord.js";
 import { detectMusicLinks } from "../helpers/musicLinks";
@@ -77,9 +78,9 @@ export default class MusicLinkConvert implements BotEvent {
 	private buildEmbed(source: MusicItem, target: MusicItem): EmbedBuilder {
 		const embed = new EmbedBuilder()
 			.setColor(PLATFORM_COLORS[target.platform])
-			.setTitle(target.title)
+			.setTitle(escapeMarkdown(target.title))
 			.setURL(target.url)
-			.setDescription(`by ${target.artist}`)
+			.setDescription(`by ${escapeMarkdown(target.artist)}`)
 			.addFields({
 				name: `${PLATFORM_LABELS[target.platform]} link`,
 				value: target.url,

@@ -1,4 +1,9 @@
-import { type ClientEvents, Events, type Message } from "discord.js";
+import {
+	type ClientEvents,
+	Events,
+	type Message,
+	userMention,
+} from "discord.js";
 import { sendLongMessage } from "../helpers/sendLongMessage";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
@@ -58,7 +63,7 @@ export default class MessageCreate implements BotEvent {
 		} catch (error) {
 			console.error("ChatGPT thread response failed:", error);
 			await message.reply(
-				`ChatGPT failed to respond. Please contact @<${bot.config.get("BOT_OWNER_ID")}>`,
+				`ChatGPT failed to respond. Please contact ${userMention(bot.config.get("BOT_OWNER_ID"))}`,
 			);
 		}
 	}
