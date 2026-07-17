@@ -176,6 +176,38 @@ describe("ChatSessionService", () => {
 		expect(session.isBusy).toBe(false);
 	});
 
+	test("reports an OpenAI credential rejection", async () => {
+		const { create, openai } = createOpenAiMock();
+		const rejection = { status: 401, message: "Invalid API key" };
+		create.mockRejectedValueOnce(rejection);
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new ChatSessionService(openai, "gpt-test", {
+			recordCredentialRejection,
+		});
+		const session = service.createSession("user-1", "root-1", "thread-1");
+
+		expect(service.prompt(session, "Hello?")).rejects.toBe(rejection);
+
+		expect(recordCredentialRejection).toHaveBeenCalledWith("openai");
+	});
+
+	test("does not report non-authentication OpenAI failures", async () => {
+		const { create, openai } = createOpenAiMock();
+		create.mockRejectedValueOnce({ status: 429, message: "Rate limited" });
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new ChatSessionService(openai, "gpt-test", {
+			recordCredentialRejection,
+		});
+		const session = service.createSession("user-1", "root-1", "thread-1");
+
+		expect(service.prompt(session, "Hello?")).rejects.toEqual({
+			status: 429,
+			message: "Rate limited",
+		});
+
+		expect(recordCredentialRejection).not.toHaveBeenCalled();
+	});
+
 	test("trims history before send and after assistant response", async () => {
 		const { create, openai } = createOpenAiMock();
 		let sentMessages: unknown[] | undefined;

@@ -5,7 +5,11 @@ import {
 	type ChatInputCommandInteraction,
 	MessageFlags,
 } from "discord.js";
-import TiktokTts, { resolveOutputMode, TIKTOK_VOICES } from "./tiktoktts";
+import TiktokTts, {
+	isTikTokCredentialRejection,
+	resolveOutputMode,
+	TIKTOK_VOICES,
+} from "./tiktoktts";
 
 function createAutocompleteInteraction(focused: string) {
 	const respond = mock(
@@ -174,5 +178,30 @@ describe("resolveOutputMode", () => {
 		["attachment", true, "attachment"],
 	] as const)("resolves requested=%s canPlay=%s to %s", (requestedMode, canPlayInVoice, expected) => {
 		expect(resolveOutputMode(requestedMode, canPlayInVoice)).toBe(expected);
+	});
+});
+
+describe("isTikTokCredentialRejection", () => {
+	test("recognizes invalid and missing session responses", () => {
+		expect(
+			isTikTokCredentialRejection(
+				new Error(
+					"tiktok-tts Error: Your TikTok session id might be invalid or expired. Try getting a new one. status_code: 1",
+				),
+			),
+		).toBe(true);
+		expect(
+			isTikTokCredentialRejection(
+				new Error("tiktok-tts Error: No session id found. status_code: 5"),
+			),
+		).toBe(true);
+	});
+
+	test("ignores content and speaker errors", () => {
+		expect(
+			isTikTokCredentialRejection(
+				new Error("The provided text is too long. status_code: 2"),
+			),
+		).toBe(false);
 	});
 });

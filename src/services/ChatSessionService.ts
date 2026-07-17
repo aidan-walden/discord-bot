@@ -1,5 +1,6 @@
 import type OpenAI from "openai";
 import type { ChatCompletionMessageParam } from "openai/resources/chat/completions/completions";
+import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 
 const SYSTEM_PROMPT = "You are a helpful assistant.";
 const MAX_HISTORY_MESSAGES = 20;
@@ -19,6 +20,7 @@ export default class ChatSessionService {
 	constructor(
 		private readonly openai: OpenAI | null,
 		private readonly model: string | undefined,
+		private readonly credentialReporter?: CredentialRejectionReporter,
 	) {}
 
 	isAvailable(): boolean {
@@ -101,6 +103,14 @@ export default class ChatSessionService {
 			this.trimSessionHistory(session);
 			return content;
 		} catch (error) {
+			if (
+				typeof error === "object" &&
+				error !== null &&
+				"status" in error &&
+				error.status === 401
+			) {
+				this.credentialReporter?.recordCredentialRejection("openai");
+			}
 			const lastMessage = session.messages.at(-1);
 			if (lastMessage?.role === "user" && lastMessage.content === input) {
 				session.messages.pop();

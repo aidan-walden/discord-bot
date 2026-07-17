@@ -38,6 +38,7 @@ import HolidayProvider from "../services/HolidayProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import MusicLinkService from "../services/MusicLinkService";
 import PermissionService from "../services/PermissionService";
+import SpotifyClientCredentialsStrategy from "../services/SpotifyClientCredentialsStrategy";
 import SpotifyService from "../services/SpotifyService";
 import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
@@ -96,6 +97,7 @@ export default class Bot extends Client {
 		this.commands = new Collection<string, Command>();
 		this.adminUserIds = new Set(config.get("ADMIN_USER_IDS"));
 		this.db = new Bun.SQL(config.get("DATABASE_URL"));
+		this.metrics = new MetricsCollector();
 		const openaiApiToken = config.get("OPENAI_API_TOKEN");
 		this.openai = openaiApiToken
 			? new OpenAI({ apiKey: openaiApiToken })
@@ -112,19 +114,25 @@ export default class Bot extends Client {
 		this.chatSessions = new ChatSessionService(
 			this.openai,
 			config.get("OPENAI_MODEL"),
+			this.metrics,
 		);
 
 		const spotifyClientId = config.get("SPOTIFY_CLIENT_ID");
 		const spotifyClientSecret = config.get("SPOTIFY_CLIENT_SECRET");
 		const spotifyClient =
 			spotifyClientId && spotifyClientSecret
-				? SpotifyApi.withClientCredentials(spotifyClientId, spotifyClientSecret)
+				? new SpotifyApi(
+						new SpotifyClientCredentialsStrategy(
+							spotifyClientId,
+							spotifyClientSecret,
+							this.metrics,
+						),
+					)
 				: null;
-		this.spotify = new SpotifyService(spotifyClient);
+		this.spotify = new SpotifyService(spotifyClient, this.metrics);
 		this.appleMusic = new AppleMusicService();
 		this.musicLinks = new MusicLinkService(this.spotify, this.appleMusic);
 
-		this.metrics = new MetricsCollector();
 		this.holidays = new HolidayProvider();
 
 		// TODO: Change search engine to youtube

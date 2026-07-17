@@ -20,6 +20,7 @@ import {
 import ffmpegPath from "ffmpeg-static";
 import { config, createAudioFromText } from "tiktok-tts";
 import type Command from "../../models/Command";
+import { getErrorMessage } from "../../services/ExternalApiCredentialStatus";
 
 type OutputMode = "voice" | "attachment";
 type TikTokVoice = Readonly<{
@@ -27,6 +28,14 @@ type TikTokVoice = Readonly<{
 	language: string;
 	apiValue: string;
 }>;
+
+export function isTikTokCredentialRejection(error: unknown): boolean {
+	const message = getErrorMessage(error);
+	return (
+		message.includes("session id might be invalid or expired") ||
+		message.includes("No session id found. status_code: 5")
+	);
+}
 
 export const TIKTOK_VOICES: readonly TikTokVoice[] = [
 	{ name: "Game On", language: "English", apiValue: "en_male_jomboy" },
@@ -536,6 +545,9 @@ export default class TiktokTts implements Command {
 				);
 			}
 		} catch (error) {
+			if (isTikTokCredentialRejection(error)) {
+				interaction.client.bot.metrics.recordCredentialRejection("tiktok");
+			}
 			console.error("Failed to create TikTok TTS audio", error);
 			await interaction.editReply("Failed to create TikTok TTS audio.");
 		} finally {

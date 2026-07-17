@@ -1,4 +1,4 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import type { SpotifyApi } from "@spotify/web-api-ts-sdk";
 import SpotifyService from "./SpotifyService";
 
@@ -154,5 +154,41 @@ describe("SpotifyService", () => {
 			types: ["track"],
 		});
 		expect(item).toMatchObject({ title: "Get Lucky" });
+	});
+
+	test("reports Spotify authentication failures", async () => {
+		const client = {
+			tracks: {
+				get: async () => {
+					throw new Error("Bad or expired token. Re-authenticate.");
+				},
+			},
+		} as unknown as SpotifyApi;
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new SpotifyService(client, { recordCredentialRejection });
+
+		expect(
+			service.resolve({ platform: "spotify", kind: "track", id: "track1" }),
+		).rejects.toThrow("Bad or expired token");
+
+		expect(recordCredentialRejection).toHaveBeenCalledWith("spotify");
+	});
+
+	test("does not report non-authentication Spotify failures", async () => {
+		const client = {
+			tracks: {
+				get: async () => {
+					throw new Error("The app has exceeded its rate limits.");
+				},
+			},
+		} as unknown as SpotifyApi;
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new SpotifyService(client, { recordCredentialRejection });
+
+		expect(
+			service.resolve({ platform: "spotify", kind: "track", id: "track1" }),
+		).rejects.toThrow("rate limits");
+
+		expect(recordCredentialRejection).not.toHaveBeenCalled();
 	});
 });

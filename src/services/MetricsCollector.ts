@@ -1,11 +1,16 @@
-export default class MetricsCollector {
+import type {
+	CredentialRejectionReporter,
+	ExternalApiProvider,
+} from "./ExternalApiCredentialStatus";
+
+export default class MetricsCollector implements CredentialRejectionReporter {
 	private cpuPercent: number = 0;
+	private readonly commandCounts = new Map<string, number>();
+	private readonly rejectedCredentials = new Set<ExternalApiProvider>();
 	private lastCpu: NodeJS.CpuUsage;
 	private lastTime: number;
-	private readonly startTime: number;
 
 	constructor(intervalMs: number = 5000) {
-		this.startTime = performance.now();
 		this.lastCpu = process.cpuUsage();
 		this.lastTime = performance.now();
 
@@ -36,5 +41,24 @@ export default class MetricsCollector {
 
 	get uptime(): number {
 		return process.uptime();
+	}
+
+	recordCommand(commandName: string): void {
+		this.commandCounts.set(
+			commandName,
+			(this.commandCounts.get(commandName) ?? 0) + 1,
+		);
+	}
+
+	get commandExecutions(): ReadonlyMap<string, number> {
+		return new Map(this.commandCounts);
+	}
+
+	recordCredentialRejection(provider: ExternalApiProvider): void {
+		this.rejectedCredentials.add(provider);
+	}
+
+	get credentialRejections(): ReadonlySet<ExternalApiProvider> {
+		return new Set(this.rejectedCredentials);
 	}
 }

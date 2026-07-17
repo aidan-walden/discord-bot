@@ -9,7 +9,10 @@ function createBot(command?: Partial<Command>): Bot {
 	if (command) {
 		commands.set("cmd", command);
 	}
-	return { commands } as unknown as Bot;
+	return {
+		commands,
+		metrics: { recordCommand: mock(() => undefined) },
+	} as unknown as Bot;
 }
 
 function createInteraction(options: {
@@ -87,5 +90,19 @@ describe("InteractionCreate", () => {
 		await new InteractionCreate().execute(bot, interaction);
 
 		expect(execute).toHaveBeenCalledWith(interaction);
+		expect(bot.metrics.recordCommand).toHaveBeenCalledWith("cmd");
+	});
+
+	test("records a recognized command before a failing handler runs", async () => {
+		const execute = mock(async () => {
+			throw new Error("command failed");
+		});
+		const bot = createBot({ execute });
+		const interaction = createInteraction({ chatInput: true });
+
+		expect(new InteractionCreate().execute(bot, interaction)).rejects.toThrow(
+			"command failed",
+		);
+		expect(bot.metrics.recordCommand).toHaveBeenCalledWith("cmd");
 	});
 });

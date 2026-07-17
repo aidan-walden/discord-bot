@@ -26,6 +26,7 @@ export default class InteractionCreate implements BotEvent {
 			return;
 		}
 
+		bot.metrics.recordCommand(interaction.commandName);
 		await command.execute(interaction);
 	}
 }

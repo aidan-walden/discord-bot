@@ -5,7 +5,19 @@ import type {
 	Track,
 } from "@spotify/web-api-ts-sdk";
 import type { ParsedMusicLink } from "../helpers/musicLinks";
+import {
+	type CredentialRejectionReporter,
+	getErrorMessage,
+} from "./ExternalApiCredentialStatus";
 import type { MusicItem, MusicKind } from "./musicTypes";
+
+export function isSpotifyCredentialRejection(error: unknown): boolean {
+	const message = getErrorMessage(error);
+	return (
+		message.startsWith("Bad or expired token.") ||
+		message.startsWith("Bad OAuth request")
+	);
+}
 
 /**
  * Wraps the Spotify Web API SDK and normalizes results into {@link MusicItem}.
@@ -15,7 +27,10 @@ import type { MusicItem, MusicKind } from "./musicTypes";
  * mirroring the ChatGPT "unavailable" pattern used elsewhere.
  */
 export default class SpotifyService {
-	constructor(private readonly client: SpotifyApi | null) {}
+	constructor(
+		private readonly client: SpotifyApi | null,
+		private readonly credentialReporter?: CredentialRejectionReporter,
+	) {}
 
 	isAvailable(): boolean {
 		return this.client !== null;
@@ -28,11 +43,11 @@ export default class SpotifyService {
 		}
 
 		if (link.kind === "track") {
-			const track = await this.client.tracks.get(link.id);
+			const track = await this.request(this.client.tracks.get(link.id));
 			return track ? this.trackToItem(track) : null;
 		}
 
-		const album = await this.client.albums.get(link.id);
+		const album = await this.request(this.client.albums.get(link.id));
 		return album ? this.albumToItem(album) : null;
 	}
 
@@ -41,7 +56,9 @@ export default class SpotifyService {
 		if (!this.client) {
 			return null;
 		}
-		const results = await this.client.search(`isrc:${isrc}`, ["track"]);
+		const results = await this.request(
+			this.client.search(`isrc:${isrc}`, ["track"]),
+		);
 		const track = results.tracks?.items?.[0];
 		return track ? this.trackToItem(track) : null;
 	}
@@ -51,7 +68,9 @@ export default class SpotifyService {
 		if (!this.client) {
 			return null;
 		}
-		const results = await this.client.search(`upc:${upc}`, ["album"]);
+		const results = await this.request(
+			this.client.search(`upc:${upc}`, ["album"]),
+		);
 		const album = results.albums?.items?.[0];
 		return album ? this.albumToItem(album) : null;
 	}
@@ -63,12 +82,12 @@ export default class SpotifyService {
 		}
 
 		if (kind === "track") {
-			const results = await this.client.search(query, ["track"]);
+			const results = await this.request(this.client.search(query, ["track"]));
 			const track = results.tracks?.items?.[0];
 			return track ? this.trackToItem(track) : null;
 		}
 
-		const results = await this.client.search(query, ["album"]);
+		const results = await this.request(this.client.search(query, ["album"]));
 		const album = results.albums?.items?.[0];
 		return album ? this.albumToItem(album) : null;
 	}
@@ -99,5 +118,16 @@ export default class SpotifyService {
 
 	private joinArtists(artists: ReadonlyArray<{ name: string }>): string {
 		return artists.map((artist) => artist.name).join(", ");
+	}
+
+	private async request<T>(operation: Promise<T>): Promise<T> {
+		try {
+			return await operation;
+		} catch (error) {
+			if (isSpotifyCredentialRejection(error)) {
+				this.credentialReporter?.recordCredentialRejection("spotify");
+			}
+			throw error;
+		}
 	}
 }
