@@ -1,4 +1,5 @@
 import path from "node:path";
+import { crc32 } from "node:zlib";
 import { codeBlock } from "discord.js";
 import type {
 	CounterStrikeCaseCatalog,
@@ -29,8 +30,80 @@ export interface UnboxRunResult {
 	totalGained: number;
 	profit: number;
 	profitCents: number;
+	paintSeed: number;
 	countsByRarity: Record<SkinRarity, number>;
 	rolledSkins: Record<SkinRarity, Record<string, number>>;
+}
+
+interface PreviewData {
+	defIndex: number;
+	paintIndex: number;
+	rarity: number;
+	wear: number;
+	paintSeed: number;
+	stattrak?: boolean;
+}
+
+function encodeVarint(value: number): number[] {
+	const bytes: number[] = [];
+	while (value > 0x7f) {
+		bytes.push((value % 0x80) | 0x80);
+		value = Math.floor(value / 0x80);
+	}
+	bytes.push(value);
+	return bytes;
+}
+
+function encodeUint32Field(field: number, value: number): number[] {
+	return [...encodeVarint(field << 3), ...encodeVarint(value >>> 0)];
+}
+
+export function createPreviewHex(data: PreviewData): string {
+	const floatBuffer = new ArrayBuffer(4);
+	const floatView = new DataView(floatBuffer);
+	floatView.setFloat32(0, data.wear, true);
+
+	const protobuf = [
+		...encodeUint32Field(3, data.defIndex),
+		...encodeUint32Field(4, data.paintIndex),
+		...encodeUint32Field(5, data.rarity),
+		...(data.stattrak ? encodeUint32Field(6, 9) : []),
+		...encodeUint32Field(7, floatView.getUint32(0, true)),
+		...encodeUint32Field(8, data.paintSeed),
+		...(data.stattrak ? encodeUint32Field(9, 0) : []),
+		...(data.stattrak ? encodeUint32Field(10, 0) : []),
+	];
+	const payload = Uint8Array.from([0, ...protobuf]);
+	const crc = crc32(payload);
+	const checksumValue = ((crc & 0xffff) ^ (protobuf.length * crc)) >>> 0;
+	const checksum = new Uint8Array(4);
+	new DataView(checksum.buffer).setUint32(0, checksumValue);
+
+	return Buffer.from([...payload, ...checksum])
+		.toString("hex")
+		.toUpperCase();
+}
+
+export function createInGameInspectUrl(
+	skin: CounterStrikeSkin,
+	paintSeed: number,
+): string | null {
+	if (skin.defIndex === undefined || skin.paintIndex === undefined) {
+		return null;
+	}
+
+	const preview = createPreviewHex({
+		defIndex: skin.defIndex,
+		paintIndex: skin.paintIndex,
+		rarity: 6,
+		wear: skin.floatValue ?? 0,
+		paintSeed,
+		stattrak: skin.stattrak,
+	});
+	const steamUrl = `steam://rungame/730/76561202255233023/+csgo_econ_action_preview ${preview}`;
+	const url = new URL("https://cs2inspects.com/");
+	url.searchParams.set("apply", steamUrl);
+	return url.toString();
 }
 
 export function formatCurrency(
@@ -226,6 +299,8 @@ function resolveSkin(
 				price,
 				rarity: skin.rarity,
 				imageUrl: skin.img,
+				defIndex: skin.defIndex,
+				paintIndex: skin.paintIndex,
 			};
 		}
 
@@ -290,6 +365,7 @@ export async function runUnboxSimulation(
 		const totalSpent = spentCases + spentKeys;
 		const profit = roundHalfToEven(totalGained - totalSpent, 2);
 		const profitCents = Math.round(profit * 100);
+		const paintSeed = Math.floor(rng() * 1000) + 1;
 
 		return {
 			caseName: selectedCaseName,
@@ -302,6 +378,7 @@ export async function runUnboxSimulation(
 			totalGained,
 			profit,
 			profitCents,
+			paintSeed,
 			countsByRarity,
 			rolledSkins,
 		};

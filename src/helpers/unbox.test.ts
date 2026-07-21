@@ -6,6 +6,8 @@ import type {
 } from "../models/CounterStrikeSkin";
 import {
 	clearCaseCatalogCache,
+	createInGameInspectUrl,
+	createPreviewHex,
 	downgradeWear,
 	formatCurrency,
 	formatRolledSkinsSummary,
@@ -159,6 +161,40 @@ describe("unbox helpers", () => {
 		expect(formatCurrency(12.5)).toBe("$12.50");
 	});
 
+	test("encodes the documented preview payload", () => {
+		expect(
+			createPreviewHex({
+				defIndex: 33,
+				paintIndex: 1436,
+				rarity: 4,
+				wear: 0,
+				paintSeed: 1,
+			}),
+		).toBe("001821209C0B280438004001AB6C9FD4");
+	});
+
+	test("builds an HTTPS wrapper for an inspect link", () => {
+		const url = createInGameInspectUrl(
+			{
+				name: "Kukri Knife | Fade",
+				stattrak: true,
+				floatValue: 0.01,
+				wear: "Factory New",
+				price: 1,
+				rarity: "Gold",
+				imageUrl: "",
+				defIndex: 526,
+				paintIndex: 38,
+			},
+			123,
+		);
+
+		expect(url).not.toBeNull();
+		expect(new URL(url as string).searchParams.get("apply")).toStartWith(
+			"steam://rungame/730/76561202255233023/+csgo_econ_action_preview 00",
+		);
+	});
+
 	test("getRarityColor maps rarities to embed colors", () => {
 		expect(getRarityColor("Red")).toBe(0xd95752);
 		expect(getRarityColor("Pink")).toBe(0xc23ede);
@@ -206,7 +242,7 @@ describe("unbox helpers", () => {
 
 		const result = await runUnboxSimulation(
 			"Kilowatt Case",
-			createSeededRng([0.998, 0, 0.99, 0]),
+			createSeededRng([0.998, 0, 0.99, 0, 0]),
 		);
 
 		expect(result.caseName).toBe("Kilowatt Case");
@@ -218,6 +254,7 @@ describe("unbox helpers", () => {
 			roundHalfToEven(result.totalGained - result.totalSpent, 2),
 		);
 		expect(result.profitCents).toBe(Math.round(result.profit * 100));
+		expect(result.paintSeed).toBe(1);
 	});
 
 	test("runUnboxSimulation accumulates non-gold rolls before finishing", async () => {
@@ -225,7 +262,7 @@ describe("unbox helpers", () => {
 
 		const result = await runUnboxSimulation(
 			"Kilowatt Case",
-			createSeededRng([0.2, 0, 0.99, 0, 0.998, 0, 0.99, 0]),
+			createSeededRng([0.2, 0, 0.99, 0, 0.998, 0, 0.99, 0, 0]),
 		);
 
 		expect(result.rolls).toBe(2);

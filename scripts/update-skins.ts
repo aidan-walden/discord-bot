@@ -26,6 +26,9 @@ export interface ByMykelSkin {
 	name: string;
 	rarity: { id: string };
 	category: { name: string };
+	weapon: { weapon_id: number };
+	paint_index: string | null;
+	phase?: string;
 	crates?: { name: string }[];
 }
 
@@ -56,8 +59,44 @@ export function getBucket(skin: ByMykelSkin): Bucket | null {
 export function normalizeName(name: string): string {
 	return name
 		.replace(/^★\s+/, "")
-		.replace(/\s*\|\s*★?\s*\(Vanilla\)$/i, "")
+		.replace(/\s*\|\s*★?\s*(?:\(Vanilla\)|Vanilla)$/i, "")
 		.trim();
+}
+
+export function enrichInspectMetadata(
+	local: CounterStrikeCaseCatalog,
+	skins: ByMykelSkin[],
+): number {
+	const byName = new Map<string, ByMykelSkin>();
+	for (const skin of skins) {
+		const name = normalizeName(skin.name);
+		const current = byName.get(name);
+		// Generic Doppler entries use Phase 1 because the local catalog has no phase.
+		if (!current || skin.phase === "Phase 1") {
+			byName.set(name, skin);
+		}
+	}
+
+	let changed = 0;
+	for (const definition of Object.values(local)) {
+		for (const skin of definition.gold) {
+			const metadata = byName.get(normalizeName(skin.name));
+			if (!metadata) {
+				console.error(`  warning: no inspect metadata for "${skin.name}"`);
+				continue;
+			}
+
+			const defIndex = metadata.weapon.weapon_id;
+			const paintIndex = Number(metadata.paint_index ?? 0);
+			if (skin.defIndex !== defIndex || skin.paintIndex !== paintIndex) {
+				skin.defIndex = defIndex;
+				skin.paintIndex = paintIndex;
+				changed++;
+			}
+		}
+	}
+
+	return changed;
 }
 
 type ExpectedCatalog = Map<string, Map<Bucket, Set<string>>>;
@@ -177,40 +216,42 @@ async function main(): Promise<void> {
 
 	console.error("Diffing against local catalog ...");
 	const stale = findStaleCases(expected, local);
-
-	if (stale.length === 0) {
-		console.error("Catalog is up to date. Nothing to scrape.");
-		return;
-	}
-
-	console.error(`Scraping ${stale.length} stale case(s): ${stale.join(", ")}`);
-	const scraped = await scrapeCases(stale);
-
 	const updated: string[] = [];
-	for (const caseName of stale) {
-		const result = scraped[caseName];
-		if (!result) {
-			console.error(`  warning: scraper returned no data for "${caseName}"`);
-			continue;
+	if (stale.length > 0) {
+		console.error(
+			`Scraping ${stale.length} stale case(s): ${stale.join(", ")}`,
+		);
+		const scraped = await scrapeCases(stale);
+
+		for (const caseName of stale) {
+			const result = scraped[caseName];
+			if (!result) {
+				console.error(`  warning: scraper returned no data for "${caseName}"`);
+				continue;
+			}
+			if (!isUsableCase(result)) {
+				console.error(
+					`  warning: incomplete scrape for "${caseName}" (price ${result.price}, ` +
+						`buckets ${BUCKETS.map((b) => `${b}=${result[b]?.length ?? 0}`).join(" ")}); skipping`,
+				);
+				continue;
+			}
+			local[caseName] = result;
+			updated.push(caseName);
 		}
-		if (!isUsableCase(result)) {
-			console.error(
-				`  warning: incomplete scrape for "${caseName}" (price ${result.price}, ` +
-					`buckets ${BUCKETS.map((b) => `${b}=${result[b]?.length ?? 0}`).join(" ")}); skipping`,
-			);
-			continue;
-		}
-		local[caseName] = result;
-		updated.push(caseName);
 	}
 
-	if (updated.length === 0) {
-		console.error("Scraper returned nothing usable; leaving file unchanged.");
+	const enriched = enrichInspectMetadata(local, skins);
+	if (updated.length === 0 && enriched === 0) {
+		console.error("Catalog is up to date. Nothing to write.");
 		return;
 	}
 
 	await Bun.write(ASSET_PATH, `${JSON.stringify(local, null, 4)}\n`);
-	console.error(`Updated ${updated.length} case(s): ${updated.join(", ")}`);
+	if (updated.length > 0) {
+		console.error(`Updated ${updated.length} case(s): ${updated.join(", ")}`);
+	}
+	console.error(`Added inspect metadata to ${enriched} skin entries.`);
 }
 
 if (import.meta.main) {

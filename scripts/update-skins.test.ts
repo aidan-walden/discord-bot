@@ -2,6 +2,7 @@ import { describe, expect, test } from "bun:test";
 import type { CounterStrikeCaseDefinition } from "../src/models/CounterStrikeSkin";
 import {
 	type ByMykelSkin,
+	enrichInspectMetadata,
 	getBucket,
 	isUsableCase,
 	normalizeName,
@@ -16,6 +17,7 @@ describe("normalizeName", () => {
 		// ByMykel "★ Bayonet" and local "Bayonet | ★ (Vanilla)" must compare equal.
 		expect(normalizeName("★ Bayonet")).toBe("Bayonet");
 		expect(normalizeName("Bayonet | ★ (Vanilla)")).toBe("Bayonet");
+		expect(normalizeName("Kukri Knife | ★ Vanilla")).toBe("Kukri Knife");
 	});
 
 	test("leaves ordinary skin names untouched", () => {
@@ -28,6 +30,8 @@ describe("getBucket", () => {
 		name: "x",
 		rarity: { id },
 		category: { name: category },
+		weapon: { weapon_id: 1 },
+		paint_index: "1",
 	});
 
 	test("maps weapon rarities", () => {
@@ -44,6 +48,49 @@ describe("getBucket", () => {
 	test("gloves and untracked rarities", () => {
 		expect(getBucket(make("rarity_ancient", "Gloves"))).toBe("gold");
 		expect(getBucket(make("rarity_common_weapon", "Pistols"))).toBeNull();
+	});
+});
+
+describe("enrichInspectMetadata", () => {
+	test("adds IDs to gold skins and selects Doppler Phase 1", () => {
+		const catalog = {
+			"Test Case": {
+				price: 1,
+				blue: [],
+				purple: [],
+				pink: [],
+				red: [],
+				gold: [
+					{
+						name: "Karambit | Doppler",
+						img: "",
+						rarity: "Gold" as const,
+						stattrak: true,
+						pricing: {},
+						minWear: 0,
+						maxWear: 0.08,
+					},
+				],
+			},
+		};
+		const base = {
+			name: "★ Karambit | Doppler",
+			rarity: { id: "rarity_ancient_weapon" },
+			category: { name: "Knives" },
+			weapon: { weapon_id: 507 },
+			crates: [],
+		};
+
+		expect(
+			enrichInspectMetadata(catalog, [
+				{ ...base, paint_index: "417", phase: "Black Pearl" },
+				{ ...base, paint_index: "418", phase: "Phase 1" },
+			]),
+		).toBe(1);
+		expect(catalog["Test Case"].gold[0]).toMatchObject({
+			defIndex: 507,
+			paintIndex: 418,
+		});
 	});
 });
 

@@ -8,6 +8,8 @@ export interface CounterStrikeSkin {
 	price: number;
 	rarity: SkinRarity;
 	imageUrl: string;
+	defIndex?: number;
+	paintIndex?: number;
 }
 
 export interface ScrapedSkin {
@@ -18,6 +20,8 @@ export interface ScrapedSkin {
 	pricing: Record<string, number | null>;
 	minWear: number | null;
 	maxWear: number | null;
+	defIndex?: number;
+	paintIndex?: number;
 }
 
 export interface CounterStrikeCaseDefinition {

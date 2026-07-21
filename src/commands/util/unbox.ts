@@ -11,6 +11,7 @@ import {
 } from "discord.js";
 import { sendLongMessage } from "../../helpers/sendLongMessage";
 import {
+	createInGameInspectUrl,
 	formatCurrency,
 	formatRolledSkinsSummary,
 	getRarityColor,
@@ -113,12 +114,28 @@ export default class Unbox implements Command {
 			);
 
 		const buttonCustomId = `unbox:view:${interaction.id}`;
+		const inspectUrl = createInGameInspectUrl(
+			result.finalSkin,
+			result.paintSeed,
+		);
+		const inspectButton = inspectUrl
+			? new ButtonBuilder()
+					.setURL(inspectUrl)
+					.setLabel("View in-game")
+					.setStyle(ButtonStyle.Link)
+			: null;
 		const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
 			new ButtonBuilder()
 				.setCustomId(buttonCustomId)
 				.setLabel("See all skins opened")
 				.setStyle(ButtonStyle.Secondary),
 		);
+		if (inspectButton) {
+			row.addComponents(inspectButton);
+		}
+		const remainingComponents = inspectButton
+			? [new ActionRowBuilder<ButtonBuilder>().addComponents(inspectButton)]
+			: [];
 
 		const reply = await interaction.editReply({
 			content:
@@ -143,7 +160,7 @@ export default class Unbox implements Command {
 					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
 					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
 				embeds: [embed],
-				components: [],
+				components: remainingComponents,
 			});
 			if (confirmation.channel?.isSendable()) {
 				await sendLongMessage(
@@ -158,7 +175,7 @@ export default class Unbox implements Command {
 					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
 					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
 				embeds: [embed],
-				components: [],
+				components: remainingComponents,
 			});
 		}
 	}
