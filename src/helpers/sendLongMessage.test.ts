@@ -71,8 +71,8 @@ describe("sendLongMessage", () => {
 		await sendLongMessage(channel, content);
 
 		expect(calls).toHaveLength(2);
-		expect((calls[0]?.content as string).length).toBe(2000);
-		expect((calls[1]?.content as string).length).toBe(500);
+		expect((calls[0]?.content as string | undefined)?.length).toBe(2000);
+		expect((calls[1]?.content as string | undefined)?.length).toBe(500);
 	});
 
 	test("escapes Markdown and disables mentions", async () => {

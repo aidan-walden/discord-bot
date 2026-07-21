@@ -176,9 +176,12 @@ describe("resolveOutputMode", () => {
 		[null, true, "voice"],
 		["voice", true, "voice"],
 		["attachment", true, "attachment"],
-	] as const)("resolves requested=%s canPlay=%s to %s", (requestedMode, canPlayInVoice, expected) => {
-		expect(resolveOutputMode(requestedMode, canPlayInVoice)).toBe(expected);
-	});
+	] as const)(
+		"resolves requested=%s canPlay=%s to %s",
+		(requestedMode, canPlayInVoice, expected) => {
+			expect(resolveOutputMode(requestedMode, canPlayInVoice)).toBe(expected);
+		},
+	);
 });
 
 describe("isTikTokCredentialRejection", () => {

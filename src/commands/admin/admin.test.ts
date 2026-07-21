@@ -40,17 +40,14 @@ describe("snowflake", () => {
 		expect(snowflake(`  ${VALID_ID}  `, "user ID")).toBe(VALID_ID);
 	});
 
-	test.each([
-		["abc"],
-		["12345"],
-		["1".repeat(21)],
-		[undefined],
-		[""],
-	])("rejects %p", (value) => {
-		expect(() => snowflake(value as string | undefined, "user ID")).toThrow(
-			"is not a valid user ID",
-		);
-	});
+	test.each([["abc"], ["12345"], ["1".repeat(21)], [undefined], [""]])(
+		"rejects %p",
+		(value) => {
+			expect(() => snowflake(value as string | undefined, "user ID")).toThrow(
+				"is not a valid user ID",
+			);
+		},
+	);
 });
 
 describe("ACTIONS run()", () => {
