@@ -31,7 +31,7 @@
 		"kazagumo": "^3.4.3",
 		"luxon": "^3.7.2",
 		"node-apple-music": "^1.2.2",
-		"openai": "^6.45.0",
+		"openai": "^6.48.0",
 		"shoukaku": "shipgirlproject/Shoukaku#ec4060e3b84acf5bfadb473a0ba80fb2db7c4e42",
 		"tiktok-tts": "^1.1.17"
 	},
