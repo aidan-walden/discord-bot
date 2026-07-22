@@ -16,6 +16,7 @@ const CONFIG_ENV_KEYS = [
 	"SPOTIFY_CLIENT_ID",
 	"SPOTIFY_CLIENT_SECRET",
 	"IMGUR_CLIENT_ID",
+	"RIOT_API_KEY",
 ] as const;
 
 const baseYaml = [

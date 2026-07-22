@@ -3,6 +3,7 @@ export const EXTERNAL_API_PROVIDERS = [
 	"spotify",
 	"tiktok",
 	"imgur",
+	"riot",
 ] as const;
 
 export type ExternalApiProvider = (typeof EXTERNAL_API_PROVIDERS)[number];

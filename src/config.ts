@@ -33,6 +33,7 @@ interface AppConfigFile {
 	SPOTIFY_CLIENT_ID?: string;
 	SPOTIFY_CLIENT_SECRET?: string;
 	IMGUR_CLIENT_ID?: string;
+	RIOT_API_KEY?: string;
 	ADMIN_USER_IDS?: string[];
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
@@ -57,6 +58,7 @@ export interface AppConfig {
 	SPOTIFY_CLIENT_ID?: string;
 	SPOTIFY_CLIENT_SECRET?: string;
 	IMGUR_CLIENT_ID?: string;
+	RIOT_API_KEY?: string;
 	ADMIN_USER_IDS: string[];
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
@@ -327,6 +329,7 @@ function validateConfigFile(
 		SPOTIFY_CLIENT_ID: configFile.SPOTIFY_CLIENT_ID,
 		SPOTIFY_CLIENT_SECRET: configFile.SPOTIFY_CLIENT_SECRET,
 		IMGUR_CLIENT_ID: configFile.IMGUR_CLIENT_ID,
+		RIOT_API_KEY: configFile.RIOT_API_KEY,
 		ADMIN_USER_IDS: adminUserIds,
 		profilePicture,
 		baseProfilePicture,
@@ -351,6 +354,7 @@ function getEnvironmentOverrides(): AppConfigFile {
 		"SPOTIFY_CLIENT_ID",
 		"SPOTIFY_CLIENT_SECRET",
 		"IMGUR_CLIENT_ID",
+		"RIOT_API_KEY",
 	] as const) {
 		const value = process.env[key];
 		if (value !== undefined) {

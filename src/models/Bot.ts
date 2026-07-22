@@ -38,6 +38,7 @@ import HolidayProvider from "../services/HolidayProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import MusicLinkService from "../services/MusicLinkService";
 import PermissionService from "../services/PermissionService";
+import RiotGamesService from "../services/RiotGamesService";
 import SpotifyClientCredentialsStrategy from "../services/SpotifyClientCredentialsStrategy";
 import SpotifyService from "../services/SpotifyService";
 import type BotEvent from "./BotEvent";
@@ -67,6 +68,7 @@ export default class Bot extends Client {
 	readonly deafenTracker: DeafenTrackerService;
 	readonly metrics: MetricsCollector;
 	readonly holidays: HolidayProvider;
+	readonly riot: RiotGamesService;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -132,6 +134,8 @@ export default class Bot extends Client {
 		this.spotify = new SpotifyService(spotifyClient, this.metrics);
 		this.appleMusic = new AppleMusicService();
 		this.musicLinks = new MusicLinkService(this.spotify, this.appleMusic);
+		const riotApiKey = config.get("RIOT_API_KEY")?.trim() || null;
+		this.riot = new RiotGamesService(riotApiKey, this.metrics);
 
 		this.holidays = new HolidayProvider();
 

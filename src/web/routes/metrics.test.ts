@@ -11,6 +11,7 @@ function createMockBot(): Bot {
 		["SPOTIFY_CLIENT_SECRET", "  "],
 		["TIKTOK_SESSION_ID", "tiktok-secret"],
 		["IMGUR_CLIENT_ID", undefined],
+		["RIOT_API_KEY", undefined],
 	]);
 
 	return {
@@ -72,6 +73,9 @@ describe("prometheus metrics route", () => {
 		);
 		expect(body).toContain(
 			'discord_bot_external_api_credentials_configured{provider="imgur"} 0',
+		);
+		expect(body).toContain(
+			'discord_bot_external_api_credentials_configured{provider="riot"} 0',
 		);
 		expect(body).toContain(
 			'discord_bot_external_api_credentials_rejected{provider="openai"} 0',
