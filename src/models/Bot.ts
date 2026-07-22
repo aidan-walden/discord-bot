@@ -28,6 +28,7 @@ import {
 } from "../helpers/profilePicture";
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
+import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import AppleMusicService from "../services/AppleMusicService";
 import ChatSessionService from "../services/ChatSessionService";
@@ -139,6 +140,7 @@ export default class Bot extends Client {
 		this.riot = new RiotGamesService(riotApiKey, this.metrics, {
 			pollIntervalSeconds: riotConfig.pollIntervalSeconds,
 			players: riotConfig.players,
+			rankHistory: new RiotRankHistoryRepository(this.db),
 		});
 
 		this.holidays = new HolidayProvider();

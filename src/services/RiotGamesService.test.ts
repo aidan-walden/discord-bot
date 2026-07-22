@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import RiotGamesService, {
 	platformToRegion,
 	RiotGamesError,
+	type RiotRank,
 } from "./RiotGamesService";
 
 function jsonResponse(
@@ -20,6 +21,32 @@ function jsonResponse(
 	});
 }
 
+const PLAYER = { puuid: "p1", platform: "na1" as const };
+
+function participant(overrides: Partial<Record<string, unknown>> = {}) {
+	return {
+		puuid: "p1",
+		championId: 64,
+		champLevel: 18,
+		kills: 5,
+		deaths: 2,
+		assists: 10,
+		win: true,
+		teamId: 100,
+		totalMinionsKilled: 150,
+		visionScore: 20,
+		goldEarned: 12000,
+		item0: 0,
+		item1: 0,
+		item2: 0,
+		item3: 0,
+		item4: 0,
+		item5: 0,
+		item6: 0,
+		...overrides,
+	};
+}
+
 describe("platformToRegion", () => {
 	test("maps common platforms", () => {
 		expect(platformToRegion("na1")).toBe("americas");
@@ -36,9 +63,11 @@ describe("RiotGamesService", () => {
 
 		expect(service.isAvailable()).toBe(false);
 		expect(await service.getAccountByRiotId("americas", "A", "B")).toBeNull();
+		expect(await service.getAccountByPuuid("americas", "p")).toBeNull();
 		expect(await service.getMatchIdsByPuuid("americas", "puuid")).toEqual([]);
 		expect(await service.getMatch("americas", "NA1_1")).toBeNull();
 		expect(await service.getLeagueEntriesByPuuid("na1", "puuid")).toEqual([]);
+		expect(await service.getActiveGame("na1", "puuid")).toBeNull();
 		expect(fetcher).not.toHaveBeenCalled();
 	});
 
@@ -66,11 +95,24 @@ describe("RiotGamesService", () => {
 		);
 	});
 
+	test("fetches account by puuid", async () => {
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		const fetcher = mock(async () => jsonResponse(account));
+		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
+
+		expect(await service.getAccountByPuuid("americas", "p1")).toEqual(account);
+		expect(fetcher).toHaveBeenCalledWith(
+			"https://americas.api.riotgames.com/riot/account/v1/accounts/by-puuid/p1",
+			{ headers: { "X-Riot-Token": "key" } },
+		);
+	});
+
 	test("returns null on 404 for account and match", async () => {
 		const fetcher = mock(async () => new Response(null, { status: 404 }));
 		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
 
 		expect(await service.getAccountByRiotId("americas", "x", "y")).toBeNull();
+		expect(await service.getAccountByPuuid("americas", "p")).toBeNull();
 		expect(await service.getMatch("americas", "NA1_1")).toBeNull();
 	});
 
@@ -292,7 +334,7 @@ describe("RiotGamesService", () => {
 			() => 1 as unknown as ReturnType<typeof setInterval>,
 		);
 		const noKey = new RiotGamesService(null, undefined, {
-			players: [{ gameName: "A", tagLine: "B", platform: "na1" }],
+			players: [PLAYER],
 			setInterval: setIntervalFn as typeof setInterval,
 		});
 		noKey.startPoller();
@@ -306,7 +348,7 @@ describe("RiotGamesService", () => {
 		expect(setIntervalFn).not.toHaveBeenCalled();
 	});
 
-	test("pollOnce emits update with rank and ended game", async () => {
+	test("pollOnce emits update, stores snapshot, records rank history", async () => {
 		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
 		const match = {
 			metadata: { matchId: "NA1_1", participants: ["p1"] },
@@ -314,28 +356,7 @@ describe("RiotGamesService", () => {
 				gameCreation: 1000,
 				gameDuration: 1800,
 				queueId: 420,
-				participants: [
-					{
-						puuid: "p1",
-						championId: 64,
-						champLevel: 18,
-						kills: 5,
-						deaths: 2,
-						assists: 10,
-						win: true,
-						teamId: 100,
-						totalMinionsKilled: 150,
-						visionScore: 20,
-						goldEarned: 12000,
-						item0: 0,
-						item1: 0,
-						item2: 0,
-						item3: 0,
-						item4: 0,
-						item5: 0,
-						item6: 0,
-					},
-				],
+				participants: [participant()],
 			},
 		};
 		const league = [
@@ -350,7 +371,7 @@ describe("RiotGamesService", () => {
 		];
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
-			if (href.includes("/accounts/by-riot-id/")) {
+			if (href.includes("/accounts/by-puuid/")) {
 				return jsonResponse(account);
 			}
 			if (href.includes("/active-games/")) {
@@ -368,12 +389,15 @@ describe("RiotGamesService", () => {
 			return new Response(null, { status: 500 });
 		});
 
+		const recordIfChanged = mock(async () => null);
+		const listByPuuid = mock(async () => []);
 		const service = new RiotGamesService("key", undefined, {
 			fetch: fetcher,
-			players: [{ gameName: "Hide", tagLine: "NA1", platform: "na1" }],
+			players: [PLAYER],
+			rankHistory: { listByPuuid, recordIfChanged } as never,
 		});
 
-		const updates: unknown[] = [];
+		const updates: import("./RiotGamesService").RiotPlayerPollState[] = [];
 		service.on("update", (state) => {
 			updates.push(state);
 		});
@@ -381,11 +405,22 @@ describe("RiotGamesService", () => {
 		await service.pollOnce();
 
 		expect(updates).toHaveLength(1);
-		expect(updates[0]).toEqual({
+		expect(service.getPollState("p1")).toEqual(updates[0] ?? null);
+		expect(service.getAllPollStates()).toEqual(updates);
+		expect(recordIfChanged).toHaveBeenCalledWith(
+			"p1",
+			{
+				tier: "GOLD",
+				rank: "II",
+				leaguePoints: 50,
+				wins: 10,
+				losses: 8,
+			},
+			expect.any(Date),
+		);
+		expect(updates[0]).toMatchObject({
+			puuid: "p1",
 			username: "Hide#NA1",
-			gameName: "Hide",
-			tagLine: "NA1",
-			platform: "na1",
 			currentRank: {
 				tier: "GOLD",
 				rank: "II",
@@ -400,29 +435,18 @@ describe("RiotGamesService", () => {
 				deaths: 2,
 				assists: 10,
 				championId: 64,
-				win: true,
-				queueId: 420,
-				gameCreation: 1000,
-				gameDuration: 1800,
 				rankBefore: null,
-				rankAfter: {
-					tier: "GOLD",
-					rank: "II",
-					leaguePoints: 50,
-					wins: 10,
-					losses: 8,
-				},
 			},
 		});
 	});
 
-	test("second poll with new match sets rankBefore from prior rank", async () => {
+	test("second poll with new match sets rankBefore; seeds from DB history", async () => {
 		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
 		let matchId = "NA1_1";
 		let lp = 50;
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
-			if (href.includes("/accounts/by-riot-id/")) {
+			if (href.includes("/accounts/by-puuid/")) {
 				return jsonResponse(account);
 			}
 			if (href.includes("/active-games/")) {
@@ -438,28 +462,7 @@ describe("RiotGamesService", () => {
 						gameCreation: 1000,
 						gameDuration: 1800,
 						queueId: 420,
-						participants: [
-							{
-								puuid: "p1",
-								championId: 1,
-								champLevel: 18,
-								kills: 1,
-								deaths: 1,
-								assists: 1,
-								win: true,
-								teamId: 100,
-								totalMinionsKilled: 0,
-								visionScore: 0,
-								goldEarned: 0,
-								item0: 0,
-								item1: 0,
-								item2: 0,
-								item3: 0,
-								item4: 0,
-								item5: 0,
-								item6: 0,
-							},
-						],
+						participants: [participant({ kills: 1, deaths: 1, assists: 1 })],
 					},
 				});
 			}
@@ -478,9 +481,26 @@ describe("RiotGamesService", () => {
 			return new Response(null, { status: 500 });
 		});
 
+		const seeded: RiotRank = {
+			tier: "GOLD",
+			rank: "II",
+			leaguePoints: 40,
+			wins: 9,
+			losses: 8,
+		};
+		const listByPuuid = mock(async () => [
+			{
+				puuid: "p1",
+				...seeded,
+				detectedAt: new Date(),
+			},
+		]);
+		const recordIfChanged = mock(async () => null);
+
 		const service = new RiotGamesService("key", undefined, {
 			fetch: fetcher,
-			players: [{ gameName: "Hide", tagLine: "NA1", platform: "na1" }],
+			players: [PLAYER],
+			rankHistory: { listByPuuid, recordIfChanged } as never,
 		});
 
 		const updates: Array<{
@@ -491,6 +511,8 @@ describe("RiotGamesService", () => {
 		});
 
 		await service.pollOnce();
+		expect(updates[0]?.mostRecentEnded?.rankBefore).toEqual(seeded);
+
 		matchId = "NA1_2";
 		lp = 68;
 		await service.pollOnce();
@@ -510,5 +532,27 @@ describe("RiotGamesService", () => {
 			wins: 10,
 			losses: 8,
 		});
+	});
+
+	test("getRankHistory delegates to repository", async () => {
+		const listByPuuid = mock(async () => [
+			{
+				puuid: "p1",
+				tier: "GOLD",
+				rank: "I",
+				leaguePoints: 1,
+				wins: 1,
+				losses: 0,
+				detectedAt: new Date("2020-01-01"),
+			},
+		]);
+		const service = new RiotGamesService("key", undefined, {
+			rankHistory: {
+				listByPuuid,
+				recordIfChanged: mock(async () => null),
+			} as never,
+		});
+		expect(await service.getRankHistory("p1")).toHaveLength(1);
+		expect(listByPuuid).toHaveBeenCalledWith("p1");
 	});
 });

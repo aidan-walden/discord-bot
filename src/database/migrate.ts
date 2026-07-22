@@ -61,4 +61,22 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 			PRIMARY KEY (user_id, guild_id)
 		)
 	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS riot_rank_history (
+			id BIGINT GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
+			puuid TEXT NOT NULL,
+			tier TEXT NOT NULL,
+			rank TEXT NOT NULL,
+			league_points INTEGER NOT NULL,
+			wins INTEGER NOT NULL,
+			losses INTEGER NOT NULL,
+			detected_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`;
+
+	await sql`
+		CREATE INDEX IF NOT EXISTS idx_riot_rank_history_puuid_detected
+			ON riot_rank_history (puuid, detected_at DESC)
+	`;
 }

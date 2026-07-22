@@ -668,8 +668,7 @@ describe("Config", () => {
 							"riot:",
 							"  pollIntervalSeconds: 30",
 							"  players:",
-							'    - gameName: "Faker"',
-							'      tagLine: "KR1"',
+							'    - puuid: "abc-123"',
 							'      platform: "kr"',
 						].join("\n"),
 					}),
@@ -678,7 +677,7 @@ describe("Config", () => {
 
 				expect(config.get("riot")).toEqual({
 					pollIntervalSeconds: 30,
-					players: [{ gameName: "Faker", tagLine: "KR1", platform: "kr" }],
+					players: [{ puuid: "abc-123", platform: "kr" }],
 				});
 			});
 		});
@@ -698,12 +697,22 @@ describe("Config", () => {
 					riotBlock: [
 						"riot:",
 						"  players:",
-						'    - gameName: "A"',
-						'      tagLine: "B"',
+						'    - puuid: "abc"',
 						'      platform: "xx"',
 					].join("\n"),
 				}),
 				"Invalid riot.players[0].platform: expected one of br1, eun1, euw1, jp1, kr, la1, la2, na1, oc1, tr1, ru, ph2, sg2, th2, tw2, vn2.",
+			);
+		});
+
+		test("rejects missing puuid", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					riotBlock: ["riot:", "  players:", '    - platform: "na1"'].join(
+						"\n",
+					),
+				}),
+				"Invalid config value for riot.players[0].puuid: expected non-empty string.",
 			);
 		});
 

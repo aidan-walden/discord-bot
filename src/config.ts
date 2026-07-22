@@ -2,11 +2,8 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { isHttpImageUrl } from "./helpers/profilePicture";
 import Holiday from "./models/Holiday";
-import {
-	RIOT_PLATFORMS,
-	type RiotPlatform,
-	type RiotPlayerConfig,
-} from "./services/RiotGamesService";
+import { RIOT_PLATFORMS } from "./services/riot/constants";
+import type { RiotPlatform, RiotPlayerConfig } from "./services/riot/types";
 
 export type { RiotPlayerConfig };
 
@@ -58,8 +55,7 @@ interface AppConfigFile {
 	riot?: {
 		pollIntervalSeconds?: number;
 		players?: Array<{
-			gameName?: string;
-			tagLine?: string;
+			puuid?: string;
 			platform?: string;
 		}>;
 	};
@@ -238,11 +234,7 @@ function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
 			);
 		}
 		return {
-			gameName: ensureString(
-				record.gameName,
-				`riot.players[${index}].gameName`,
-			),
-			tagLine: ensureString(record.tagLine, `riot.players[${index}].tagLine`),
+			puuid: ensureString(record.puuid, `riot.players[${index}].puuid`),
 			platform: platform as RiotPlatform,
 		};
 	});
