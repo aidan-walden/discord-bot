@@ -21,13 +21,20 @@ import type {
 	RiotRank,
 	RiotRankHistoryEntry,
 	RiotRegion,
+	RiotSummoner,
 } from "./riot/types";
 import { RiotGamesError } from "./riot/types";
 
 export {
+	FLEX_QUEUE,
+	FRIENDLY_REGION_TO_PLATFORM,
+	parseFriendlyRegion,
 	platformToRegion,
+	profileIconUrl,
+	queueName,
 	RIOT_PLATFORMS,
 	RIOT_REGIONS,
+	SOLO_QUEUE,
 } from "./riot/constants";
 export type {
 	RiotAccount,
@@ -43,6 +50,7 @@ export type {
 	RiotRank,
 	RiotRankHistoryEntry,
 	RiotRegion,
+	RiotSummoner,
 } from "./riot/types";
 export { RiotGamesError } from "./riot/types";
 
@@ -232,6 +240,13 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		puuid: string,
 	): Promise<RiotActiveGame | null> {
 		return this.client.getActiveGame(platform, puuid);
+	}
+
+	async getSummonerByPuuid(
+		platform: RiotPlatform,
+		puuid: string,
+	): Promise<RiotSummoner | null> {
+		return this.client.getSummonerByPuuid(platform, puuid);
 	}
 
 	async request<T>(

@@ -13,6 +13,7 @@ import type {
 	RiotMatch,
 	RiotPlatform,
 	RiotRegion,
+	RiotSummoner,
 } from "./types";
 import { RiotGamesError } from "./types";
 
@@ -222,6 +223,33 @@ export default class RiotApiClient {
 		const path = `/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
 		try {
 			return await this.request<RiotActiveGame>(platform, path);
+		} catch (error) {
+			if (error instanceof RiotGamesError && error.status === 404) {
+				return null;
+			}
+			throw error;
+		}
+	}
+
+	async getSummonerByPuuid(
+		platform: RiotPlatform,
+		puuid: string,
+	): Promise<RiotSummoner | null> {
+		if (!this.apiKey) {
+			return null;
+		}
+		const path = `/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`;
+		try {
+			const raw = await this.request<{
+				puuid: string;
+				profileIconId: number;
+				summonerLevel: number;
+			}>(platform, path);
+			return {
+				puuid: raw.puuid,
+				profileIconId: raw.profileIconId,
+				summonerLevel: raw.summonerLevel,
+			};
 		} catch (error) {
 			if (error instanceof RiotGamesError && error.status === 404) {
 				return null;

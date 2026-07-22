@@ -27,6 +27,7 @@ function participant(overrides: Partial<Record<string, unknown>> = {}) {
 	return {
 		puuid: "p1",
 		championId: 64,
+		championName: "LeeSin",
 		champLevel: 18,
 		kills: 5,
 		deaths: 2,
@@ -302,6 +303,28 @@ describe("RiotGamesService", () => {
 			"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/abc/ids?start=5&count=10",
 			{ headers: { "X-Riot-Token": "key" } },
 		);
+	});
+
+	test("getSummonerByPuuid returns summoner and null on 404", async () => {
+		const summoner = {
+			puuid: "p1",
+			profileIconId: 7,
+			summonerLevel: 420,
+		};
+		const fetcher = mock(async () => jsonResponse(summoner));
+		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
+
+		expect(await service.getSummonerByPuuid("na1", "p1")).toEqual(summoner);
+		expect(fetcher).toHaveBeenCalledWith(
+			"https://na1.api.riotgames.com/lol/summoner/v4/summoners/by-puuid/p1",
+			{ headers: { "X-Riot-Token": "key" } },
+		);
+
+		const notFound = mock(async () => new Response(null, { status: 404 }));
+		const service404 = new RiotGamesService("key", undefined, {
+			fetch: notFound,
+		});
+		expect(await service404.getSummonerByPuuid("na1", "p1")).toBeNull();
 	});
 
 	test("getActiveGame returns game and null on 404", async () => {

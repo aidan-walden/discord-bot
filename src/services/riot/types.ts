@@ -16,6 +16,7 @@ export interface RiotAccount {
 export interface RiotMatchParticipant {
 	puuid: string;
 	championId: number;
+	championName: string;
 	champLevel: number;
 	kills: number;
 	deaths: number;
@@ -32,6 +33,12 @@ export interface RiotMatchParticipant {
 	item4: number;
 	item5: number;
 	item6: number;
+}
+
+export interface RiotSummoner {
+	puuid: string;
+	profileIconId: number;
+	summonerLevel: number;
 }
 
 export interface RiotMatch {

@@ -45,9 +45,58 @@ export const ACCOUNT_CACHE_TTL_MS = 10 * 60_000;
 export const MATCH_CACHE_TTL_MS = 60 * 60_000;
 export const DEFAULT_429_RETRY_MS = 1_000;
 export const SOLO_QUEUE = "RANKED_SOLO_5x5";
+export const FLEX_QUEUE = "RANKED_FLEX_SR";
 export const DEFAULT_POLL_INTERVAL_SECONDS = 60;
 export const RANK_HISTORY_LIMIT = 5;
 
+/** Friendly region labels (NA, EUW, …) → platform routing values. */
+export const FRIENDLY_REGION_TO_PLATFORM: Record<string, RiotPlatform> = {
+	NA: "na1",
+	EUW: "euw1",
+	EUNE: "eun1",
+	KR: "kr",
+	BR: "br1",
+	LAN: "la1",
+	LAS: "la2",
+	OCE: "oc1",
+	JP: "jp1",
+	TR: "tr1",
+	RU: "ru",
+	PH: "ph2",
+	SG: "sg2",
+	TH: "th2",
+	TW: "tw2",
+	VN: "vn2",
+};
+
+const QUEUE_NAMES: Record<number, string> = {
+	400: "Normal Draft",
+	420: "Solo/Duo",
+	430: "Normal Blind",
+	440: "Flex",
+	450: "ARAM",
+	490: "Quickplay",
+	700: "Clash",
+	900: "URF",
+	1020: "One for All",
+	1300: "Nexus Blitz",
+	1700: "Arena",
+	1900: "URF",
+};
+
 export function platformToRegion(platform: RiotPlatform): RiotRegion {
 	return PLATFORM_TO_REGION[platform];
+}
+
+export function parseFriendlyRegion(input: string): RiotPlatform | null {
+	const key = input.trim().toUpperCase();
+	return FRIENDLY_REGION_TO_PLATFORM[key] ?? null;
+}
+
+export function queueName(queueId: number): string {
+	return QUEUE_NAMES[queueId] ?? `Queue ${queueId}`;
+}
+
+export function profileIconUrl(profileIconId: number): string {
+	return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/profile-icons/${profileIconId}.jpg`;
 }

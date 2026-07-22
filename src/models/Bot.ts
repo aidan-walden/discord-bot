@@ -29,6 +29,7 @@ import {
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
+import RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import AppleMusicService from "../services/AppleMusicService";
 import ChatSessionService from "../services/ChatSessionService";
@@ -70,6 +71,7 @@ export default class Bot extends Client {
 	readonly metrics: MetricsCollector;
 	readonly holidays: HolidayProvider;
 	readonly riot: RiotGamesService;
+	readonly riotLinks: RiotUserLinkRepository;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -114,6 +116,7 @@ export default class Bot extends Client {
 		this.balances = new UserBalanceRepository(this.db);
 		this.deafenSessions = new DeafenSessionRepository(this.db);
 		this.deafenTracker = new DeafenTrackerService(this.deafenSessions);
+		this.riotLinks = new RiotUserLinkRepository(this.db);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
 			config.get("OPENAI_MODEL"),
