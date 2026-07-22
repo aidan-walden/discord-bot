@@ -9,7 +9,7 @@ import {
 import type Command from "../../models/Command";
 
 const videoExtensions = new Set([".mp4", ".webm", ".mov", ".mkv"]);
-const MAX_VIDEO_BYTES = 10 * 1024 * 1024;
+export const MAX_VIDEO_BYTES = 10 * 1024 * 1024;
 const videosDirectory = path.resolve(
 	import.meta.dirname,
 	"../../../assets/videosfolder",
@@ -20,21 +20,19 @@ function pickRandom<T>(items: readonly T[]): T | undefined {
 	return items[randomInt(items.length)];
 }
 
-function loadVideos(): string[] {
-	const directory = statSync(videosDirectory, { throwIfNoEntry: false });
-	if (!directory?.isDirectory()) {
-		console.warn(
-			`videosfolder: directory missing or not a dir: ${videosDirectory}`,
-		);
+export function loadVideos(directory: string): string[] {
+	const dirStat = statSync(directory, { throwIfNoEntry: false });
+	if (!dirStat?.isDirectory()) {
+		console.warn(`videosfolder: directory missing or not a dir: ${directory}`);
 		return [];
 	}
 
 	const eligible: string[] = [];
-	for (const item of readdirSync(videosDirectory, { withFileTypes: true })) {
+	for (const item of readdirSync(directory, { withFileTypes: true })) {
 		if (!item.isFile()) continue;
 		if (!videoExtensions.has(path.extname(item.name).toLowerCase())) continue;
 
-		const full = path.join(videosDirectory, item.name);
+		const full = path.join(directory, item.name);
 		const { size } = statSync(full);
 		if (size > MAX_VIDEO_BYTES) {
 			console.warn(
@@ -51,15 +49,20 @@ function loadVideos(): string[] {
 	return eligible;
 }
 
-const videos = loadVideos();
-
 export default class VideosFolder implements Command {
 	data = new SlashCommandBuilder()
 		.setName("videosfolder")
 		.setDescription("Sends a random video");
 
+	constructor(
+		private readonly videoNames: readonly string[] = loadVideos(
+			videosDirectory,
+		),
+		private readonly directory: string = videosDirectory,
+	) {}
+
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-		const video = pickRandom(videos);
+		const video = pickRandom(this.videoNames);
 		if (!video) {
 			await interaction.reply({
 				content: "No videos found.",
@@ -68,6 +71,8 @@ export default class VideosFolder implements Command {
 			return;
 		}
 
-		await interaction.reply({ files: [path.join(videosDirectory, video)] });
+		await interaction.reply({
+			files: [path.join(this.directory, video)],
+		});
 	}
 }
