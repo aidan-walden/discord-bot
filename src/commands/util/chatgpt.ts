@@ -178,7 +178,7 @@ export default class ChatGpt implements Command {
 				session,
 				prompt,
 			);
-			await sendLongMessage(thread, response);
+			await sendLongMessage(thread, response, {}, false);
 		} catch (error) {
 			console.error("ChatGPT ask command failed:", error);
 			await thread.send(

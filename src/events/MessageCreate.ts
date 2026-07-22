@@ -59,7 +59,7 @@ export default class MessageCreate implements BotEvent {
 		try {
 			await message.channel.sendTyping();
 			const response = await bot.chatSessions.prompt(session, prompt);
-			await sendLongMessage(message.channel, response);
+			await sendLongMessage(message.channel, response, {}, false);
 		} catch (error) {
 			console.error("ChatGPT thread response failed:", error);
 			await message.reply(
