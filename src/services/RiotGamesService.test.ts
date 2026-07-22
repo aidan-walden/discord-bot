@@ -261,4 +261,254 @@ describe("RiotGamesService", () => {
 			{ headers: { "X-Riot-Token": "key" } },
 		);
 	});
+
+	test("getActiveGame returns game and null on 404", async () => {
+		const game = {
+			gameId: 1,
+			gameStartTime: 100,
+			gameLength: 50,
+			gameMode: "CLASSIC",
+			gameQueueConfigId: 420,
+			participants: [{ puuid: "p1", championId: 99 }],
+		};
+		const fetcher = mock(async () => jsonResponse(game));
+		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
+
+		expect(await service.getActiveGame("na1", "p1")).toEqual(game);
+		expect(fetcher).toHaveBeenCalledWith(
+			"https://na1.api.riotgames.com/lol/spectator/v5/active-games/by-summoner/p1",
+			{ headers: { "X-Riot-Token": "key" } },
+		);
+
+		const notFound = mock(async () => new Response(null, { status: 404 }));
+		const service404 = new RiotGamesService("key", undefined, {
+			fetch: notFound,
+		});
+		expect(await service404.getActiveGame("na1", "p1")).toBeNull();
+	});
+
+	test("startPoller is a no-op without key or players", () => {
+		const setIntervalFn = mock(
+			() => 1 as unknown as ReturnType<typeof setInterval>,
+		);
+		const noKey = new RiotGamesService(null, undefined, {
+			players: [{ gameName: "A", tagLine: "B", platform: "na1" }],
+			setInterval: setIntervalFn as typeof setInterval,
+		});
+		noKey.startPoller();
+		expect(setIntervalFn).not.toHaveBeenCalled();
+
+		const noPlayers = new RiotGamesService("key", undefined, {
+			players: [],
+			setInterval: setIntervalFn as typeof setInterval,
+		});
+		noPlayers.startPoller();
+		expect(setIntervalFn).not.toHaveBeenCalled();
+	});
+
+	test("pollOnce emits update with rank and ended game", async () => {
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		const match = {
+			metadata: { matchId: "NA1_1", participants: ["p1"] },
+			info: {
+				gameCreation: 1000,
+				gameDuration: 1800,
+				queueId: 420,
+				participants: [
+					{
+						puuid: "p1",
+						championId: 64,
+						champLevel: 18,
+						kills: 5,
+						deaths: 2,
+						assists: 10,
+						win: true,
+						teamId: 100,
+						totalMinionsKilled: 150,
+						visionScore: 20,
+						goldEarned: 12000,
+						item0: 0,
+						item1: 0,
+						item2: 0,
+						item3: 0,
+						item4: 0,
+						item5: 0,
+						item6: 0,
+					},
+				],
+			},
+		};
+		const league = [
+			{
+				queueType: "RANKED_SOLO_5x5",
+				tier: "GOLD",
+				rank: "II",
+				leaguePoints: 50,
+				wins: 10,
+				losses: 8,
+			},
+		];
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			if (href.includes("/accounts/by-riot-id/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				return jsonResponse(["NA1_1"]);
+			}
+			if (href.includes("/matches/NA1_1")) {
+				return jsonResponse(match);
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse(league);
+			}
+			return new Response(null, { status: 500 });
+		});
+
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [{ gameName: "Hide", tagLine: "NA1", platform: "na1" }],
+		});
+
+		const updates: unknown[] = [];
+		service.on("update", (state) => {
+			updates.push(state);
+		});
+
+		await service.pollOnce();
+
+		expect(updates).toHaveLength(1);
+		expect(updates[0]).toEqual({
+			username: "Hide#NA1",
+			gameName: "Hide",
+			tagLine: "NA1",
+			platform: "na1",
+			currentRank: {
+				tier: "GOLD",
+				rank: "II",
+				leaguePoints: 50,
+				wins: 10,
+				losses: 8,
+			},
+			inProgress: null,
+			mostRecentEnded: {
+				matchId: "NA1_1",
+				kills: 5,
+				deaths: 2,
+				assists: 10,
+				championId: 64,
+				win: true,
+				queueId: 420,
+				gameCreation: 1000,
+				gameDuration: 1800,
+				rankBefore: null,
+				rankAfter: {
+					tier: "GOLD",
+					rank: "II",
+					leaguePoints: 50,
+					wins: 10,
+					losses: 8,
+				},
+			},
+		});
+	});
+
+	test("second poll with new match sets rankBefore from prior rank", async () => {
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		let matchId = "NA1_1";
+		let lp = 50;
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			if (href.includes("/accounts/by-riot-id/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				return jsonResponse([matchId]);
+			}
+			if (href.includes("/matches/")) {
+				return jsonResponse({
+					metadata: { matchId, participants: ["p1"] },
+					info: {
+						gameCreation: 1000,
+						gameDuration: 1800,
+						queueId: 420,
+						participants: [
+							{
+								puuid: "p1",
+								championId: 1,
+								champLevel: 18,
+								kills: 1,
+								deaths: 1,
+								assists: 1,
+								win: true,
+								teamId: 100,
+								totalMinionsKilled: 0,
+								visionScore: 0,
+								goldEarned: 0,
+								item0: 0,
+								item1: 0,
+								item2: 0,
+								item3: 0,
+								item4: 0,
+								item5: 0,
+								item6: 0,
+							},
+						],
+					},
+				});
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse([
+					{
+						queueType: "RANKED_SOLO_5x5",
+						tier: "GOLD",
+						rank: "II",
+						leaguePoints: lp,
+						wins: 10,
+						losses: 8,
+					},
+				]);
+			}
+			return new Response(null, { status: 500 });
+		});
+
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [{ gameName: "Hide", tagLine: "NA1", platform: "na1" }],
+		});
+
+		const updates: Array<{
+			mostRecentEnded: { rankBefore: unknown; rankAfter: unknown } | null;
+		}> = [];
+		service.on("update", (state) => {
+			updates.push(state);
+		});
+
+		await service.pollOnce();
+		matchId = "NA1_2";
+		lp = 68;
+		await service.pollOnce();
+
+		expect(updates).toHaveLength(2);
+		expect(updates[1]?.mostRecentEnded?.rankBefore).toEqual({
+			tier: "GOLD",
+			rank: "II",
+			leaguePoints: 50,
+			wins: 10,
+			losses: 8,
+		});
+		expect(updates[1]?.mostRecentEnded?.rankAfter).toEqual({
+			tier: "GOLD",
+			rank: "II",
+			leaguePoints: 68,
+			wins: 10,
+			losses: 8,
+		});
+	});
 });

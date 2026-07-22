@@ -2,6 +2,13 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { isHttpImageUrl } from "./helpers/profilePicture";
 import Holiday from "./models/Holiday";
+import {
+	RIOT_PLATFORMS,
+	type RiotPlatform,
+	type RiotPlayerConfig,
+} from "./services/RiotGamesService";
+
+export type { RiotPlayerConfig };
 
 export interface LavalinkNodeConfig {
 	name: string;
@@ -21,6 +28,11 @@ export interface DeafenTrackerConfig {
 	enabled: boolean;
 	muted_is_deafened: boolean;
 	users: string[];
+}
+
+export interface RiotConfig {
+	pollIntervalSeconds: number;
+	players: RiotPlayerConfig[];
 }
 
 interface AppConfigFile {
@@ -43,6 +55,14 @@ interface AppConfigFile {
 		muted_is_deafened?: boolean;
 		users?: string[];
 	};
+	riot?: {
+		pollIntervalSeconds?: number;
+		players?: Array<{
+			gameName?: string;
+			tagLine?: string;
+			platform?: string;
+		}>;
+	};
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -64,6 +84,7 @@ export interface AppConfig {
 	baseProfilePicture?: string;
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	deafentracker: DeafenTrackerConfig;
+	riot: RiotConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -183,6 +204,77 @@ function validateDeafenTracker(value: unknown): DeafenTrackerConfig {
 						"deafentracker.muted_is_deafened",
 					),
 		users: validateDeafenTrackerUsers(record.users),
+	};
+}
+
+const RIOT_PLATFORM_SET = new Set<string>(RIOT_PLATFORMS);
+const DEFAULT_RIOT_POLL_INTERVAL_SECONDS = 60;
+
+function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
+	if (value === undefined) {
+		return [];
+	}
+	if (!Array.isArray(value)) {
+		throw new Error(
+			"Invalid config value for riot.players: expected array of objects.",
+		);
+	}
+	return value.map((player, index) => {
+		if (
+			typeof player !== "object" ||
+			player === null ||
+			Array.isArray(player)
+		) {
+			throw new Error(`Invalid riot.players[${index}]: expected object.`);
+		}
+		const record = player as Record<string, unknown>;
+		const platform = ensureString(
+			record.platform,
+			`riot.players[${index}].platform`,
+		);
+		if (!RIOT_PLATFORM_SET.has(platform)) {
+			throw new Error(
+				`Invalid riot.players[${index}].platform: expected one of ${RIOT_PLATFORMS.join(", ")}.`,
+			);
+		}
+		return {
+			gameName: ensureString(
+				record.gameName,
+				`riot.players[${index}].gameName`,
+			),
+			tagLine: ensureString(record.tagLine, `riot.players[${index}].tagLine`),
+			platform: platform as RiotPlatform,
+		};
+	});
+}
+
+function validateRiot(value: unknown): RiotConfig {
+	if (value === undefined) {
+		return {
+			pollIntervalSeconds: DEFAULT_RIOT_POLL_INTERVAL_SECONDS,
+			players: [],
+		};
+	}
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Invalid config value for riot: expected object.");
+	}
+	const record = value as Record<string, unknown>;
+	let pollIntervalSeconds = DEFAULT_RIOT_POLL_INTERVAL_SECONDS;
+	if (record.pollIntervalSeconds !== undefined) {
+		if (
+			typeof record.pollIntervalSeconds !== "number" ||
+			!Number.isFinite(record.pollIntervalSeconds) ||
+			record.pollIntervalSeconds <= 0
+		) {
+			throw new Error(
+				"Invalid config value for riot.pollIntervalSeconds: expected positive number.",
+			);
+		}
+		pollIntervalSeconds = record.pollIntervalSeconds;
+	}
+	return {
+		pollIntervalSeconds,
+		players: validateRiotPlayers(record.players),
 	};
 }
 
@@ -308,6 +400,7 @@ function validateConfigFile(
 
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
+	const riot = validateRiot(configFile.riot);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
 	const baseProfilePicture = validateBaseProfilePicture(
@@ -335,6 +428,7 @@ function validateConfigFile(
 		baseProfilePicture,
 		holidayProfilePictures,
 		deafentracker,
+		riot,
 		lavalink: {
 			nodes: lavalinkNodes,
 		},

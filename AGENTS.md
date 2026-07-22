@@ -18,7 +18,7 @@
 - Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
 - `OPENAI_API_TOKEN` and `OPENAI_MODEL` are optional together; ChatGPT commands stay registered but report unavailable when unset.
 - `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
-- `RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle).
+- `RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` (`gameName`/`tagLine`/`platform`) drive the optional match poller.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.

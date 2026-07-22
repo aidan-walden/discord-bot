@@ -1,3 +1,4 @@
+import { EventEmitter } from "node:events";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 
 export const RIOT_PLATFORMS = [
@@ -20,6 +21,12 @@ export const RIOT_PLATFORMS = [
 ] as const;
 
 export type RiotPlatform = (typeof RIOT_PLATFORMS)[number];
+
+export interface RiotPlayerConfig {
+	gameName: string;
+	tagLine: string;
+	platform: RiotPlatform;
+}
 
 export const RIOT_REGIONS = ["americas", "europe", "asia", "sea"] as const;
 export type RiotRegion = (typeof RIOT_REGIONS)[number];
@@ -46,6 +53,8 @@ const PLATFORM_TO_REGION: Record<RiotPlatform, RiotRegion> = {
 const ACCOUNT_CACHE_TTL_MS = 10 * 60_000;
 const MATCH_CACHE_TTL_MS = 60 * 60_000;
 const DEFAULT_429_RETRY_MS = 1_000;
+const SOLO_QUEUE = "RANKED_SOLO_5x5";
+const DEFAULT_POLL_INTERVAL_SECONDS = 60;
 
 type Fetcher = (
 	input: string | URL | Request,
@@ -56,6 +65,10 @@ export interface RiotGamesServiceOptions {
 	fetch?: Fetcher;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
+	pollIntervalSeconds?: number;
+	players?: RiotPlayerConfig[];
+	setInterval?: typeof setInterval;
+	clearInterval?: typeof clearInterval;
 }
 
 export interface RiotAccount {
@@ -107,6 +120,64 @@ export interface RiotLeagueEntry {
 	losses: number;
 }
 
+export interface RiotActiveGame {
+	gameId: number;
+	gameStartTime: number;
+	gameLength: number;
+	gameMode: string;
+	gameQueueConfigId: number;
+	participants: Array<{
+		puuid: string;
+		championId: number;
+	}>;
+}
+
+export interface RiotRank {
+	tier: string;
+	rank: string;
+	leaguePoints: number;
+	wins: number;
+	losses: number;
+}
+
+export interface RiotActiveGameStatus {
+	gameId: number;
+	gameStartTime: number;
+	gameLength: number;
+	gameMode: string;
+	queueId: number;
+	championId: number;
+}
+
+export interface RiotEndedGameStats {
+	matchId: string;
+	kills: number;
+	deaths: number;
+	assists: number;
+	championId: number;
+	win: boolean;
+	queueId: number;
+	gameCreation: number;
+	gameDuration: number;
+	rankBefore: RiotRank | null;
+	rankAfter: RiotRank | null;
+}
+
+export interface RiotPlayerPollState {
+	username: string;
+	gameName: string;
+	tagLine: string;
+	platform: RiotPlatform;
+	currentRank: RiotRank | null;
+	inProgress: RiotActiveGameStatus | null;
+	mostRecentEnded: RiotEndedGameStats | null;
+}
+
+type RiotGamesServiceEvents = {
+	update: [state: RiotPlayerPollState];
+	error: [error: unknown, player: RiotPlayerConfig];
+};
+
 export class RiotGamesError extends Error {
 	readonly status: number;
 	readonly retryAfterMs?: number;
@@ -134,6 +205,12 @@ interface RateBucket {
 	count: number;
 	/** Wall time when the current window started (approx from first observed count). */
 	windowStartMs: number;
+}
+
+interface PlayerPollMemory {
+	lastMatchId: string | null;
+	mostRecentEnded: RiotEndedGameStats | null;
+	currentRank: RiotRank | null;
 }
 
 function parseRetryAfterMs(header: string | null): number | undefined {
@@ -182,30 +259,61 @@ function defaultSleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function playerKey(player: RiotPlayerConfig): string {
+	return `${player.platform}:${player.gameName.toLowerCase()}:${player.tagLine.toLowerCase()}`;
+}
+
+function soloRankFromEntries(entries: RiotLeagueEntry[]): RiotRank | null {
+	const solo = entries.find((entry) => entry.queueType === SOLO_QUEUE);
+	if (!solo) {
+		return null;
+	}
+	return {
+		tier: solo.tier,
+		rank: solo.rank,
+		leaguePoints: solo.leaguePoints,
+		wins: solo.wins,
+		losses: solo.losses,
+	};
+}
+
 /**
  * Thin Riot Games API client for LoL account/match/league lookups.
- * Optional key: unavailable when unset. Rate-limit aware for polling consumers.
+ * Optional key: unavailable when unset. Rate-limit aware poller for configured players.
  */
-export default class RiotGamesService {
+export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvents> {
 	private readonly apiKey: string | null;
 	private readonly fetcher: Fetcher;
 	private readonly sleep: (ms: number) => Promise<void>;
 	private readonly now: () => number;
+	private readonly pollIntervalSeconds: number;
+	private readonly players: RiotPlayerConfig[];
+	private readonly setIntervalFn: typeof setInterval;
+	private readonly clearIntervalFn: typeof clearInterval;
 	private readonly accountCache = new Map<string, CacheEntry<RiotAccount>>();
 	private readonly matchCache = new Map<string, CacheEntry<RiotMatch>>();
 	/** host → bucketKey → state */
 	private readonly rateBuckets = new Map<string, Map<string, RateBucket>>();
+	private readonly pollMemory = new Map<string, PlayerPollMemory>();
+	private pollTimer: ReturnType<typeof setInterval> | null = null;
+	private polling = false;
 
 	constructor(
 		apiKey: string | null,
 		private readonly credentialReporter?: CredentialRejectionReporter,
 		options: RiotGamesServiceOptions = {},
 	) {
+		super();
 		const trimmed = apiKey?.trim() || null;
 		this.apiKey = trimmed;
 		this.fetcher = options.fetch ?? fetch;
 		this.sleep = options.sleep ?? defaultSleep;
 		this.now = options.now ?? Date.now;
+		this.pollIntervalSeconds =
+			options.pollIntervalSeconds ?? DEFAULT_POLL_INTERVAL_SECONDS;
+		this.players = options.players ?? [];
+		this.setIntervalFn = options.setInterval ?? setInterval;
+		this.clearIntervalFn = options.clearInterval ?? clearInterval;
 	}
 
 	isAvailable(): boolean {
@@ -215,6 +323,42 @@ export default class RiotGamesService {
 	clearCache(): void {
 		this.accountCache.clear();
 		this.matchCache.clear();
+	}
+
+	startPoller(): void {
+		if (!this.apiKey || this.players.length === 0 || this.pollTimer !== null) {
+			return;
+		}
+		void this.pollOnce();
+		this.pollTimer = this.setIntervalFn(() => {
+			void this.pollOnce();
+		}, this.pollIntervalSeconds * 1000);
+	}
+
+	stopPoller(): void {
+		if (this.pollTimer !== null) {
+			this.clearIntervalFn(this.pollTimer);
+			this.pollTimer = null;
+		}
+	}
+
+	async pollOnce(): Promise<void> {
+		if (this.polling || !this.apiKey || this.players.length === 0) {
+			return;
+		}
+		this.polling = true;
+		try {
+			for (const player of this.players) {
+				try {
+					const state = await this.pollPlayer(player);
+					this.emit("update", state);
+				} catch (error) {
+					this.emit("error", error, player);
+				}
+			}
+		} finally {
+			this.polling = false;
+		}
 	}
 
 	async getAccountByRiotId(
@@ -302,6 +446,24 @@ export default class RiotGamesService {
 		return this.request<RiotLeagueEntry[]>(platform, path);
 	}
 
+	async getActiveGame(
+		platform: RiotPlatform,
+		puuid: string,
+	): Promise<RiotActiveGame | null> {
+		if (!this.apiKey) {
+			return null;
+		}
+		const path = `/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
+		try {
+			return await this.request<RiotActiveGame>(platform, path);
+		} catch (error) {
+			if (error instanceof RiotGamesError && error.status === 404) {
+				return null;
+			}
+			throw error;
+		}
+	}
+
 	async request<T>(
 		routing: RiotRegion | RiotPlatform,
 		path: string,
@@ -325,6 +487,98 @@ export default class RiotGamesService {
 		}
 
 		return this.fetchWithRateLimit<T>(host, url.toString());
+	}
+
+	private async pollPlayer(
+		player: RiotPlayerConfig,
+	): Promise<RiotPlayerPollState> {
+		const region = platformToRegion(player.platform);
+		const key = playerKey(player);
+		const memory = this.pollMemory.get(key) ?? {
+			lastMatchId: null,
+			mostRecentEnded: null,
+			currentRank: null,
+		};
+
+		const account = await this.getAccountByRiotId(
+			region,
+			player.gameName,
+			player.tagLine,
+		);
+		if (!account) {
+			throw new RiotGamesError(
+				`Riot account not found: ${player.gameName}#${player.tagLine}`,
+				404,
+			);
+		}
+
+		const active = await this.getActiveGame(player.platform, account.puuid);
+		let inProgress: RiotActiveGameStatus | null = null;
+		if (active) {
+			const self = active.participants.find((p) => p.puuid === account.puuid);
+			inProgress = {
+				gameId: active.gameId,
+				gameStartTime: active.gameStartTime,
+				gameLength: active.gameLength,
+				gameMode: active.gameMode,
+				queueId: active.gameQueueConfigId,
+				championId: self?.championId ?? 0,
+			};
+		}
+
+		const matchIds = await this.getMatchIdsByPuuid(region, account.puuid, {
+			count: 1,
+		});
+		const newestMatchId = matchIds[0] ?? null;
+
+		if (newestMatchId !== null && newestMatchId !== memory.lastMatchId) {
+			const match = await this.getMatch(region, newestMatchId);
+			const entries = await this.getLeagueEntriesByPuuid(
+				player.platform,
+				account.puuid,
+			);
+			const rankAfter = soloRankFromEntries(entries);
+			// ponytail: rankBefore null until a prior poll stored currentRank
+			const rankBefore = memory.currentRank;
+			const participant = match?.info.participants.find(
+				(p) => p.puuid === account.puuid,
+			);
+			if (match && participant) {
+				memory.mostRecentEnded = {
+					matchId: newestMatchId,
+					kills: participant.kills,
+					deaths: participant.deaths,
+					assists: participant.assists,
+					championId: participant.championId,
+					win: participant.win,
+					queueId: match.info.queueId,
+					gameCreation: match.info.gameCreation,
+					gameDuration: match.info.gameDuration,
+					rankBefore,
+					rankAfter,
+				};
+			}
+			memory.lastMatchId = newestMatchId;
+			memory.currentRank = rankAfter;
+		} else {
+			const entries = await this.getLeagueEntriesByPuuid(
+				player.platform,
+				account.puuid,
+			);
+			memory.currentRank = soloRankFromEntries(entries);
+		}
+
+		this.pollMemory.set(key, memory);
+
+		return {
+			username: `${account.gameName}#${account.tagLine}`,
+			gameName: account.gameName,
+			tagLine: account.tagLine,
+			platform: player.platform,
+			currentRank: memory.currentRank,
+			inProgress,
+			mostRecentEnded: memory.mostRecentEnded,
+		};
 	}
 
 	private getCached<T>(

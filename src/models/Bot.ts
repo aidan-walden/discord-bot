@@ -135,7 +135,11 @@ export default class Bot extends Client {
 		this.appleMusic = new AppleMusicService();
 		this.musicLinks = new MusicLinkService(this.spotify, this.appleMusic);
 		const riotApiKey = config.get("RIOT_API_KEY")?.trim() || null;
-		this.riot = new RiotGamesService(riotApiKey, this.metrics);
+		const riotConfig = config.get("riot");
+		this.riot = new RiotGamesService(riotApiKey, this.metrics, {
+			pollIntervalSeconds: riotConfig.pollIntervalSeconds,
+			players: riotConfig.players,
+		});
 
 		this.holidays = new HolidayProvider();
 
@@ -203,6 +207,7 @@ export default class Bot extends Client {
 			}
 
 			this.holidays.start();
+			this.riot.startPoller();
 		});
 	}
 

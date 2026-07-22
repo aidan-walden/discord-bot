@@ -110,6 +110,7 @@ type YamlOptions = {
 	baseProfilePictureBlock?: string;
 	holidayProfilePicturesBlock?: string;
 	deafentrackerBlock?: string;
+	riotBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
 };
@@ -127,6 +128,7 @@ function buildYaml(options: YamlOptions = {}) {
 		baseProfilePictureBlock,
 		holidayProfilePicturesBlock,
 		deafentrackerBlock,
+		riotBlock,
 		lavalinkBlock,
 		omitKeys = [],
 	} = options;
@@ -182,6 +184,10 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (deafentrackerBlock !== undefined && deafentrackerBlock.length > 0) {
 		lines.push(deafentrackerBlock);
+	}
+
+	if (riotBlock !== undefined && riotBlock.length > 0) {
+		lines.push(riotBlock);
 	}
 
 	if (lavalinkBlock === undefined) {
@@ -637,6 +643,74 @@ describe("Config", () => {
 					].join("\n"),
 				}),
 				"Invalid config value for deafentracker.users: expected array of strings.",
+			);
+		});
+	});
+
+	describe("riot validation", () => {
+		test("defaults when block omitted", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("riot")).toEqual({
+					pollIntervalSeconds: 60,
+					players: [],
+				});
+			});
+		});
+
+		test("parses interval and players", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						riotBlock: [
+							"riot:",
+							"  pollIntervalSeconds: 30",
+							"  players:",
+							'    - gameName: "Faker"',
+							'      tagLine: "KR1"',
+							'      platform: "kr"',
+						].join("\n"),
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				expect(config.get("riot")).toEqual({
+					pollIntervalSeconds: 30,
+					players: [{ gameName: "Faker", tagLine: "KR1", platform: "kr" }],
+				});
+			});
+		});
+
+		test("rejects non-positive pollIntervalSeconds", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					riotBlock: ["riot:", "  pollIntervalSeconds: 0"].join("\n"),
+				}),
+				"Invalid config value for riot.pollIntervalSeconds: expected positive number.",
+			);
+		});
+
+		test("rejects bad platform", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					riotBlock: [
+						"riot:",
+						"  players:",
+						'    - gameName: "A"',
+						'      tagLine: "B"',
+						'      platform: "xx"',
+					].join("\n"),
+				}),
+				"Invalid riot.players[0].platform: expected one of br1, eun1, euw1, jp1, kr, la1, la2, na1, oc1, tr1, ru, ph2, sg2, th2, tw2, vn2.",
+			);
+		});
+
+		test("rejects non-object riot", async () => {
+			await expectLoadConfigError(
+				buildYaml({ riotBlock: 'riot: "nope"' }),
+				"Invalid config value for riot: expected object.",
 			);
 		});
 	});
