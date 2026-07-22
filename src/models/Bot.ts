@@ -28,6 +28,7 @@ import {
 } from "../helpers/profilePicture";
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
+import GuildSettingsRepository from "../repositories/GuildSettingsRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
@@ -72,6 +73,7 @@ export default class Bot extends Client {
 	readonly holidays: HolidayProvider;
 	readonly riot: RiotGamesService;
 	readonly riotLinks: RiotUserLinkRepository;
+	readonly guildSettings: GuildSettingsRepository;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -117,6 +119,7 @@ export default class Bot extends Client {
 		this.deafenSessions = new DeafenSessionRepository(this.db);
 		this.deafenTracker = new DeafenTrackerService(this.deafenSessions);
 		this.riotLinks = new RiotUserLinkRepository(this.db);
+		this.guildSettings = new GuildSettingsRepository(this.db);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
 			config.get("OPENAI_MODEL"),

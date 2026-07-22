@@ -90,4 +90,12 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 			linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS guild_settings (
+			guild_id TEXT PRIMARY KEY,
+			main_channel_id TEXT,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`;
 }

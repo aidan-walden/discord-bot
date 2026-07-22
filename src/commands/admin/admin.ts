@@ -4,6 +4,7 @@ import {
 	type ButtonInteraction,
 	ButtonStyle,
 	bold,
+	channelMention,
 	type ChatInputCommandInteraction,
 	ComponentType,
 	escapeMarkdown,
@@ -39,7 +40,11 @@ export type Action = {
 	needsGuild?: boolean;
 	run(
 		values: Record<string, string>,
-		ctx: { modal: ModalSubmitInteraction; bot: Bot; guild: Guild },
+		ctx: {
+			modal: ModalSubmitInteraction | ButtonInteraction;
+			bot: Bot;
+			guild: Guild;
+		},
 	): Promise<string>;
 };
 
@@ -184,6 +189,22 @@ export const ACTIONS: Action[] = [
 			return `Pardoned guild ${inlineCode(id)} from music.`;
 		},
 	},
+	{
+		id: "set_main_channel",
+		label: "📌 Set Main Channel",
+		style: ButtonStyle.Primary,
+		title: "Set Main Channel",
+		fields: [],
+		needsGuild: true,
+		run: async (_values, { bot, guild, modal }) => {
+			const channel = modal.channel;
+			if (!channel?.isTextBased() || channel.isDMBased()) {
+				throw new Error("Can't set main channel here.");
+			}
+			await bot.guildSettings.setMainChannel(guild.id, channel.id);
+			return `Main channel set to ${channelMention(channel.id)}.`;
+		},
+	},
 ];
 
 export const ACTIONS_BY_ID = new Map(
@@ -195,6 +216,7 @@ export const ROWS: string[][] = [
 	["kick_voice", "delete_message", "change_nick"],
 	["ban_gpt", "pardon_gpt"],
 	["ban_music", "pardon_music", "ban_guild_music", "pardon_guild_music"],
+	["set_main_channel"],
 ];
 
 export function buildPanel(): ActionRowBuilder<ButtonBuilder>[] {
@@ -280,6 +302,11 @@ export default class Admin implements Command {
 		const action = ACTIONS_BY_ID.get(button.customId);
 		if (!action) return;
 
+		if (action.fields.length === 0) {
+			await this.runAction(action, {}, button, bot, button.guild);
+			return;
+		}
+
 		const modalId = `${button.customId}:${button.id}`;
 		await button.showModal(buildModal(action, modalId));
 
@@ -293,29 +320,39 @@ export default class Admin implements Command {
 			return; // dismissed or timed out
 		}
 
-		const guild = modal.guild;
+		const values = Object.fromEntries(
+			action.fields.map((f) => [f.id, modal.fields.getTextInputValue(f.id)]),
+		);
+		await this.runAction(action, values, modal, bot, modal.guild);
+	}
+
+	private async runAction(
+		action: Action,
+		values: Record<string, string>,
+		interaction: ModalSubmitInteraction | ButtonInteraction,
+		bot: Bot,
+		guild: Guild | null,
+	): Promise<void> {
 		if (action.needsGuild && !guild) {
-			await modal.reply({
+			await interaction.reply({
 				content: "This action only works in a server.",
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
 
-		const values = Object.fromEntries(
-			action.fields.map((f) => [f.id, modal.fields.getTextInputValue(f.id)]),
-		);
-
-		// guild is non-null for needsGuild actions (guarded above); others ignore it.
 		try {
 			const result = await action.run(values, {
-				modal,
+				modal: interaction,
 				bot,
 				guild: guild as Guild,
 			});
-			await modal.reply({ content: result, flags: MessageFlags.Ephemeral });
+			await interaction.reply({
+				content: result,
+				flags: MessageFlags.Ephemeral,
+			});
 		} catch (error) {
-			await modal.reply({
+			await interaction.reply({
 				content: error instanceof Error ? error.message : "Action failed.",
 				flags: MessageFlags.Ephemeral,
 			});

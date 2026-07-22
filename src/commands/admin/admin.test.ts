@@ -32,6 +32,9 @@ function createBot() {
 			musicUserBans: make(),
 			musicGuildBans: make(),
 		},
+		guildSettings: {
+			setMainChannel: mock(async () => undefined),
+		},
 	} as unknown as Bot;
 }
 
@@ -158,6 +161,47 @@ describe("ACTIONS run()", () => {
 		);
 
 		expect(bot.permissions[repo][method]).toHaveBeenCalledWith(VALID_ID);
+	});
+
+	test("set_main_channel upserts guild main channel", async () => {
+		const bot = createBot();
+		const channelId = "987654321098765432";
+		const guild = { id: VALID_ID } as Guild;
+		const modal = {
+			channel: {
+				id: channelId,
+				isTextBased: () => true,
+				isDMBased: () => false,
+			},
+		} as unknown as ModalSubmitInteraction;
+
+		const result = await getAction("set_main_channel").run(
+			{},
+			{ bot, guild, modal },
+		);
+
+		expect(bot.guildSettings.setMainChannel).toHaveBeenCalledWith(
+			VALID_ID,
+			channelId,
+		);
+		expect(result).toContain(`<#${channelId}>`);
+	});
+
+	test("set_main_channel throws in a DM channel", async () => {
+		const modal = {
+			channel: { isTextBased: () => true, isDMBased: () => true },
+		} as unknown as ModalSubmitInteraction;
+
+		await expect(
+			getAction("set_main_channel").run(
+				{},
+				{
+					bot: createBot(),
+					guild: { id: VALID_ID } as Guild,
+					modal,
+				},
+			),
+		).rejects.toThrow("Can't set main channel here");
 	});
 });
 
