@@ -8,8 +8,8 @@ import {
 	EmbedBuilder,
 	escapeMarkdown,
 	SlashCommandBuilder,
-	time,
 	TimestampStyles,
+	time,
 } from "discord.js";
 import { sendLongMessage } from "../../helpers/sendLongMessage";
 import {
