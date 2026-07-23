@@ -68,6 +68,10 @@ describeWithDb("RiotUserLinkRepository", () => {
 		const list = await repo.listByUserId("u1");
 		expect(list).toHaveLength(2);
 		expect(list.map((l) => l.puuid).sort()).toEqual(["p1", "p2"]);
+		expect((await repo.listAll()).map((l) => l.puuid).sort()).toEqual([
+			"p1",
+			"p2",
+		]);
 	});
 
 	test("primary is newest linked_at", async () => {

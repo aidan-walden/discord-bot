@@ -158,6 +158,7 @@ export default class Bot extends Client {
 			rankHistory: new RiotRankHistoryRepository(this.db),
 			matches: this.riotMatches,
 			matchSync: new RiotMatchSyncRepository(this.db),
+			userLinks: this.riotLinks,
 		});
 
 		this.holidays = new HolidayProvider();

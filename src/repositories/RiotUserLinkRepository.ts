@@ -60,6 +60,14 @@ export default class RiotUserLinkRepository {
 		return rows.map(mapRow);
 	}
 
+	async listAll(): Promise<RiotUserLink[]> {
+		const rows = await this.sql<RiotUserLinkRow[]>`
+			SELECT user_id, puuid, platform, game_name, tag_line, linked_at
+			FROM riot_user_links
+		`;
+		return rows.map(mapRow);
+	}
+
 	async upsert(link: {
 		userId: string;
 		puuid: string;

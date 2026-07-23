@@ -2,6 +2,7 @@ import { EventEmitter } from "node:events";
 import type RiotMatchRepository from "../repositories/RiotMatchRepository";
 import type RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import type RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
+import type RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
@@ -75,6 +76,7 @@ export interface RiotGamesServiceOptions {
 	rankHistory?: RiotRankHistoryRepository;
 	matches?: RiotMatchRepository;
 	matchSync?: RiotMatchSyncRepository;
+	userLinks?: RiotUserLinkRepository;
 }
 
 type RiotGamesServiceEvents = {
@@ -88,6 +90,8 @@ interface PlayerPollMemory {
 	currentRank: RiotRank | null;
 	seededFromDb: boolean;
 }
+
+const MATCH_SYNC_OVERLAP_SECONDS = 24 * 60 * 60;
 
 function soloRankFromEntries(entries: RiotLeagueEntry[]): RiotRank | null {
 	const solo = entries.find((entry) => entry.queueType === SOLO_QUEUE);
@@ -116,6 +120,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	private readonly rankHistory?: RiotRankHistoryRepository;
 	private readonly matches?: RiotMatchRepository;
 	private readonly matchSync?: RiotMatchSyncRepository;
+	private readonly userLinks?: RiotUserLinkRepository;
 	private readonly now: () => number;
 	private readonly pollMemory = new Map<string, PlayerPollMemory>();
 	private readonly snapshots = new Map<string, RiotPlayerPollState>();
@@ -146,6 +151,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		this.rankHistory = options.rankHistory;
 		this.matches = options.matches;
 		this.matchSync = options.matchSync;
+		this.userLinks = options.userLinks;
 	}
 
 	isAvailable(): boolean {
@@ -222,7 +228,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	startPoller(): void {
 		if (
 			!this.client.isAvailable() ||
-			this.players.length === 0 ||
+			(this.players.length === 0 && !this.userLinks) ||
 			this.pollTimer !== null
 		) {
 			return;
@@ -244,7 +250,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		if (
 			this.polling ||
 			!this.client.isAvailable() ||
-			this.players.length === 0
+			(this.players.length === 0 && !this.userLinks)
 		) {
 			return;
 		}
@@ -255,6 +261,24 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 					const state = await this.pollPlayer(player);
 					this.snapshots.set(player.puuid, state);
 					this.emit("update", state);
+				} catch (error) {
+					this.emit("error", error, player);
+				}
+			}
+
+			const syncPlayers = new Map(
+				this.players.map((player) => [player.puuid, player]),
+			);
+			for (const link of (await this.userLinks?.listAll()) ?? []) {
+				if (!syncPlayers.has(link.puuid)) {
+					syncPlayers.set(link.puuid, {
+						puuid: link.puuid,
+						platform: link.platform,
+					});
+				}
+			}
+			for (const player of syncPlayers.values()) {
+				try {
 					await this.syncPlayerMatches(player);
 				} catch (error) {
 					this.emit("error", error, player);
@@ -452,7 +476,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	private async listAllMatchIds(
 		region: RiotRegion,
 		puuid: string,
-		opts: { queue?: number; startTime?: number } = {},
+		opts: { queue?: number; startTime?: number; endTime?: number } = {},
 	): Promise<string[]> {
 		const all: string[] = [];
 		let start = 0;
@@ -462,6 +486,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 				count: MATCH_IDS_PAGE_SIZE,
 				queue: opts.queue,
 				startTime: opts.startTime,
+				endTime: opts.endTime,
 			});
 			all.push(...page);
 			if (page.length < MATCH_IDS_PAGE_SIZE) {
@@ -478,6 +503,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		}
 		const region = platformToRegion(player.platform);
 		const now = new Date(this.now());
+		const endTime = Math.floor(now.getTime() / 1000);
+		const startTime = Math.max(0, endTime - MATCH_SYNC_OVERLAP_SECONDS);
 		const row = await this.matchSync.get(player.puuid);
 
 		if (!row?.backfilled) {
@@ -485,6 +512,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			for (const queueId of PLAYTIME_QUEUES) {
 				const ids = await this.listAllMatchIds(region, player.puuid, {
 					queue: queueId,
+					endTime: Math.max(0, startTime - 1),
 				});
 				const avg = PLAYTIME_QUEUE_AVG_SECONDS[queueId] ?? 0;
 				backfillSeconds += ids.length * avg;
@@ -493,9 +521,14 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			return;
 		}
 
-		const startTime = Math.floor(row.lastSyncedAt.getTime() / 1000);
+		const incrementalStartTime = Math.max(
+			0,
+			Math.floor(row.lastSyncedAt.getTime() / 1000) -
+				MATCH_SYNC_OVERLAP_SECONDS,
+		);
 		const ids = await this.listAllMatchIds(region, player.puuid, {
-			startTime,
+			startTime: incrementalStartTime,
+			endTime,
 		});
 		const known = await this.matches.existingMatchIds(ids);
 		for (const matchId of ids) {

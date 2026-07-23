@@ -461,7 +461,7 @@ describe("RiotGamesService", () => {
 		expect(await service404.getActiveGame("na1", "p1")).toBeNull();
 	});
 
-	test("startPoller is a no-op without key or players", () => {
+	test("startPoller needs a key and an account source", () => {
 		const setIntervalFn = mock(
 			() => 1 as unknown as ReturnType<typeof setInterval>,
 		);
@@ -478,6 +478,16 @@ describe("RiotGamesService", () => {
 		});
 		noPlayers.startPoller();
 		expect(setIntervalFn).not.toHaveBeenCalled();
+
+		const linkedAccounts = new RiotGamesService("key", undefined, {
+			players: [],
+			userLinks: { listAll: mock(async () => []) } as never,
+			setInterval: setIntervalFn as typeof setInterval,
+			clearInterval: mock(() => undefined) as typeof clearInterval,
+		});
+		linkedAccounts.startPoller();
+		expect(setIntervalFn).toHaveBeenCalledTimes(1);
+		linkedAccounts.stopPoller();
 	});
 
 	test("pollOnce emits update, stores snapshot, records rank history", async () => {
@@ -708,6 +718,7 @@ describe("RiotGamesService", () => {
 		};
 
 		const matchDetailCalls: string[] = [];
+		const matchIdCalls: string[] = [];
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
 			if (href.includes("/accounts/by-puuid/")) {
@@ -717,6 +728,7 @@ describe("RiotGamesService", () => {
 				return new Response(null, { status: 404 });
 			}
 			if (href.includes("/ids")) {
+				matchIdCalls.push(href);
 				if (href.includes("queue=")) {
 					// backfill pages — 2 solo games worth of estimate
 					if (href.includes("queue=420") && href.includes("start=0")) {
@@ -765,6 +777,16 @@ describe("RiotGamesService", () => {
 		);
 
 		let now = 1_700_100_000_000;
+		const listAllLinks = mock(async () => [
+			{
+				userId: "u1",
+				puuid: "p1",
+				platform: "euw1" as const,
+				gameName: "Hide",
+				tagLine: "NA1",
+				linkedAt: new Date(),
+			},
+		]);
 		const service = new RiotGamesService("key", undefined, {
 			fetch: fetcher,
 			players: [PLAYER],
@@ -778,6 +800,7 @@ describe("RiotGamesService", () => {
 				existingMatchIds,
 				insertMatchWithParticipants,
 			} as never,
+			userLinks: { listAll: listAllLinks } as never,
 		});
 
 		// poll 1: backfill
@@ -791,20 +814,28 @@ describe("RiotGamesService", () => {
 		expect(backfillArgs[0]).toBe("p1");
 		// 2 solo (420) × 1800s
 		expect(backfillArgs[1]).toBe(2 * 1800);
+		expect(backfillArgs[2]).toEqual(new Date(1_700_100_000_000));
+		expect(
+			matchIdCalls
+				.filter((url) => url.includes("queue="))
+				.every((url) => url.includes("endTime=1700013599")),
+		).toBe(true);
 		expect(insertMatchWithParticipants).not.toHaveBeenCalled();
 		expect(matchDetailCalls.filter((u) => u.includes("NA1_old"))).toHaveLength(
 			0,
 		);
 
 		// poll 2: incremental
+		const previousSyncedAt = new Date(now);
 		getSync.mockImplementation(async () => ({
 			puuid: "p1",
-			lastSyncedAt: new Date(now),
+			lastSyncedAt: previousSyncedAt,
 			backfilled: true,
 			backfillSeconds: 3600,
 		}));
 		now += 60_000;
 		matchDetailCalls.length = 0;
+		matchIdCalls.length = 0;
 		await service.pollOnce();
 
 		expect(setBackfill).toHaveBeenCalledTimes(1);
@@ -812,9 +843,57 @@ describe("RiotGamesService", () => {
 		expect(insertedMatches).toHaveLength(1);
 		expect(insertedMatches[0]?.metadata.matchId).toBe("NA1_new");
 		expect(touchSynced).toHaveBeenCalledTimes(1);
+		expect(
+			matchIdCalls.some(
+				(url) =>
+					url.includes("startTime=1700013600") &&
+					url.includes("endTime=1700100060"),
+			),
+		).toBe(true);
+		expect(getSync).toHaveBeenCalledTimes(2);
 		// only unknown match fetched for store (rank poll may also fetch newest)
 		expect(
 			matchDetailCalls.filter((u) => u.includes("NA1_known")),
 		).toHaveLength(0);
+	});
+
+	test("syncs a linked account without configured players", async () => {
+		const listAll = mock(async () => [
+			{
+				userId: "u1",
+				puuid: "linked-puuid",
+				platform: "euw1" as const,
+				gameName: "Linked",
+				tagLine: "EUW",
+				linkedAt: new Date(),
+			},
+		]);
+		const setBackfill = mock(async () => undefined);
+		const fetcher = mock(async (url: string | URL | Request) => {
+			if (String(url).includes("/ids")) {
+				return jsonResponse([]);
+			}
+			return new Response(null, { status: 500 });
+		});
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [],
+			now: () => 1_700_100_000_000,
+			userLinks: { listAll } as never,
+			matchSync: {
+				get: mock(async () => null),
+				setBackfill,
+			} as never,
+			matches: {} as never,
+		});
+
+		await service.pollOnce();
+
+		expect(listAll).toHaveBeenCalledTimes(1);
+		expect(setBackfill).toHaveBeenCalledWith(
+			"linked-puuid",
+			0,
+			new Date(1_700_100_000_000),
+		);
 	});
 });
