@@ -173,6 +173,27 @@ export default class Bot extends Client {
 			config.get("lavalink").nodes,
 		);
 
+		const idleLeave = new Map<string, ReturnType<typeof setTimeout>>();
+		const clearIdleLeave = (guildId: string) => {
+			const t = idleLeave.get(guildId);
+			if (t) {
+				clearTimeout(t);
+				idleLeave.delete(guildId);
+			}
+		};
+		this.music.on("playerEmpty", (player) => {
+			clearIdleLeave(player.guildId);
+			idleLeave.set(
+				player.guildId,
+				setTimeout(() => {
+					idleLeave.delete(player.guildId);
+					void player.destroy();
+				}, 30_000),
+			);
+		});
+		this.music.on("playerStart", (player) => clearIdleLeave(player.guildId));
+		this.music.on("playerDestroy", (player) => clearIdleLeave(player.guildId));
+
 		// Lavalink events
 		// Dervied from Kazagumo readme
 		this.music.shoukaku.on("ready", (name) =>

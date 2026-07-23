@@ -8,7 +8,7 @@ import type Command from "../../models/Command";
 export default class Stop implements Command {
 	data = new SlashCommandBuilder()
 		.setName("stop")
-		.setDescription("Clears the queue and stops the player");
+		.setDescription("Stops playback and leaves the voice channel");
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
 		const context = await getMusicCommandContext(interaction, {
 			requireVoiceChannel: true,
@@ -18,9 +18,7 @@ export default class Stop implements Command {
 			return;
 		}
 
-		const { player } = context;
-		player.queue.clear();
-		player.skip();
+		await context.player.destroy();
 		await interaction.reply({ content: "Player stopped" });
 	}
 }
