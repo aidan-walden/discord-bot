@@ -104,7 +104,10 @@ export default class Bot extends Client {
 		this.shouldRemoveCommands = shouldRemoveCommands;
 		this.deployGuildId = guildId;
 		this.commands = new Collection<string, Command>();
-		this.adminUserIds = new Set(config.get("ADMIN_USER_IDS"));
+		this.adminUserIds = new Set([
+			config.get("BOT_OWNER_ID"),
+			...config.get("ADMIN_USER_IDS"),
+		]);
 		this.db = new Bun.SQL(config.get("DATABASE_URL"));
 		this.metrics = new MetricsCollector();
 		const openaiConfig = config.get("openai");

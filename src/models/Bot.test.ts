@@ -333,6 +333,20 @@ describe("Bot.applyHolidayProfilePicture", () => {
 	});
 });
 
+describe("Bot admin permissions", () => {
+	test("treats BOT_OWNER_ID as admin even when ADMIN_USER_IDS is empty", async () => {
+		const filePath = await writeTempConfig(buildYaml());
+		const config = await Config.load(filePath);
+		const bot = new Bot(config);
+
+		try {
+			expect(bot.permissions.isAdminUser("file-owner")).toBe(true);
+		} finally {
+			await closeBot(bot);
+		}
+	});
+});
+
 describe("Bot holiday events", () => {
 	test("forwards HolidayProvider changes to the bot event emitter", async () => {
 		const filePath = await writeTempConfig(buildYaml());
