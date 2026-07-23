@@ -1,9 +1,14 @@
 import { EventEmitter } from "node:events";
+import type RiotMatchRepository from "../repositories/RiotMatchRepository";
+import type RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import type RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
 	LOL_VIEW_CACHE_TTL_MS,
+	MATCH_IDS_PAGE_SIZE,
+	PLAYTIME_QUEUE_AVG_SECONDS,
+	PLAYTIME_QUEUES,
 	platformToRegion,
 	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
@@ -68,6 +73,8 @@ export interface RiotGamesServiceOptions {
 	setInterval?: typeof setInterval;
 	clearInterval?: typeof clearInterval;
 	rankHistory?: RiotRankHistoryRepository;
+	matches?: RiotMatchRepository;
+	matchSync?: RiotMatchSyncRepository;
 }
 
 type RiotGamesServiceEvents = {
@@ -107,6 +114,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	private readonly setIntervalFn: typeof setInterval;
 	private readonly clearIntervalFn: typeof clearInterval;
 	private readonly rankHistory?: RiotRankHistoryRepository;
+	private readonly matches?: RiotMatchRepository;
+	private readonly matchSync?: RiotMatchSyncRepository;
 	private readonly now: () => number;
 	private readonly pollMemory = new Map<string, PlayerPollMemory>();
 	private readonly snapshots = new Map<string, RiotPlayerPollState>();
@@ -135,6 +144,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		this.setIntervalFn = options.setInterval ?? setInterval;
 		this.clearIntervalFn = options.clearInterval ?? clearInterval;
 		this.rankHistory = options.rankHistory;
+		this.matches = options.matches;
+		this.matchSync = options.matchSync;
 	}
 
 	isAvailable(): boolean {
@@ -244,6 +255,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 					const state = await this.pollPlayer(player);
 					this.snapshots.set(player.puuid, state);
 					this.emit("update", state);
+					await this.syncPlayerMatches(player);
 				} catch (error) {
 					this.emit("error", error, player);
 				}
@@ -271,7 +283,13 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	async getMatchIdsByPuuid(
 		region: RiotRegion,
 		puuid: string,
-		opts?: { start?: number; count?: number },
+		opts?: {
+			start?: number;
+			count?: number;
+			startTime?: number;
+			endTime?: number;
+			queue?: number;
+		},
 	): Promise<string[]> {
 		return this.client.getMatchIdsByPuuid(region, puuid, opts);
 	}
@@ -429,5 +447,67 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			inProgress,
 			mostRecentEnded: memory.mostRecentEnded,
 		};
+	}
+
+	private async listAllMatchIds(
+		region: RiotRegion,
+		puuid: string,
+		opts: { queue?: number; startTime?: number } = {},
+	): Promise<string[]> {
+		const all: string[] = [];
+		let start = 0;
+		for (;;) {
+			const page = await this.client.getMatchIdsByPuuid(region, puuid, {
+				start,
+				count: MATCH_IDS_PAGE_SIZE,
+				queue: opts.queue,
+				startTime: opts.startTime,
+			});
+			all.push(...page);
+			if (page.length < MATCH_IDS_PAGE_SIZE) {
+				break;
+			}
+			start += MATCH_IDS_PAGE_SIZE;
+		}
+		return all;
+	}
+
+	private async syncPlayerMatches(player: RiotPlayerConfig): Promise<void> {
+		if (!this.matches || !this.matchSync) {
+			return;
+		}
+		const region = platformToRegion(player.platform);
+		const now = new Date(this.now());
+		const row = await this.matchSync.get(player.puuid);
+
+		if (!row?.backfilled) {
+			let backfillSeconds = 0;
+			for (const queueId of PLAYTIME_QUEUES) {
+				const ids = await this.listAllMatchIds(region, player.puuid, {
+					queue: queueId,
+				});
+				const avg = PLAYTIME_QUEUE_AVG_SECONDS[queueId] ?? 0;
+				backfillSeconds += ids.length * avg;
+			}
+			await this.matchSync.setBackfill(player.puuid, backfillSeconds, now);
+			return;
+		}
+
+		const startTime = Math.floor(row.lastSyncedAt.getTime() / 1000);
+		const ids = await this.listAllMatchIds(region, player.puuid, {
+			startTime,
+		});
+		const known = await this.matches.existingMatchIds(ids);
+		for (const matchId of ids) {
+			if (known.has(matchId)) {
+				continue;
+			}
+			const match = await this.client.getMatch(region, matchId);
+			if (!match) {
+				continue;
+			}
+			await this.matches.insertMatchWithParticipants(match);
+		}
+		await this.matchSync.touchSynced(player.puuid, now);
 	}
 }

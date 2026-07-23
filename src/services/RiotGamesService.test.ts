@@ -402,9 +402,14 @@ describe("RiotGamesService", () => {
 		const fetcher = mock(async () => jsonResponse(["m1", "m2"]));
 		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
 
-		await service.getMatchIdsByPuuid("europe", "abc", { start: 5, count: 10 });
+		await service.getMatchIdsByPuuid("europe", "abc", {
+			start: 5,
+			count: 10,
+			startTime: 1700000000,
+			queue: 420,
+		});
 		expect(fetcher).toHaveBeenCalledWith(
-			"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/abc/ids?start=5&count=10",
+			"https://europe.api.riotgames.com/lol/match/v5/matches/by-puuid/abc/ids?start=5&count=10&startTime=1700000000&queue=420",
 			{ headers: { "X-Riot-Token": "key" } },
 		);
 	});
@@ -685,5 +690,131 @@ describe("RiotGamesService", () => {
 		});
 		expect(await service.getRankHistory("p1")).toHaveLength(1);
 		expect(listByPuuid).toHaveBeenCalledWith("p1");
+	});
+
+	test("sync backfills once then fetches unknown matches only", async () => {
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		const fullMatch = {
+			metadata: { matchId: "NA1_new", participants: ["p1", "p2"] },
+			info: {
+				gameCreation: 1_700_000_000_000,
+				gameDuration: 1900,
+				queueId: 420,
+				participants: [
+					participant({ puuid: "p1" }),
+					participant({ puuid: "p2", championId: 1 }),
+				],
+			},
+		};
+
+		const matchDetailCalls: string[] = [];
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			if (href.includes("/accounts/by-puuid/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				if (href.includes("queue=")) {
+					// backfill pages — 2 solo games worth of estimate
+					if (href.includes("queue=420") && href.includes("start=0")) {
+						return jsonResponse(["NA1_old1", "NA1_old2"]);
+					}
+					return jsonResponse([]);
+				}
+				if (href.includes("startTime=")) {
+					return jsonResponse(["NA1_new", "NA1_known"]);
+				}
+				return jsonResponse(["NA1_new"]);
+			}
+			if (href.includes("/matches/")) {
+				matchDetailCalls.push(href);
+				return jsonResponse(fullMatch);
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse([]);
+			}
+			return new Response(null, { status: 500 });
+		});
+
+		const setBackfill = mock(async () => undefined);
+		const touchSynced = mock(async () => undefined);
+		const getSync = mock(
+			async () =>
+				null as null | {
+					puuid: string;
+					lastSyncedAt: Date;
+					backfilled: boolean;
+					backfillSeconds: number;
+				},
+		);
+		const existingMatchIds = mock(async (ids: string[]) => {
+			const set = new Set<string>();
+			if (ids.includes("NA1_known")) {
+				set.add("NA1_known");
+			}
+			return set;
+		});
+		const insertedMatches: Array<{ metadata: { matchId: string } }> = [];
+		const insertMatchWithParticipants = mock(
+			async (match: { metadata: { matchId: string } }) => {
+				insertedMatches.push(match);
+			},
+		);
+
+		let now = 1_700_100_000_000;
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [PLAYER],
+			now: () => now,
+			matchSync: {
+				get: getSync,
+				setBackfill,
+				touchSynced,
+			} as never,
+			matches: {
+				existingMatchIds,
+				insertMatchWithParticipants,
+			} as never,
+		});
+
+		// poll 1: backfill
+		await service.pollOnce();
+		expect(setBackfill).toHaveBeenCalledTimes(1);
+		const backfillArgs = setBackfill.mock.calls[0] as unknown as [
+			string,
+			number,
+			Date,
+		];
+		expect(backfillArgs[0]).toBe("p1");
+		// 2 solo (420) × 1800s
+		expect(backfillArgs[1]).toBe(2 * 1800);
+		expect(insertMatchWithParticipants).not.toHaveBeenCalled();
+		expect(matchDetailCalls.filter((u) => u.includes("NA1_old"))).toHaveLength(
+			0,
+		);
+
+		// poll 2: incremental
+		getSync.mockImplementation(async () => ({
+			puuid: "p1",
+			lastSyncedAt: new Date(now),
+			backfilled: true,
+			backfillSeconds: 3600,
+		}));
+		now += 60_000;
+		matchDetailCalls.length = 0;
+		await service.pollOnce();
+
+		expect(setBackfill).toHaveBeenCalledTimes(1);
+		expect(existingMatchIds).toHaveBeenCalled();
+		expect(insertedMatches).toHaveLength(1);
+		expect(insertedMatches[0]?.metadata.matchId).toBe("NA1_new");
+		expect(touchSynced).toHaveBeenCalledTimes(1);
+		// only unknown match fetched for store (rank poll may also fetch newest)
+		expect(
+			matchDetailCalls.filter((u) => u.includes("NA1_known")),
+		).toHaveLength(0);
 	});
 });

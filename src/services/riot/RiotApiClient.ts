@@ -171,7 +171,13 @@ export default class RiotApiClient {
 	async getMatchIdsByPuuid(
 		region: RiotRegion,
 		puuid: string,
-		opts?: { start?: number; count?: number },
+		opts?: {
+			start?: number;
+			count?: number;
+			startTime?: number;
+			endTime?: number;
+			queue?: number;
+		},
 	): Promise<string[]> {
 		if (!this.apiKey) {
 			return [];
@@ -181,6 +187,9 @@ export default class RiotApiClient {
 		return this.request<string[]>(region, path, {
 			start: opts?.start,
 			count: opts?.count,
+			startTime: opts?.startTime,
+			endTime: opts?.endTime,
+			queue: opts?.queue,
 		});
 	}
 

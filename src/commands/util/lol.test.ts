@@ -122,20 +122,21 @@ function buildInteraction(opts: BuildOpts = {}): ChatInputCommandInteraction {
 		})),
 	};
 
+	const defaultLink = {
+		userId: memberId ?? executingUserId,
+		puuid: "p1",
+		platform: "na1" as const,
+		gameName: "Faker",
+		tagLine: "KR1",
+		linkedAt: new Date(),
+	};
+	const linkResult = opts.link === undefined ? defaultLink : opts.link;
 	const riotLinks = {
-		getByUserId: mock(async () =>
-			opts.link === undefined
-				? {
-						userId: memberId ?? executingUserId,
-						puuid: "p1",
-						platform: "na1" as const,
-						gameName: "Faker",
-						tagLine: "KR1",
-						linkedAt: new Date(),
-					}
-				: opts.link,
-		),
+		getPrimaryByUserId: mock(async () => linkResult),
 		upsert: mock(async (row: unknown) => row),
+	};
+	const riotMatches = {
+		sumTimePlayedForUser: mock(async () => 3660),
 	};
 
 	return {
@@ -152,6 +153,7 @@ function buildInteraction(opts: BuildOpts = {}): ChatInputCommandInteraction {
 				},
 				riot,
 				riotLinks,
+				riotMatches,
 			},
 		},
 		reply: mock(async () => undefined),
@@ -235,10 +237,13 @@ describe("Lol", () => {
 		expect(call.content).toContain("/lol map");
 	});
 
-	test("view builds embed with rank and recent", async () => {
+	test("view builds embed with rank, recent, and playtime", async () => {
 		const interaction = buildInteraction({ subcommand: "view" });
 		await new Lol().execute(interaction);
 		expect(interaction.deferReply).toHaveBeenCalled();
+		expect(
+			interaction.client.bot.riotMatches.sumTimePlayedForUser,
+		).toHaveBeenCalledWith("self");
 		const call = (interaction.editReply as ReturnType<typeof mock>).mock
 			.calls[0]?.[0];
 		const embedData = call.embeds[0].toJSON();
@@ -251,5 +256,10 @@ describe("Lol", () => {
 		);
 		expect(recent?.value).toContain("LeeSin");
 		expect(recent?.value).toContain("5/2/10");
+		const playtime = embedData.fields?.find(
+			(f: { name: string }) =>
+				f.name === "Playtime (across all paired accounts)",
+		);
+		expect(playtime?.value).toBe("1h 1m");
 	});
 });

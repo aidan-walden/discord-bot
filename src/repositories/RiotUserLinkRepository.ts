@@ -32,14 +32,32 @@ function mapRow(row: RiotUserLinkRow): RiotUserLink {
 export default class RiotUserLinkRepository {
 	constructor(private readonly sql: typeof Bun.sql) {}
 
-	async getByUserId(userId: string): Promise<RiotUserLink | null> {
+	/** Newest linked account (primary for /lol view stats). */
+	async getPrimaryByUserId(userId: string): Promise<RiotUserLink | null> {
 		const rows = await this.sql<RiotUserLinkRow[]>`
 			SELECT user_id, puuid, platform, game_name, tag_line, linked_at
 			FROM riot_user_links
 			WHERE user_id = ${userId}
+			ORDER BY linked_at DESC
+			LIMIT 1
 		`;
 		const row = rows[0];
 		return row ? mapRow(row) : null;
+	}
+
+	/** @deprecated use getPrimaryByUserId — kept as alias */
+	async getByUserId(userId: string): Promise<RiotUserLink | null> {
+		return this.getPrimaryByUserId(userId);
+	}
+
+	async listByUserId(userId: string): Promise<RiotUserLink[]> {
+		const rows = await this.sql<RiotUserLinkRow[]>`
+			SELECT user_id, puuid, platform, game_name, tag_line, linked_at
+			FROM riot_user_links
+			WHERE user_id = ${userId}
+			ORDER BY linked_at DESC
+		`;
+		return rows.map(mapRow);
 	}
 
 	async upsert(link: {
@@ -50,16 +68,16 @@ export default class RiotUserLinkRepository {
 		tagLine: string;
 	}): Promise<RiotUserLink> {
 		const rows = await this.sql<RiotUserLinkRow[]>`
-			INSERT INTO riot_user_links (user_id, puuid, platform, game_name, tag_line)
+			INSERT INTO riot_user_links (puuid, user_id, platform, game_name, tag_line)
 			VALUES (
-				${link.userId},
 				${link.puuid},
+				${link.userId},
 				${link.platform},
 				${link.gameName},
 				${link.tagLine}
 			)
-			ON CONFLICT (user_id) DO UPDATE SET
-				puuid = EXCLUDED.puuid,
+			ON CONFLICT (puuid) DO UPDATE SET
+				user_id = EXCLUDED.user_id,
 				platform = EXCLUDED.platform,
 				game_name = EXCLUDED.game_name,
 				tag_line = EXCLUDED.tag_line,

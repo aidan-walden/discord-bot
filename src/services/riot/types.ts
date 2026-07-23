@@ -33,6 +33,8 @@ export interface RiotMatchParticipant {
 	item4: number;
 	item5: number;
 	item6: number;
+	/** Per-player seconds when present; fall back to match gameDuration. */
+	timePlayed?: number;
 }
 
 export interface RiotSummoner {

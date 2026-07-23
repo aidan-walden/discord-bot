@@ -29,6 +29,8 @@ import {
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import GuildSettingsRepository from "../repositories/GuildSettingsRepository";
+import RiotMatchRepository from "../repositories/RiotMatchRepository";
+import RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
 import SecretSantaRepository from "../repositories/SecretSantaRepository";
@@ -74,6 +76,7 @@ export default class Bot extends Client {
 	readonly holidays: HolidayProvider;
 	readonly riot: RiotGamesService;
 	readonly riotLinks: RiotUserLinkRepository;
+	readonly riotMatches: RiotMatchRepository;
 	readonly guildSettings: GuildSettingsRepository;
 	readonly secretSanta: SecretSantaRepository;
 
@@ -124,6 +127,7 @@ export default class Bot extends Client {
 		this.deafenSessions = new DeafenSessionRepository(this.db);
 		this.deafenTracker = new DeafenTrackerService(this.deafenSessions);
 		this.riotLinks = new RiotUserLinkRepository(this.db);
+		this.riotMatches = new RiotMatchRepository(this.db);
 		this.guildSettings = new GuildSettingsRepository(this.db);
 		this.secretSanta = new SecretSantaRepository(this.db);
 		this.chatSessions = new ChatSessionService(
@@ -152,6 +156,8 @@ export default class Bot extends Client {
 			pollIntervalSeconds: riotConfig.pollIntervalSeconds,
 			players: riotConfig.players,
 			rankHistory: new RiotRankHistoryRepository(this.db),
+			matches: this.riotMatches,
+			matchSync: new RiotMatchSyncRepository(this.db),
 		});
 
 		this.holidays = new HolidayProvider();

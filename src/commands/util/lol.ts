@@ -68,6 +68,12 @@ function formatDuration(seconds: number): string {
 	return s === 0 ? `${m}m` : `${m}m ${s}s`;
 }
 
+function formatPlaytime(totalSeconds: number): string {
+	const hours = Math.floor(totalSeconds / 3600);
+	const minutes = Math.floor((totalSeconds % 3600) / 60);
+	return `${hours}h ${minutes}m`;
+}
+
 function matchLine(match: RiotMatch, puuid: string): string | null {
 	const p = match.info.participants.find((part) => part.puuid === puuid);
 	if (!p) {
@@ -235,7 +241,9 @@ export default class Lol implements Command {
 			return;
 		}
 
-		const link = await interaction.client.bot.riotLinks.getByUserId(member.id);
+		const link = await interaction.client.bot.riotLinks.getPrimaryByUserId(
+			member.id,
+		);
 		if (!link) {
 			await interaction.reply({
 				content: `${userMention(member.id)} has no League account mapped. Use \`/lol map\`.`,
@@ -246,11 +254,13 @@ export default class Lol implements Command {
 
 		await interaction.deferReply();
 
-		const view = await interaction.client.bot.riot.getLolView(
-			link.platform,
-			link.puuid,
-			{ gameName: link.gameName, tagLine: link.tagLine },
-		);
+		const [view, playtimeSeconds] = await Promise.all([
+			interaction.client.bot.riot.getLolView(link.platform, link.puuid, {
+				gameName: link.gameName,
+				tagLine: link.tagLine,
+			}),
+			interaction.client.bot.riotMatches.sumTimePlayedForUser(member.id),
+		]);
 
 		const solo = view.entries.find((e) => e.queueType === SOLO_QUEUE);
 		const flex = view.entries.find((e) => e.queueType === FLEX_QUEUE);
@@ -267,6 +277,10 @@ export default class Lol implements Command {
 			.addFields(
 				{ name: "Solo/Duo", value: formatRank(solo), inline: true },
 				{ name: "Flex", value: formatRank(flex), inline: true },
+				{
+					name: "Playtime (across all paired accounts)",
+					value: formatPlaytime(playtimeSeconds),
+				},
 			);
 
 		if (view.summoner) {

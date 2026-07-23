@@ -57,6 +57,20 @@ export const SOLO_QUEUE = "RANKED_SOLO_5x5";
 export const FLEX_QUEUE = "RANKED_FLEX_SR";
 export const DEFAULT_POLL_INTERVAL_SECONDS = 60;
 export const RANK_HISTORY_LIMIT = 5;
+export const MATCH_IDS_PAGE_SIZE = 100;
+
+/** Backfill averages only — incremental uses real match duration. */
+export const PLAYTIME_QUEUE_AVG_SECONDS: Record<number, number> = {
+	400: 30 * 60,
+	420: 30 * 60,
+	430: 30 * 60,
+	440: 30 * 60,
+	450: 17 * 60,
+	490: 30 * 60,
+};
+export const PLAYTIME_QUEUES = Object.keys(PLAYTIME_QUEUE_AVG_SECONDS).map(
+	Number,
+);
 
 /** Friendly region labels (NA, EUW, …) → platform routing values. */
 export const FRIENDLY_REGION_TO_PLATFORM: Record<string, RiotPlatform> = {

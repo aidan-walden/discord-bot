@@ -82,12 +82,67 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 
 	await sql`
 		CREATE TABLE IF NOT EXISTS riot_user_links (
-			user_id TEXT PRIMARY KEY,
-			puuid TEXT NOT NULL UNIQUE,
+			puuid TEXT PRIMARY KEY,
+			user_id TEXT NOT NULL,
 			platform TEXT NOT NULL,
 			game_name TEXT NOT NULL,
 			tag_line TEXT NOT NULL,
 			linked_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`;
+	// Existing DBs may still have user_id PK — rebuild to puuid PK (smurfs).
+	await sql`
+		DO $$
+		BEGIN
+			IF EXISTS (
+				SELECT 1 FROM pg_constraint
+				WHERE conname = 'riot_user_links_pkey'
+					AND conrelid = 'riot_user_links'::regclass
+					AND pg_get_constraintdef(oid) LIKE '%user_id%'
+			) THEN
+				ALTER TABLE riot_user_links DROP CONSTRAINT riot_user_links_pkey;
+				ALTER TABLE riot_user_links DROP CONSTRAINT IF EXISTS riot_user_links_puuid_key;
+				ALTER TABLE riot_user_links ADD PRIMARY KEY (puuid);
+			END IF;
+		END $$
+	`;
+	await sql`
+		CREATE INDEX IF NOT EXISTS idx_riot_user_links_user_id
+			ON riot_user_links (user_id)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS riot_matches (
+			match_id TEXT PRIMARY KEY,
+			queue_id INTEGER NOT NULL,
+			game_duration INTEGER NOT NULL,
+			game_creation TIMESTAMPTZ NOT NULL
+		)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS riot_match_participants (
+			match_id TEXT NOT NULL REFERENCES riot_matches(match_id) ON DELETE CASCADE,
+			puuid TEXT NOT NULL,
+			time_played INTEGER NOT NULL,
+			champion_id INTEGER,
+			win BOOLEAN,
+			PRIMARY KEY (puuid, match_id)
+		)
+	`;
+
+	await sql`
+		CREATE INDEX IF NOT EXISTS idx_riot_match_participants_match_id
+			ON riot_match_participants (match_id)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS riot_match_sync (
+			puuid TEXT PRIMARY KEY,
+			last_synced_at TIMESTAMPTZ NOT NULL,
+			backfilled BOOLEAN NOT NULL DEFAULT FALSE,
+			backfill_seconds BIGINT NOT NULL DEFAULT 0,
+			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`;
 
