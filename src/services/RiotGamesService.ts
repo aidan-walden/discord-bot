@@ -81,7 +81,6 @@ export interface RiotGamesServiceOptions {
 
 type RiotGamesServiceEvents = {
 	update: [state: RiotPlayerPollState];
-	error: [error: unknown, player: RiotPlayerConfig];
 };
 
 interface PlayerPollMemory {
@@ -264,7 +263,11 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 					this.snapshots.set(player.puuid, state);
 					this.emit("update", state);
 				} catch (error) {
-					this.emit("error", error, player);
+					// ponytail: never emit("error") — unhandled crashes the process
+					console.error(
+						`Riot poll failed for ${player.puuid} (${player.platform}):`,
+						error,
+					);
 				}
 			}
 
@@ -283,7 +286,10 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 				try {
 					await this.syncPlayerMatches(player);
 				} catch (error) {
-					this.emit("error", error, player);
+					console.error(
+						`Riot match sync failed for ${player.puuid} (${player.platform}):`,
+						error,
+					);
 				}
 			}
 		} finally {

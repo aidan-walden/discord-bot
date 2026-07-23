@@ -386,8 +386,12 @@ export default class RiotApiClient {
 		}
 
 		if (!response.ok) {
+			const body = await response.text().catch(() => "");
+			const detail = body.slice(0, 200);
 			throw new RiotGamesError(
-				`Riot returned HTTP ${response.status}`,
+				detail
+					? `Riot returned HTTP ${response.status}: ${detail}`
+					: `Riot returned HTTP ${response.status}`,
 				response.status,
 			);
 		}

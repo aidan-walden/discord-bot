@@ -461,6 +461,29 @@ describe("RiotGamesService", () => {
 		expect(await service404.getActiveGame("na1", "p1")).toBeNull();
 	});
 
+	test("pollOnce does not throw when Riot returns HTTP 400", async () => {
+		const fetcher = mock(
+			async () =>
+				new Response(JSON.stringify({ status: { message: "Bad request" } }), {
+					status: 400,
+				}),
+		);
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [PLAYER],
+		});
+		const errorSpy = mock(() => undefined);
+		const originalError = console.error;
+		console.error = errorSpy as typeof console.error;
+		try {
+			await expect(service.pollOnce()).resolves.toBeUndefined();
+		} finally {
+			console.error = originalError;
+		}
+		expect(errorSpy).toHaveBeenCalled();
+		expect(service.getPollState("p1")).toBeNull();
+	});
+
 	test("startPoller needs a key and an account source", () => {
 		const setIntervalFn = mock(
 			() => 1 as unknown as ReturnType<typeof setInterval>,
