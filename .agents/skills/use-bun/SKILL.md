@@ -1,13 +1,12 @@
 ---
-description: Use Bun instead of Node.js, npm, pnpm, or vite.
-globs: "*.ts, *.tsx, *.html, *.css, *.js, *.jsx, package.json"
-alwaysApply: false
+name: use-bun
+description: Use Bun for this project's runtime, package management, scripts, tests, file APIs, servers, and other built-in platform features. Use for TypeScript execution and tooling tasks; defer PostgreSQL schema, query, repository, migration, and database-test work to the use-drizzle skill.
 ---
 
 # Default to using Bun instead of Node.js
 
 - Use `bun <file>` instead of `node <file>` or `ts-node <file>`
-- Use `bun test` instead of `jest` or `vitest`
+- Use `bun run test` instead of `jest` or `vitest`
 - Use `bun build <file.html|file.ts|file.css>` instead of `webpack` or `esbuild`
 - Use `bun install` instead of `npm install` or `yarn install` or `pnpm install`
 - Use `bun run <script>` instead of `npm run <script>` or `yarn run <script>` or `pnpm run <script>`
@@ -18,14 +17,14 @@ alwaysApply: false
 - `Bun.serve()` supports WebSockets, HTTPS, and routes. Don't use `express`.
 - `bun:sqlite` for SQLite. Don't use `better-sqlite3`.
 - `Bun.redis` for Redis. Don't use `ioredis`.
-- `Bun.sql` for Postgres. Don't use `pg` or `postgres.js`.
+- For database application code, use the `use-drizzle` skill. Drizzle uses Bun's SQL driver underneath; do not write direct `Bun.sql` queries or add `pg`, `postgres`, or `postgres.js`.
 - `WebSocket` is built-in. Don't use `ws`.
 - Prefer `Bun.file` over `node:fs`'s readFile/writeFile
 - Bun.$`ls` instead of execa.
 
 ## Testing
 
-Use `bun test` to run tests.
+Use `bun run test` to run this project's tests.
 
 ```ts#index.test.ts
 import { test, expect } from "bun:test";
