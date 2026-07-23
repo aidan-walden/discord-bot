@@ -1,3 +1,4 @@
+import { sql } from "drizzle-orm";
 import { Hono } from "hono";
 import type { AppContext } from "../context";
 
@@ -10,7 +11,7 @@ health.get("/", async (c) => {
 
 	let db = false;
 	try {
-		await bot.db`select 1`;
+		await bot.db.execute(sql`select 1`);
 		db = true;
 	} catch {
 		db = false;

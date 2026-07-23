@@ -1,50 +1,37 @@
-type BanTableName = "gpt_user_bans" | "music_user_bans" | "music_guild_bans";
-type BanColumnName = "user_id" | "guild_id";
+import { asc, eq } from "drizzle-orm";
+import type { Database } from "../database/client";
+import type { gptUserBans } from "../database/schema";
+
+type BanTable = typeof gptUserBans;
 
 export default class BanRepository {
 	constructor(
-		private readonly sql: typeof Bun.sql,
-		private readonly tableName: BanTableName,
-		private readonly columnName: BanColumnName,
+		private readonly db: Database,
+		private readonly table: BanTable,
 	) {}
 
 	async has(id: string): Promise<boolean> {
-		const results = await this.sql`
-			SELECT 1
-			FROM ${this.identifier(this.tableName)}
-			WHERE ${this.identifier(this.columnName)} = ${id}
-			LIMIT 1
-		`;
-		return results.length > 0;
+		const rows = await this.db
+			.select({ id: this.table.id })
+			.from(this.table)
+			.where(eq(this.table.id, id))
+			.limit(1);
+		return rows.length > 0;
 	}
 
 	async add(id: string): Promise<void> {
-		await this.sql`
-			INSERT INTO ${this.identifier(this.tableName)} (
-				${this.identifier(this.columnName)}
-			)
-			VALUES (${id})
-			ON CONFLICT (${this.identifier(this.columnName)}) DO NOTHING
-		`;
+		await this.db.insert(this.table).values({ id }).onConflictDoNothing();
 	}
 
 	async remove(id: string): Promise<void> {
-		await this.sql`
-			DELETE FROM ${this.identifier(this.tableName)}
-			WHERE ${this.identifier(this.columnName)} = ${id}
-		`;
+		await this.db.delete(this.table).where(eq(this.table.id, id));
 	}
 
 	async list(): Promise<string[]> {
-		const results = await this.sql<Record<"value", string>[]>`
-			SELECT ${this.identifier(this.columnName)} AS value
-			FROM ${this.identifier(this.tableName)}
-			ORDER BY ${this.identifier(this.columnName)} ASC
-		`;
-		return results.map((row) => row.value);
-	}
-
-	private identifier(identifier: BanTableName | BanColumnName) {
-		return this.sql.unsafe(identifier);
+		const rows = await this.db
+			.select({ id: this.table.id })
+			.from(this.table)
+			.orderBy(asc(this.table.id));
+		return rows.map((row) => row.id);
 	}
 }

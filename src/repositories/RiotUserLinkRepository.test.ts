@@ -6,6 +6,8 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
 import RiotUserLinkRepository from "./RiotUserLinkRepository";
 
@@ -13,19 +15,19 @@ const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
 const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
 describeWithDb("RiotUserLinkRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
-	const repo = new RiotUserLinkRepository(sql);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
+	const repo = new RiotUserLinkRepository(db);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE riot_user_links`;
+		await db.execute(sql`TRUNCATE riot_user_links`);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("upserts and gets primary by user id", async () => {

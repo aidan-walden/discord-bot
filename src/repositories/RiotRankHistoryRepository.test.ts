@@ -6,26 +6,29 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { count, eq, sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
+import { riotRankHistory } from "../database/schema";
 import RiotRankHistoryRepository from "./RiotRankHistoryRepository";
 
 const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
 const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
 describeWithDb("RiotRankHistoryRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
-	const repo = new RiotRankHistoryRepository(sql);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
+	const repo = new RiotRankHistoryRepository(db);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE riot_rank_history`;
+		await db.execute(sql`TRUNCATE riot_rank_history`);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("inserts on change and skips identical rank", async () => {
@@ -66,9 +69,10 @@ describeWithDb("RiotRankHistoryRepository", () => {
 		expect(rows).toHaveLength(5);
 		expect(rows.map((r) => r.leaguePoints)).toEqual([7, 6, 5, 4, 3]);
 
-		const count = await sql<{ n: number }[]>`
-			SELECT COUNT(*)::int AS n FROM riot_rank_history WHERE puuid = ${"p1"}
-		`;
-		expect(count[0]?.n).toBe(5);
+		const countRows = await db
+			.select({ count: count() })
+			.from(riotRankHistory)
+			.where(eq(riotRankHistory.puuid, "p1"));
+		expect(countRows[0]?.count).toBe(5);
 	});
 });

@@ -66,7 +66,7 @@ async function readProfilePicture(filePath: string) {
 async function closeBot(bot: Bot): Promise<void> {
 	bot.holidays.stop();
 	bot.destroy();
-	await bot.db.close();
+	await bot.db.$client.close();
 }
 
 afterEach(async () => {

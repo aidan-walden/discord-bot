@@ -5,12 +5,12 @@
 - Bot framework: `discord.js`.
 - Music: direct `kazagumo` dependency on top of pinned GitHub `shoukaku` plus external Lavalink nodes from `config.yml`.
 - Web/admin surface: Hono served with `Bun.serve`.
-- Persistence: Postgres through `Bun.sql`. Do not add `pg`, `postgres`, or `postgres.js`.
+- Persistence: Postgres through Drizzle ORM's Bun SQL driver. Do not add `pg`, `postgres`, or `postgres.js`.
 - Prefer Bun-native file APIs such as `Bun.file(...).text()` / `.json()` for file reads and writes; keep `node:fs` only where Bun does not cover the need well, such as directory traversal.
 
 ## Entry Points
 - [`src/index.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/index.ts) loads config, initializes the bot, optionally syncs/removes slash commands, logs in, and starts the web server.
-- [`src/models/Bot.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/models/Bot.ts) wires Discord, OpenAI, database access, repositories, metrics, Kazagumo music setup, commands, and event registration.
+- [`src/models/Bot.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/models/Bot.ts) wires Discord, OpenAI, the Drizzle database, repositories, metrics, Kazagumo music setup, commands, and event registration.
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
@@ -26,9 +26,10 @@
 - Keep new command/event modules side-effect free except for their exported class.
 
 ## Persistence
-- [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) creates tables on startup; there is no separate migration tool.
+- [`src/database/schema.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/schema.ts) is the source of truth for the Postgres schema.
+- [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) applies tracked Drizzle migrations on startup. After a schema change, run `bun run db:generate` and commit the generated files.
 - Current persisted data: GPT user bans, music user bans, music guild bans, user unboxing balances, deafen sessions/summaries, Riot solo rank history, Riot matches/participants/sync, Discord ↔ Riot user links (smurfs allowed), guild settings (main channel), and bot-wide Secret Santa draws (`secret_santa_*`).
-- Repositories in `src/repositories` should accept `typeof Bun.sql` and use parameterized queries.
+- Repositories in `src/repositories` should accept the shared `Database` type and use Drizzle query builders. Use Drizzle `sql` fragments only for Postgres expressions that the query builder cannot state clearly.
 
 ## Workflow
 - Run `bun install` after dependency changes to refresh `bun.lock` and `node_modules`.

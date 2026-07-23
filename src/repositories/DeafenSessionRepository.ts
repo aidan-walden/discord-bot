@@ -1,3 +1,7 @@
+import { and, desc, eq, sql } from "drizzle-orm";
+import type { Database } from "../database/client";
+import { deafenSessions, deafenSummaries } from "../database/schema";
+
 export type DeafenSession = {
 	id: string;
 	userId: string;
@@ -15,52 +19,17 @@ export type DeafenSummary = {
 	sessionCount: number;
 };
 
-type DeafenSessionRow = {
-	id: string;
-	user_id: string;
-	guild_id: string;
-	started_at: Date;
-	ended_at: Date;
-	duration_seconds: number;
+const summaryColumns = {
+	userId: deafenSummaries.userId,
+	guildId: deafenSummaries.guildId,
+	longestDeafenSeconds: deafenSummaries.longestDeafenSeconds,
+	totalDeafenSeconds: deafenSummaries.totalDeafenSeconds,
+	sessionCount: deafenSummaries.sessionCount,
 };
-
-type DeafenSummaryRow = {
-	user_id: string;
-	guild_id: string;
-	longest_deafen_seconds: number;
-	total_deafen_seconds: number;
-	session_count: number;
-};
-
-function mapSessionRow(row: DeafenSessionRow): DeafenSession {
-	return {
-		id: String(row.id),
-		userId: row.user_id,
-		guildId: row.guild_id,
-		startedAt: new Date(row.started_at),
-		endedAt: new Date(row.ended_at),
-		durationSeconds: row.duration_seconds,
-	};
-}
-
-function mapSummaryRow(row: DeafenSummaryRow): DeafenSummary {
-	return {
-		userId: row.user_id,
-		guildId: row.guild_id,
-		longestDeafenSeconds: row.longest_deafen_seconds,
-		totalDeafenSeconds: row.total_deafen_seconds,
-		sessionCount: row.session_count,
-	};
-}
 
 export default class DeafenSessionRepository {
-	constructor(private readonly sql: typeof Bun.sql) {}
+	constructor(private readonly db: Database) {}
 
-	/**
-	 * Persist a completed deafen stretch and fold it into the per-user, per-guild
-	 * summary. Zero-length (or negative) stretches are treated as noise and skipped.
-	 * Returns the updated summary, or null when nothing was persisted.
-	 */
 	async recordSession(
 		userId: string,
 		guildId: string,
@@ -75,56 +44,34 @@ export default class DeafenSessionRepository {
 			return null;
 		}
 
-		return this.sql.begin(async (tx: typeof Bun.sql) => {
-			await tx`
-				INSERT INTO deafen_sessions (
-					user_id,
-					guild_id,
-					started_at,
-					ended_at,
-					duration_seconds
-				)
-				VALUES (
-					${userId},
-					${guildId},
-					${startedAt},
-					${endedAt},
-					${durationSeconds}
-				)
-			`;
+		return this.db.transaction(async (tx) => {
+			await tx.insert(deafenSessions).values({
+				userId,
+				guildId,
+				startedAt,
+				endedAt,
+				durationSeconds,
+			});
 
-			const rows = await tx<DeafenSummaryRow[]>`
-				INSERT INTO deafen_summaries (
-					user_id,
-					guild_id,
-					longest_deafen_seconds,
-					total_deafen_seconds,
-					session_count
-				)
-				VALUES (
-					${userId},
-					${guildId},
-					${durationSeconds},
-					${durationSeconds},
-					1
-				)
-				ON CONFLICT (user_id, guild_id) DO UPDATE
-				SET
-					longest_deafen_seconds = GREATEST(
-						deafen_summaries.longest_deafen_seconds,
-						EXCLUDED.longest_deafen_seconds
-					),
-					total_deafen_seconds =
-						deafen_summaries.total_deafen_seconds + EXCLUDED.total_deafen_seconds,
-					session_count = deafen_summaries.session_count + 1,
-					updated_at = NOW()
-				RETURNING
-					user_id,
-					guild_id,
-					longest_deafen_seconds,
-					total_deafen_seconds,
-					session_count
-			`;
+			const rows = await tx
+				.insert(deafenSummaries)
+				.values({
+					userId,
+					guildId,
+					longestDeafenSeconds: durationSeconds,
+					totalDeafenSeconds: durationSeconds,
+					sessionCount: 1,
+				})
+				.onConflictDoUpdate({
+					target: [deafenSummaries.userId, deafenSummaries.guildId],
+					set: {
+						longestDeafenSeconds: sql`GREATEST(${deafenSummaries.longestDeafenSeconds}, EXCLUDED.longest_deafen_seconds)`,
+						totalDeafenSeconds: sql`${deafenSummaries.totalDeafenSeconds} + EXCLUDED.total_deafen_seconds`,
+						sessionCount: sql`${deafenSummaries.sessionCount} + 1`,
+						updatedAt: sql`NOW()`,
+					},
+				})
+				.returning(summaryColumns);
 
 			const summary = rows[0];
 			if (!summary) {
@@ -132,8 +79,7 @@ export default class DeafenSessionRepository {
 					`Failed to persist deafen summary for user ${userId} in guild ${guildId}.`,
 				);
 			}
-
-			return mapSummaryRow(summary);
+			return summary;
 		});
 	}
 
@@ -141,23 +87,16 @@ export default class DeafenSessionRepository {
 		userId: string,
 		guildId: string,
 	): Promise<DeafenSummary | null> {
-		const rows = await this.sql<DeafenSummaryRow[]>`
-			SELECT
-				user_id,
-				guild_id,
-				longest_deafen_seconds,
-				total_deafen_seconds,
-				session_count
-			FROM deafen_summaries
-			WHERE user_id = ${userId} AND guild_id = ${guildId}
-		`;
-
-		const summary = rows[0];
-		if (!summary) {
-			return null;
-		}
-
-		return mapSummaryRow(summary);
+		const rows = await this.db
+			.select(summaryColumns)
+			.from(deafenSummaries)
+			.where(
+				and(
+					eq(deafenSummaries.userId, userId),
+					eq(deafenSummaries.guildId, guildId),
+				),
+			);
+		return rows[0] ?? null;
 	}
 
 	async listSessions(
@@ -165,20 +104,25 @@ export default class DeafenSessionRepository {
 		guildId: string,
 		limit: number,
 	): Promise<DeafenSession[]> {
-		const rows = await this.sql<DeafenSessionRow[]>`
-			SELECT
-				id,
-				user_id,
-				guild_id,
-				started_at,
-				ended_at,
-				duration_seconds
-			FROM deafen_sessions
-			WHERE user_id = ${userId} AND guild_id = ${guildId}
-			ORDER BY started_at DESC
-			LIMIT ${limit}
-		`;
+		const rows = await this.db
+			.select({
+				id: deafenSessions.id,
+				userId: deafenSessions.userId,
+				guildId: deafenSessions.guildId,
+				startedAt: deafenSessions.startedAt,
+				endedAt: deafenSessions.endedAt,
+				durationSeconds: deafenSessions.durationSeconds,
+			})
+			.from(deafenSessions)
+			.where(
+				and(
+					eq(deafenSessions.userId, userId),
+					eq(deafenSessions.guildId, guildId),
+				),
+			)
+			.orderBy(desc(deafenSessions.startedAt))
+			.limit(limit);
 
-		return rows.map(mapSessionRow);
+		return rows.map((row) => ({ ...row, id: String(row.id) }));
 	}
 }

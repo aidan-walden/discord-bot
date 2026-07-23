@@ -1,3 +1,6 @@
+import { desc, eq, sql } from "drizzle-orm";
+import type { Database } from "../database/client";
+import { riotUserLinks } from "../database/schema";
 import type { RiotPlatform } from "../services/riot/constants";
 
 export interface RiotUserLink {
@@ -9,40 +12,21 @@ export interface RiotUserLink {
 	linkedAt: Date;
 }
 
-interface RiotUserLinkRow {
-	user_id: string;
-	puuid: string;
-	platform: string;
-	game_name: string;
-	tag_line: string;
-	linked_at: Date;
-}
-
-function mapRow(row: RiotUserLinkRow): RiotUserLink {
-	return {
-		userId: row.user_id,
-		puuid: row.puuid,
-		platform: row.platform as RiotPlatform,
-		gameName: row.game_name,
-		tagLine: row.tag_line,
-		linkedAt: row.linked_at,
-	};
+function mapRow(row: typeof riotUserLinks.$inferSelect): RiotUserLink {
+	return { ...row, platform: row.platform as RiotPlatform };
 }
 
 export default class RiotUserLinkRepository {
-	constructor(private readonly sql: typeof Bun.sql) {}
+	constructor(private readonly db: Database) {}
 
-	/** Newest linked account (primary for /lol view stats). */
 	async getPrimaryByUserId(userId: string): Promise<RiotUserLink | null> {
-		const rows = await this.sql<RiotUserLinkRow[]>`
-			SELECT user_id, puuid, platform, game_name, tag_line, linked_at
-			FROM riot_user_links
-			WHERE user_id = ${userId}
-			ORDER BY linked_at DESC
-			LIMIT 1
-		`;
-		const row = rows[0];
-		return row ? mapRow(row) : null;
+		const rows = await this.db
+			.select()
+			.from(riotUserLinks)
+			.where(eq(riotUserLinks.userId, userId))
+			.orderBy(desc(riotUserLinks.linkedAt))
+			.limit(1);
+		return rows[0] ? mapRow(rows[0]) : null;
 	}
 
 	/** @deprecated use getPrimaryByUserId — kept as alias */
@@ -51,21 +35,16 @@ export default class RiotUserLinkRepository {
 	}
 
 	async listByUserId(userId: string): Promise<RiotUserLink[]> {
-		const rows = await this.sql<RiotUserLinkRow[]>`
-			SELECT user_id, puuid, platform, game_name, tag_line, linked_at
-			FROM riot_user_links
-			WHERE user_id = ${userId}
-			ORDER BY linked_at DESC
-		`;
+		const rows = await this.db
+			.select()
+			.from(riotUserLinks)
+			.where(eq(riotUserLinks.userId, userId))
+			.orderBy(desc(riotUserLinks.linkedAt));
 		return rows.map(mapRow);
 	}
 
 	async listAll(): Promise<RiotUserLink[]> {
-		const rows = await this.sql<RiotUserLinkRow[]>`
-			SELECT user_id, puuid, platform, game_name, tag_line, linked_at
-			FROM riot_user_links
-		`;
-		return rows.map(mapRow);
+		return (await this.db.select().from(riotUserLinks)).map(mapRow);
 	}
 
 	async upsert(link: {
@@ -75,23 +54,14 @@ export default class RiotUserLinkRepository {
 		gameName: string;
 		tagLine: string;
 	}): Promise<RiotUserLink> {
-		const rows = await this.sql<RiotUserLinkRow[]>`
-			INSERT INTO riot_user_links (puuid, user_id, platform, game_name, tag_line)
-			VALUES (
-				${link.puuid},
-				${link.userId},
-				${link.platform},
-				${link.gameName},
-				${link.tagLine}
-			)
-			ON CONFLICT (puuid) DO UPDATE SET
-				user_id = EXCLUDED.user_id,
-				platform = EXCLUDED.platform,
-				game_name = EXCLUDED.game_name,
-				tag_line = EXCLUDED.tag_line,
-				linked_at = NOW()
-			RETURNING user_id, puuid, platform, game_name, tag_line, linked_at
-		`;
+		const rows = await this.db
+			.insert(riotUserLinks)
+			.values(link)
+			.onConflictDoUpdate({
+				target: riotUserLinks.puuid,
+				set: { ...link, linkedAt: sql`NOW()` },
+			})
+			.returning();
 		const row = rows[0];
 		if (!row) {
 			throw new Error("Failed to upsert riot user link");

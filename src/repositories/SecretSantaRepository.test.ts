@@ -6,6 +6,8 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
 import SecretSantaRepository from "./SecretSantaRepository";
 
@@ -20,19 +22,19 @@ const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
 const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
 describeWithDb("SecretSantaRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
-	const repo = new SecretSantaRepository(sql);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
+	const repo = new SecretSantaRepository(db);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE secret_santa_draws CASCADE`;
+		await db.execute(sql`TRUNCATE secret_santa_draws CASCADE`);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("create get list delete", async () => {

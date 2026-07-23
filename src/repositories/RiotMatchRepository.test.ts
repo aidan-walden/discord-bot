@@ -6,6 +6,8 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
 import type { RiotMatch } from "../services/riot/types";
 import RiotMatchRepository from "./RiotMatchRepository";
@@ -60,21 +62,23 @@ function makeMatch(
 }
 
 describeWithDb("RiotMatchRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
-	const matches = new RiotMatchRepository(sql);
-	const sync = new RiotMatchSyncRepository(sql);
-	const links = new RiotUserLinkRepository(sql);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
+	const matches = new RiotMatchRepository(db);
+	const sync = new RiotMatchSyncRepository(db);
+	const links = new RiotUserLinkRepository(db);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE riot_match_participants, riot_matches, riot_match_sync, riot_user_links`;
+		await db.execute(
+			sql`TRUNCATE riot_match_participants, riot_matches, riot_match_sync, riot_user_links`,
+		);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("insert is idempotent and sums time_played", async () => {

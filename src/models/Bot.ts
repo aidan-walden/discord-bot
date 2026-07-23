@@ -21,7 +21,9 @@ import { Kazagumo } from "kazagumo";
 import OpenAI from "openai";
 import { Connectors } from "shoukaku";
 import type { Config, ProfilePictureState } from "../config";
+import { createDatabase, type Database } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
+import { gptUserBans, musicGuildBans, musicUserBans } from "../database/schema";
 import {
 	ProfilePictureValidationError,
 	validateRemoteProfilePictureMime,
@@ -62,7 +64,7 @@ export default class Bot extends Client {
 	readonly music: Kazagumo;
 	readonly adminUserIds: ReadonlySet<string>;
 	readonly config: Config;
-	readonly db: typeof Bun.sql;
+	readonly db: Database;
 	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
@@ -111,7 +113,7 @@ export default class Bot extends Client {
 			config.get("BOT_OWNER_ID"),
 			...config.get("ADMIN_USER_IDS"),
 		]);
-		this.db = new Bun.SQL(config.get("DATABASE_URL"));
+		this.db = createDatabase(config.get("DATABASE_URL"));
 		this.metrics = new MetricsCollector();
 		const openaiConfig = config.get("openai");
 		this.openai = openaiConfig.OPENAI_API_TOKEN
@@ -119,9 +121,9 @@ export default class Bot extends Client {
 			: null;
 		this.permissions = new PermissionService(
 			this.adminUserIds,
-			new BanRepository(this.db, "gpt_user_bans", "user_id"),
-			new BanRepository(this.db, "music_user_bans", "user_id"),
-			new BanRepository(this.db, "music_guild_bans", "guild_id"),
+			new BanRepository(this.db, gptUserBans),
+			new BanRepository(this.db, musicUserBans),
+			new BanRepository(this.db, musicGuildBans),
 		);
 		this.balances = new UserBalanceRepository(this.db);
 		this.deafenSessions = new DeafenSessionRepository(this.db);

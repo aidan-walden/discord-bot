@@ -6,6 +6,8 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
 import DeafenSessionRepository from "./DeafenSessionRepository";
 
@@ -13,22 +15,22 @@ const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
 const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
 describeWithDb("DeafenSessionRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE deafen_sessions, deafen_summaries`;
+		await db.execute(sql`TRUNCATE deafen_sessions, deafen_summaries`);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("recordSession inserts a session row with the computed duration", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		const startedAt = new Date("2026-01-01T00:00:00.000Z");
 		const endedAt = new Date("2026-01-01T00:02:00.000Z");
 
@@ -42,7 +44,7 @@ describeWithDb("DeafenSessionRepository", () => {
 	});
 
 	test("recordSession creates a summary with longest and count", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		const summary = await repo.recordSession(
 			"user-1",
 			"guild-1",
@@ -60,7 +62,7 @@ describeWithDb("DeafenSessionRepository", () => {
 	});
 
 	test("longest only rises; totals and count accumulate", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		const base = new Date("2026-01-01T00:00:00.000Z");
 		const after = (seconds: number) =>
 			new Date(base.getTime() + seconds * 1000);
@@ -84,7 +86,7 @@ describeWithDb("DeafenSessionRepository", () => {
 	});
 
 	test("summaries are tracked independently per guild", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		const base = new Date("2026-01-01T00:00:00.000Z");
 		const after = (seconds: number) =>
 			new Date(base.getTime() + seconds * 1000);
@@ -101,7 +103,7 @@ describeWithDb("DeafenSessionRepository", () => {
 	});
 
 	test("zero-length stretches are skipped", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		const at = new Date("2026-01-01T00:00:00.000Z");
 
 		const summary = await repo.recordSession("user-1", "guild-1", at, at);
@@ -112,7 +114,7 @@ describeWithDb("DeafenSessionRepository", () => {
 	});
 
 	test("listSessions returns newest first", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		const base = new Date("2026-01-01T00:00:00.000Z");
 		const after = (seconds: number) =>
 			new Date(base.getTime() + seconds * 1000);
@@ -127,7 +129,7 @@ describeWithDb("DeafenSessionRepository", () => {
 	});
 
 	test("getSummary returns null when absent", async () => {
-		const repo = new DeafenSessionRepository(sql);
+		const repo = new DeafenSessionRepository(db);
 		expect(await repo.getSummary("nobody", "guild-1")).toBeNull();
 	});
 });

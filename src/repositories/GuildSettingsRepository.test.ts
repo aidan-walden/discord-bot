@@ -6,6 +6,8 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
 import GuildSettingsRepository from "./GuildSettingsRepository";
 
@@ -13,19 +15,19 @@ const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
 const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
 describeWithDb("GuildSettingsRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
-	const repo = new GuildSettingsRepository(sql);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
+	const repo = new GuildSettingsRepository(db);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE guild_settings`;
+		await db.execute(sql`TRUNCATE guild_settings`);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("setMainChannel inserts and get returns it", async () => {

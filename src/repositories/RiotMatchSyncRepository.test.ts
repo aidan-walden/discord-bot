@@ -6,6 +6,8 @@ import {
 	expect,
 	test,
 } from "bun:test";
+import { sql } from "drizzle-orm";
+import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
 import RiotMatchSyncRepository from "./RiotMatchSyncRepository";
 
@@ -13,19 +15,19 @@ const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
 const describeWithDb = DATABASE_URL_TESTING ? describe : describe.skip;
 
 describeWithDb("RiotMatchSyncRepository", () => {
-	const sql = new Bun.SQL(DATABASE_URL_TESTING as string);
-	const repo = new RiotMatchSyncRepository(sql);
+	const db = createDatabase(DATABASE_URL_TESTING as string);
+	const repo = new RiotMatchSyncRepository(db);
 
 	beforeAll(async () => {
-		await migrateDatabase(sql);
+		await migrateDatabase(db);
 	});
 
 	beforeEach(async () => {
-		await sql`TRUNCATE riot_match_sync`;
+		await db.execute(sql`TRUNCATE riot_match_sync`);
 	});
 
 	afterAll(async () => {
-		await sql.close();
+		await db.$client.close();
 	});
 
 	test("setBackfill then get", async () => {
