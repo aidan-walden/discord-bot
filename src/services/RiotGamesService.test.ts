@@ -21,7 +21,7 @@ function jsonResponse(
 	});
 }
 
-const PLAYER = { puuid: "p1", platform: "na1" as const };
+const PLAYER = { riotId: "Hide#NA1", platform: "na1" as const };
 
 function participant(overrides: Partial<Record<string, unknown>> = {}) {
 	return {
@@ -570,7 +570,7 @@ describe("RiotGamesService", () => {
 		];
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
-			if (href.includes("/accounts/by-puuid/")) {
+			if (href.includes("/accounts/by-riot-id/")) {
 				return jsonResponse(account);
 			}
 			if (href.includes("/active-games/")) {
@@ -645,7 +645,7 @@ describe("RiotGamesService", () => {
 		let lp = 50;
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
-			if (href.includes("/accounts/by-puuid/")) {
+			if (href.includes("/accounts/by-riot-id/")) {
 				return jsonResponse(account);
 			}
 			if (href.includes("/active-games/")) {
@@ -777,7 +777,7 @@ describe("RiotGamesService", () => {
 		const matchIdCalls: string[] = [];
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
-			if (href.includes("/accounts/by-puuid/")) {
+			if (href.includes("/accounts/by-riot-id/")) {
 				return jsonResponse({
 					puuid: "p1",
 					gameName: "Hide",
@@ -965,7 +965,7 @@ describe("RiotGamesService", () => {
 		const setBackfill = mock(async () => undefined);
 		const service = new RiotGamesService("key", undefined, {
 			fetch: mock(async (url: string | URL | Request) => {
-				if (String(url).includes("/accounts/by-puuid/")) {
+				if (String(url).includes("/accounts/by-riot-id/")) {
 					return jsonResponse({
 						puuid: "p1",
 						gameName: "Hide",
@@ -1029,7 +1029,7 @@ describe("RiotGamesService", () => {
 			wol: { fetchPlaytimeSeconds } as never,
 		});
 
-		await service.ensurePlaytimeBackfill(PLAYER);
+		await service.ensurePlaytimeBackfill({ puuid: "p1", platform: "na1" });
 		expect(fetchPlaytimeSeconds).not.toHaveBeenCalled();
 		expect(setBackfill).not.toHaveBeenCalled();
 	});
@@ -1056,7 +1056,7 @@ describe("RiotGamesService", () => {
 			wol: { fetchPlaytimeSeconds } as never,
 		});
 
-		await service.ensurePlaytimeBackfill(PLAYER);
+		await service.ensurePlaytimeBackfill({ puuid: "p1", platform: "na1" });
 		expect(fetchPlaytimeSeconds).toHaveBeenCalledWith("na1", "Hide", "NA1");
 		expect(setBackfill).toHaveBeenCalledWith(
 			"p1",

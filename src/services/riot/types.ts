@@ -4,10 +4,8 @@ export type { RiotPlatform, RiotRegion } from "./constants";
 
 export interface RiotPlayerConfig {
 	platform: RiotPlatform;
-	/** PUUID from this API key only (Riot encrypts per app). */
-	puuid?: string;
 	/** GameName#TAG — resolved to PUUID with the live key. */
-	riotId?: string;
+	riotId: string;
 }
 
 export interface RiotAccount {

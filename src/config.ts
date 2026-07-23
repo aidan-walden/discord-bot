@@ -78,7 +78,6 @@ interface AppConfigFile {
 		RIOT_API_KEY?: string;
 		pollIntervalSeconds?: number;
 		players?: Array<{
-			puuid?: string;
 			riotId?: string;
 			platform?: string;
 		}>;
@@ -237,6 +236,7 @@ function validateDeafenTracker(value: unknown): DeafenTrackerConfig {
 }
 
 const RIOT_PLATFORM_SET = new Set<string>(RIOT_PLATFORMS);
+const RIOT_PLAYER_KEYS = new Set(["riotId", "platform"]);
 const DEFAULT_RIOT_POLL_INTERVAL_SECONDS = 60;
 
 function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
@@ -257,6 +257,14 @@ function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
 			throw new Error(`Invalid riot.players[${index}]: expected object.`);
 		}
 		const record = player as Record<string, unknown>;
+		const unexpectedKey = Object.keys(record).find(
+			(key) => !RIOT_PLAYER_KEYS.has(key),
+		);
+		if (unexpectedKey) {
+			throw new Error(
+				`Invalid riot.players[${index}]: unexpected key "${unexpectedKey}".`,
+			);
+		}
 		const platform = ensureString(
 			record.platform,
 			`riot.players[${index}].platform`,
@@ -266,33 +274,13 @@ function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
 				`Invalid riot.players[${index}].platform: expected one of ${RIOT_PLATFORMS.join(", ")}.`,
 			);
 		}
-		const hasPuuid =
-			record.puuid !== undefined &&
-			!(typeof record.puuid === "string" && record.puuid.trim() === "");
-		const hasRiotId =
-			record.riotId !== undefined &&
-			!(typeof record.riotId === "string" && record.riotId.trim() === "");
-		if (hasPuuid === hasRiotId) {
+		const riotId = ensureString(record.riotId, `riot.players[${index}].riotId`);
+		if (!parseRiotId(riotId)) {
 			throw new Error(
-				`Invalid riot.players[${index}]: set exactly one of puuid or riotId.`,
+				`Invalid riot.players[${index}].riotId: expected GameName#TAG.`,
 			);
 		}
-		if (hasRiotId) {
-			const riotId = ensureString(
-				record.riotId,
-				`riot.players[${index}].riotId`,
-			);
-			if (!parseRiotId(riotId)) {
-				throw new Error(
-					`Invalid riot.players[${index}].riotId: expected GameName#TAG.`,
-				);
-			}
-			return { riotId, platform: platform as RiotPlatform };
-		}
-		return {
-			puuid: ensureString(record.puuid, `riot.players[${index}].puuid`),
-			platform: platform as RiotPlatform,
-		};
+		return { riotId, platform: platform as RiotPlatform };
 	});
 }
 

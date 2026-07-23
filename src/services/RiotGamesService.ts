@@ -373,21 +373,15 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		player: RiotPlayerConfig,
 	): Promise<RiotAccount | null> {
 		const region = platformToRegion(player.platform);
-		if (player.riotId) {
-			const parsed = parseRiotId(player.riotId);
-			if (!parsed) {
-				return null;
-			}
-			return this.client.getAccountByRiotId(
-				region,
-				parsed.gameName,
-				parsed.tagLine,
-			);
+		const parsed = parseRiotId(player.riotId);
+		if (!parsed) {
+			return null;
 		}
-		if (player.puuid) {
-			return this.client.getAccountByPuuid(region, player.puuid);
-		}
-		return null;
+		return this.client.getAccountByRiotId(
+			region,
+			parsed.gameName,
+			parsed.tagLine,
+		);
 	}
 
 	private async pollPlayer(
@@ -631,5 +625,5 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 }
 
 function playerLabel(player: RiotPlayerConfig): string {
-	return player.riotId ?? player.puuid ?? "?";
+	return player.riotId;
 }

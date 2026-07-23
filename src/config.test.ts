@@ -732,7 +732,7 @@ describe("Config", () => {
 							"riot:",
 							"  pollIntervalSeconds: 30",
 							"  players:",
-							'    - puuid: "abc-123"',
+							'    - riotId: "Hide on bush#KR1"',
 							'      platform: "kr"',
 						].join("\n"),
 					}),
@@ -741,7 +741,7 @@ describe("Config", () => {
 
 				expect(config.get("riot")).toEqual({
 					pollIntervalSeconds: 30,
-					players: [{ puuid: "abc-123", platform: "kr" }],
+					players: [{ riotId: "Hide on bush#KR1", platform: "kr" }],
 				});
 			});
 		});
@@ -761,7 +761,7 @@ describe("Config", () => {
 					riotBlock: [
 						"riot:",
 						"  players:",
-						'    - puuid: "abc"',
+						'    - riotId: "Name#TAG"',
 						'      platform: "xx"',
 					].join("\n"),
 				}),
@@ -788,29 +788,28 @@ describe("Config", () => {
 			});
 		});
 
-		test("rejects missing puuid and riotId", async () => {
+		test("rejects missing riotId", async () => {
 			await expectLoadConfigError(
 				buildYaml({
 					riotBlock: ["riot:", "  players:", '    - platform: "na1"'].join(
 						"\n",
 					),
 				}),
-				"Invalid riot.players[0]: set exactly one of puuid or riotId.",
+				"Invalid config value for riot.players[0].riotId: expected non-empty string.",
 			);
 		});
 
-		test("rejects both puuid and riotId", async () => {
+		test("rejects unexpected player keys", async () => {
 			await expectLoadConfigError(
 				buildYaml({
 					riotBlock: [
 						"riot:",
 						"  players:",
-						'    - puuid: "abc"',
-						'      riotId: "Name#TAG"',
+						'    - account: "abc"',
 						'      platform: "na1"',
 					].join("\n"),
 				}),
-				"Invalid riot.players[0]: set exactly one of puuid or riotId.",
+				'Invalid riot.players[0]: unexpected key "account".',
 			);
 		});
 
