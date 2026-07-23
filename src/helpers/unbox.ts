@@ -250,6 +250,15 @@ async function loadSkinsFile(): Promise<CounterStrikeSkinsFile> {
 	return cachedFile;
 }
 
+export async function isUnboxCatalogAvailable(): Promise<boolean> {
+	try {
+		await loadSkinsFile();
+		return true;
+	} catch {
+		return false;
+	}
+}
+
 export async function loadCaseCatalog(): Promise<CounterStrikeCaseCatalog> {
 	const file = await loadSkinsFile();
 	return file.cases;

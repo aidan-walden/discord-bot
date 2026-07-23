@@ -13,6 +13,7 @@ import {
 	formatRolledSkinsSummary,
 	getRarityColor,
 	getWear,
+	isUnboxCatalogAvailable,
 	listCaseNames,
 	loadCaseCatalog,
 	rollRarity,
@@ -125,6 +126,32 @@ describe("unbox helpers", () => {
 		const second = await loadCaseCatalog();
 
 		expect(first).toBe(second);
+	});
+
+	test("isUnboxCatalogAvailable is false for invalid JSON", async () => {
+		mockSkinsJsonText("[]");
+
+		expect(await isUnboxCatalogAvailable()).toBe(false);
+	});
+
+	test("isUnboxCatalogAvailable is false when the file read fails", async () => {
+		clearCaseCatalogCache();
+		spyOn(Bun, "file").mockImplementation(
+			() =>
+				({
+					text: async (): Promise<string> => {
+						throw new Error("ENOENT");
+					},
+				}) as ReturnType<typeof Bun.file>,
+		);
+
+		expect(await isUnboxCatalogAvailable()).toBe(false);
+	});
+
+	test("isUnboxCatalogAvailable is true for a valid catalog", async () => {
+		mockSkinsJson(createCatalogFixture());
+
+		expect(await isUnboxCatalogAvailable()).toBe(true);
 	});
 
 	test("runUnboxSimulation rejects empty catalogs", async () => {

@@ -7,6 +7,7 @@ import {
 	type ChatInputCommandInteraction,
 	EmbedBuilder,
 	escapeMarkdown,
+	MessageFlags,
 	SlashCommandBuilder,
 	TimestampStyles,
 	time,
@@ -17,6 +18,7 @@ import {
 	formatCurrency,
 	formatRolledSkinsSummary,
 	getRarityColor,
+	isUnboxCatalogAvailable,
 	listCaseNames,
 	runUnboxSimulation,
 } from "../../helpers/unbox";
@@ -35,6 +37,15 @@ export default class Unbox implements Command {
 		);
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
+		if (!(await isUnboxCatalogAvailable())) {
+			await interaction.reply({
+				content:
+					"CS skins catalog unavailable (assets/skins.json missing or invalid).",
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
+
 		await interaction.deferReply();
 
 		const selectedCase = interaction.options.getString("case");
@@ -188,6 +199,11 @@ export default class Unbox implements Command {
 	}
 
 	async autocomplete(interaction: AutocompleteInteraction): Promise<void> {
+		if (!(await isUnboxCatalogAvailable())) {
+			await interaction.respond([]);
+			return;
+		}
+
 		const focusedValue = interaction.options.getFocused().toLowerCase();
 		const caseNames = await listCaseNames();
 		const filtered = caseNames
