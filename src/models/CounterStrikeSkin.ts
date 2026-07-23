@@ -37,3 +37,8 @@ export type CounterStrikeCaseCatalog = Record<
 	string,
 	CounterStrikeCaseDefinition
 >;
+
+export interface CounterStrikeSkinsFile {
+	scrapedAt: number;
+	cases: CounterStrikeCaseCatalog;
+}

@@ -5,6 +5,7 @@ import type {
 	CounterStrikeCaseCatalog,
 	CounterStrikeCaseDefinition,
 	CounterStrikeSkin,
+	CounterStrikeSkinsFile,
 	ScrapedSkin,
 	SkinRarity,
 } from "../models/CounterStrikeSkin";
@@ -13,10 +14,10 @@ const ASSET_PATH = path.resolve(import.meta.dirname, "../../assets/skins.json");
 const RARITY_ORDER: SkinRarity[] = ["Blue", "Purple", "Pink", "Red", "Gold"];
 type RollRarityKey = Exclude<keyof CounterStrikeCaseDefinition, "price">;
 
-let cachedCases: CounterStrikeCaseCatalog | null = null;
+let cachedFile: CounterStrikeSkinsFile | null = null;
 
 export function clearCaseCatalogCache(): void {
-	cachedCases = null;
+	cachedFile = null;
 }
 
 export interface UnboxRunResult {
@@ -31,6 +32,7 @@ export interface UnboxRunResult {
 	profit: number;
 	profitCents: number;
 	paintSeed: number;
+	scrapedAt: number;
 	countsByRarity: Record<SkinRarity, number>;
 	rolledSkins: Record<SkinRarity, Record<string, number>>;
 }
@@ -216,19 +218,41 @@ export function getRarityColor(rarity: SkinRarity): number {
 	}
 }
 
-export async function loadCaseCatalog(): Promise<CounterStrikeCaseCatalog> {
-	if (cachedCases) {
-		return cachedCases;
-	}
-
-	const fileContents = await Bun.file(ASSET_PATH).text();
-	const parsed = JSON.parse(fileContents) as unknown;
+function parseSkinsFile(parsed: unknown): CounterStrikeSkinsFile {
 	if (Array.isArray(parsed) || typeof parsed !== "object" || parsed === null) {
 		throw new Error("Invalid skins.json: expected an object at root.");
 	}
+	const root = parsed as Record<string, unknown>;
+	if (
+		typeof root.scrapedAt !== "number" ||
+		!Number.isFinite(root.scrapedAt) ||
+		Array.isArray(root.cases) ||
+		typeof root.cases !== "object" ||
+		root.cases === null
+	) {
+		throw new Error(
+			"Invalid skins.json: expected { scrapedAt: number, cases: object }.",
+		);
+	}
+	return {
+		scrapedAt: root.scrapedAt,
+		cases: root.cases as CounterStrikeCaseCatalog,
+	};
+}
 
-	cachedCases = parsed as CounterStrikeCaseCatalog;
-	return cachedCases;
+async function loadSkinsFile(): Promise<CounterStrikeSkinsFile> {
+	if (cachedFile) {
+		return cachedFile;
+	}
+
+	const fileContents = await Bun.file(ASSET_PATH).text();
+	cachedFile = parseSkinsFile(JSON.parse(fileContents) as unknown);
+	return cachedFile;
+}
+
+export async function loadCaseCatalog(): Promise<CounterStrikeCaseCatalog> {
+	const file = await loadSkinsFile();
+	return file.cases;
 }
 
 export async function listCaseNames(): Promise<string[]> {
@@ -320,7 +344,8 @@ export async function runUnboxSimulation(
 	caseName: string | null,
 	rng = Math.random,
 ): Promise<UnboxRunResult> {
-	const catalog = await loadCaseCatalog();
+	const file = await loadSkinsFile();
+	const catalog = file.cases;
 	const availableCaseNames = Object.keys(catalog);
 	const selectedCaseName =
 		caseName ??
@@ -379,6 +404,7 @@ export async function runUnboxSimulation(
 			profit,
 			profitCents,
 			paintSeed,
+			scrapedAt: file.scrapedAt,
 			countsByRarity,
 			rolledSkins,
 		};

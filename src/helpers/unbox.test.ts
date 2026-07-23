@@ -88,8 +88,12 @@ function mockSkinsJsonText(fileContents: string): void {
 	);
 }
 
+const FIXTURE_SCRAPED_AT = 1_700_000_000;
+
 function mockSkinsJson(catalog: CounterStrikeCaseCatalog): void {
-	mockSkinsJsonText(JSON.stringify(catalog));
+	mockSkinsJsonText(
+		JSON.stringify({ scrapedAt: FIXTURE_SCRAPED_AT, cases: catalog }),
+	);
 }
 
 describe("unbox helpers", () => {
@@ -103,6 +107,14 @@ describe("unbox helpers", () => {
 
 		expect(loadCaseCatalog()).rejects.toThrow(
 			"Invalid skins.json: expected an object at root.",
+		);
+	});
+
+	test("loadCaseCatalog rejects bare case maps", async () => {
+		mockSkinsJsonText(JSON.stringify(createCatalogFixture()));
+
+		expect(loadCaseCatalog()).rejects.toThrow(
+			"Invalid skins.json: expected { scrapedAt: number, cases: object }.",
 		);
 	});
 
@@ -255,6 +267,7 @@ describe("unbox helpers", () => {
 		);
 		expect(result.profitCents).toBe(Math.round(result.profit * 100));
 		expect(result.paintSeed).toBe(1);
+		expect(result.scrapedAt).toBe(FIXTURE_SCRAPED_AT);
 	});
 
 	test("runUnboxSimulation accumulates non-gold rolls before finishing", async () => {

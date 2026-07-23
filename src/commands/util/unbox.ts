@@ -8,6 +8,8 @@ import {
 	EmbedBuilder,
 	escapeMarkdown,
 	SlashCommandBuilder,
+	time,
+	TimestampStyles,
 } from "discord.js";
 import { sendLongMessage } from "../../helpers/sendLongMessage";
 import {
@@ -111,7 +113,10 @@ export default class Unbox implements Command {
 					value: formatCurrency(result.profit),
 					inline: true,
 				},
-			);
+			)
+			.setFooter({
+				text: `Last Updated: ${time(result.scrapedAt, TimestampStyles.LongDate)}`,
+			});
 
 		const buttonCustomId = `unbox:view:${interaction.id}`;
 		const inspectUrl = createInGameInspectUrl(

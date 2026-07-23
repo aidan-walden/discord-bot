@@ -10,10 +10,15 @@
  *   bun scripts/update-skins.ts
  */
 import path from "node:path";
-import type { CounterStrikeCaseCatalog } from "../src/models/CounterStrikeSkin";
+import type {
+	CounterStrikeCaseCatalog,
+	CounterStrikeSkinsFile,
+} from "../src/models/CounterStrikeSkin";
 
 const BYMYKEL_URL =
 	"https://raw.githubusercontent.com/ByMykel/CSGO-API/main/public/api/en/skins.json";
+const BYMYKEL_COMMITS_URL =
+	"https://api.github.com/repos/ByMykel/CSGO-API/commits?path=public/api/en/skins.json&per_page=1";
 const ASSET_PATH = path.resolve(import.meta.dirname, "../assets/skins.json");
 const SCRAPER_DIR =
 	process.env.SCRAPER_DIR ??
@@ -173,7 +178,29 @@ function findStaleCases(
 	return stale;
 }
 
-/** Run the Go scraper for the given cases and return its JSON output. */
+/** Unix seconds for the latest ByMykel commit that touched skins.json. */
+export async function fetchByMykelUpdatedAt(): Promise<number> {
+	const res = await fetch(BYMYKEL_COMMITS_URL, {
+		headers: { Accept: "application/vnd.github+json" },
+	});
+	if (!res.ok) {
+		throw new Error(`ByMykel commits fetch failed: ${res.status}`);
+	}
+	const commits = (await res.json()) as {
+		commit?: { committer?: { date?: string } };
+	}[];
+	const date = commits[0]?.commit?.committer?.date;
+	if (!date) {
+		throw new Error("ByMykel commits response missing committer date.");
+	}
+	const unix = Math.floor(Date.parse(date) / 1000);
+	if (!Number.isFinite(unix)) {
+		throw new Error(`ByMykel committer date unparseable: ${date}`);
+	}
+	return unix;
+}
+
+/** Run the Go scraper for the given cases and return its case map. */
 async function scrapeCases(cases: string[]): Promise<CounterStrikeCaseCatalog> {
 	const proc = Bun.spawn(["go", "run", ".", "-stdout", ...cases], {
 		cwd: SCRAPER_DIR,
@@ -185,7 +212,8 @@ async function scrapeCases(cases: string[]): Promise<CounterStrikeCaseCatalog> {
 	if (code !== 0) {
 		throw new Error(`scraper exited with code ${code}`);
 	}
-	return JSON.parse(out) as CounterStrikeCaseCatalog;
+	const parsed = JSON.parse(out) as { cases: CounterStrikeCaseCatalog };
+	return parsed.cases;
 }
 
 /**
@@ -205,13 +233,17 @@ export function isUsableCase(
 
 async function main(): Promise<void> {
 	console.error(`Fetching ByMykel skins from ${BYMYKEL_URL} ...`);
-	const res = await fetch(BYMYKEL_URL);
-	if (!res.ok) {
-		throw new Error(`ByMykel fetch failed: ${res.status}`);
+	const [skinsRes, scrapedAt] = await Promise.all([
+		fetch(BYMYKEL_URL),
+		fetchByMykelUpdatedAt(),
+	]);
+	if (!skinsRes.ok) {
+		throw new Error(`ByMykel fetch failed: ${skinsRes.status}`);
 	}
-	const skins = (await res.json()) as ByMykelSkin[];
+	const skins = (await skinsRes.json()) as ByMykelSkin[];
 
-	const local = (await Bun.file(ASSET_PATH).json()) as CounterStrikeCaseCatalog;
+	const file = (await Bun.file(ASSET_PATH).json()) as CounterStrikeSkinsFile;
+	const local = file.cases;
 	const expected = buildExpected(skins);
 
 	console.error("Diffing against local catalog ...");
@@ -242,14 +274,21 @@ async function main(): Promise<void> {
 	}
 
 	const enriched = enrichInspectMetadata(local, skins);
-	if (updated.length === 0 && enriched === 0) {
+	const scrapedAtChanged = file.scrapedAt !== scrapedAt;
+	if (updated.length === 0 && enriched === 0 && !scrapedAtChanged) {
 		console.error("Catalog is up to date. Nothing to write.");
 		return;
 	}
 
-	await Bun.write(ASSET_PATH, `${JSON.stringify(local, null, 4)}\n`);
+	await Bun.write(
+		ASSET_PATH,
+		`${JSON.stringify({ scrapedAt, cases: local }, null, 4)}\n`,
+	);
 	if (updated.length > 0) {
 		console.error(`Updated ${updated.length} case(s): ${updated.join(", ")}`);
+	}
+	if (scrapedAtChanged) {
+		console.error(`ByMykel last updated: ${scrapedAt}`);
 	}
 	console.error(`Added inspect metadata to ${enriched} skin entries.`);
 }
