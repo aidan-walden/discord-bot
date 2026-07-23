@@ -6,6 +6,7 @@ import {
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
+import { releaseTtsVoice } from "../../helpers/tiktoktts";
 import type Command from "../../models/Command";
 
 export default class Play implements Command {
@@ -53,6 +54,8 @@ export default class Play implements Command {
 			});
 			return;
 		}
+
+		releaseTtsVoice(context.guildId);
 
 		// Get or create player
 		const player = await interaction.client.bot.music.createPlayer({

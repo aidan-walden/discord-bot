@@ -2,11 +2,13 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import path from "node:path";
 import {
+	type AudioPlayer,
 	AudioPlayerStatus,
 	createAudioPlayer,
 	createAudioResource,
 	type DiscordGatewayAdapterCreator,
 	entersState,
+	getVoiceConnection,
 	joinVoiceChannel,
 	StreamType,
 	VoiceConnectionStatus,
@@ -435,6 +437,34 @@ export async function postVoiceMessage(options: {
 	});
 }
 
+const TTS_IDLE_LEAVE_MS = 30_000;
+
+type TtsSession = {
+	player: AudioPlayer;
+	leaveTimer?: ReturnType<typeof setTimeout>;
+};
+
+const ttsSessions = new Map<string, TtsSession>();
+
+function clearTtsLeaveTimer(guildId: string): void {
+	const session = ttsSessions.get(guildId);
+	if (!session?.leaveTimer) {
+		return;
+	}
+	clearTimeout(session.leaveTimer);
+	session.leaveTimer = undefined;
+}
+
+export function releaseTtsVoice(guildId: string): void {
+	const session = ttsSessions.get(guildId);
+	if (session) {
+		clearTtsLeaveTimer(guildId);
+		session.player.stop(true);
+		ttsSessions.delete(guildId);
+	}
+	getVoiceConnection(guildId)?.destroy();
+}
+
 export async function playOggInVoiceChannel(options: {
 	channelId: string;
 	guildId: string;
@@ -451,12 +481,18 @@ export async function playOggInVoiceChannel(options: {
 		durationSeconds,
 		onPlaying,
 	} = options;
+
+	clearTtsLeaveTimer(guildId);
+	ttsSessions.get(guildId)?.player.stop(true);
+
 	const connection = joinVoiceChannel({
 		channelId,
 		guildId,
 		adapterCreator,
 	});
 	const player = createAudioPlayer();
+	ttsSessions.set(guildId, { player });
+
 	const rejectOnError = new Promise<never>((_resolve, reject) => {
 		player.once("error", reject);
 	});
@@ -484,8 +520,29 @@ export async function playOggInVoiceChannel(options: {
 			),
 			rejectOnError,
 		]);
-	} finally {
-		player.stop(true);
-		connection.destroy();
+
+		if (ttsSessions.get(guildId)?.player !== player) {
+			return;
+		}
+
+		const session = ttsSessions.get(guildId);
+		if (!session) {
+			return;
+		}
+		session.leaveTimer = setTimeout(() => {
+			if (ttsSessions.get(guildId)?.player !== player) {
+				return;
+			}
+			ttsSessions.delete(guildId);
+			connection.destroy();
+		}, TTS_IDLE_LEAVE_MS);
+	} catch (error) {
+		if (ttsSessions.get(guildId)?.player === player) {
+			clearTtsLeaveTimer(guildId);
+			ttsSessions.delete(guildId);
+			player.stop(true);
+			connection.destroy();
+		}
+		throw error;
 	}
 }

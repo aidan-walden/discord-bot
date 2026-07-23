@@ -2,6 +2,7 @@ import { describe, expect, mock, test } from "bun:test";
 import {
 	createTikTokSpeechOgg,
 	isTikTokCredentialRejection,
+	releaseTtsVoice,
 	resolveOutputMode,
 	TIKTOK_VOICES,
 } from "./tiktoktts";
@@ -66,6 +67,12 @@ describe("isTikTokCredentialRejection", () => {
 				new Error("The provided text is too long. status_code: 2"),
 			),
 		).toBe(false);
+	});
+});
+
+describe("releaseTtsVoice", () => {
+	test("is a no-op when the guild has no TTS session", () => {
+		expect(() => releaseTtsVoice("guild-no-session")).not.toThrow();
 	});
 });
 
