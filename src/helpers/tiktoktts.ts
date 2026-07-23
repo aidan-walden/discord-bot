@@ -337,6 +337,39 @@ function buildWaveform(durationSeconds: number): string {
 	return Buffer.alloc(length, 128).toString("base64");
 }
 
+// Session IDs are region-coupled; package default (v6) often returns status 1.
+const TIKTOK_TTS_BASE_URLS = [
+	"https://api16-normal-useast5.us.tiktokv.com/media/api/text/speech/invoke",
+	"https://api16-normal-c-useast1a.tiktokv.com/media/api/text/speech/invoke",
+	"https://api16-normal-c-useast2a.tiktokv.com/media/api/text/speech/invoke",
+	"https://api16-normal-c-alisg.tiktokv.com/media/api/text/speech/invoke",
+	"https://api16-normal-v6.tiktokv.com/media/api/text/speech/invoke",
+] as const;
+
+async function createAudioFromTextWithBaseUrlFallback(
+	sessionId: string,
+	text: string,
+	audioBasePath: string,
+	voiceApiValue: string,
+): Promise<void> {
+	let lastError: unknown;
+	for (const baseUrl of TIKTOK_TTS_BASE_URLS) {
+		try {
+			config(sessionId, baseUrl);
+			await createAudioFromText(text, audioBasePath, voiceApiValue);
+			return;
+		} catch (error) {
+			lastError = error;
+			if (!isTikTokCredentialRejection(error)) {
+				throw error;
+			}
+			console.warn(`base url for tiktok ${baseUrl} failed, rotating...`);
+		}
+	}
+	console.warn("exhausted tiktok base URLs, tiktok tts will not work");
+	throw lastError;
+}
+
 export async function createTikTokSpeechOgg(
 	sessionId: string,
 	text: string,
@@ -350,8 +383,12 @@ export async function createTikTokSpeechOgg(
 	try {
 		const audioBasePath = path.join(tempDir, "speech");
 		const oggPath = path.join(tempDir, "speech.ogg");
-		config(sessionId);
-		await createAudioFromText(text, audioBasePath, voiceApiValue);
+		await createAudioFromTextWithBaseUrlFallback(
+			sessionId,
+			text,
+			audioBasePath,
+			voiceApiValue,
+		);
 		const durationSeconds = await transcodeAudio(
 			`${audioBasePath}.mp3`,
 			oggPath,
