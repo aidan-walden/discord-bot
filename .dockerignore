@@ -9,4 +9,5 @@ node_modules
 csgo-skins-scraper
 scripts
 *.md
+!assets/changelog.md
 compose.test.yml

@@ -142,4 +142,5 @@ vite.config.ts.timestamp-*
 **/.DS_Store
 
 # Assets
-assets/
+assets/*
+!assets/changelog.md
