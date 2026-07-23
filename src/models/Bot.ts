@@ -161,10 +161,9 @@ export default class Bot extends Client {
 
 		this.holidays = new HolidayProvider();
 
-		// TODO: Change search engine to youtube
 		this.music = new Kazagumo(
 			{
-				defaultSearchEngine: "soundcloud",
+				defaultSearchEngine: "youtube",
 				send: (guildId, payload) => {
 					const guild = this.guilds.cache.get(guildId);
 					if (guild) guild.shard.send(payload);
