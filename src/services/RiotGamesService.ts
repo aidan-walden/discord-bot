@@ -8,8 +8,6 @@ import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
 	LOL_VIEW_CACHE_TTL_MS,
 	MATCH_IDS_PAGE_SIZE,
-	PLAYTIME_QUEUE_AVG_SECONDS,
-	PLAYTIME_QUEUES,
 	platformToRegion,
 	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
@@ -33,6 +31,7 @@ import type {
 	RiotSummoner,
 } from "./riot/types";
 import { RiotGamesError } from "./riot/types";
+import type WolGgClient from "./wol/WolGgClient";
 
 export {
 	FLEX_QUEUE,
@@ -77,6 +76,7 @@ export interface RiotGamesServiceOptions {
 	matches?: RiotMatchRepository;
 	matchSync?: RiotMatchSyncRepository;
 	userLinks?: RiotUserLinkRepository;
+	wol?: WolGgClient;
 }
 
 type RiotGamesServiceEvents = {
@@ -121,6 +121,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	private readonly matches?: RiotMatchRepository;
 	private readonly matchSync?: RiotMatchSyncRepository;
 	private readonly userLinks?: RiotUserLinkRepository;
+	private readonly wol?: WolGgClient;
 	private readonly now: () => number;
 	private readonly pollMemory = new Map<string, PlayerPollMemory>();
 	private readonly snapshots = new Map<string, RiotPlayerPollState>();
@@ -152,6 +153,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		this.matches = options.matches;
 		this.matchSync = options.matchSync;
 		this.userLinks = options.userLinks;
+		this.wol = options.wol;
 	}
 
 	isAvailable(): boolean {
@@ -497,25 +499,45 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return all;
 	}
 
+	private async resolveRiotId(
+		player: RiotPlayerConfig,
+	): Promise<{ gameName: string; tagLine: string } | null> {
+		const link = await this.userLinks?.getByPuuid(player.puuid);
+		if (link) {
+			return { gameName: link.gameName, tagLine: link.tagLine };
+		}
+		const account = await this.client.getAccountByPuuid(
+			platformToRegion(player.platform),
+			player.puuid,
+		);
+		if (!account) {
+			return null;
+		}
+		return { gameName: account.gameName, tagLine: account.tagLine };
+	}
+
 	private async syncPlayerMatches(player: RiotPlayerConfig): Promise<void> {
-		if (!this.matches || !this.matchSync) {
+		if (!this.matches || !this.matchSync || !this.wol) {
 			return;
 		}
 		const region = platformToRegion(player.platform);
 		const now = new Date(this.now());
 		const endTime = Math.floor(now.getTime() / 1000);
-		const startTime = Math.max(0, endTime - MATCH_SYNC_OVERLAP_SECONDS);
 		const row = await this.matchSync.get(player.puuid);
 
 		if (!row?.backfilled) {
-			let backfillSeconds = 0;
-			for (const queueId of PLAYTIME_QUEUES) {
-				const ids = await this.listAllMatchIds(region, player.puuid, {
-					queue: queueId,
-					endTime: Math.max(0, startTime - 1),
-				});
-				const avg = PLAYTIME_QUEUE_AVG_SECONDS[queueId] ?? 0;
-				backfillSeconds += ids.length * avg;
+			const identity = await this.resolveRiotId(player);
+			if (!identity) {
+				return;
+			}
+			const backfillSeconds = await this.wol.fetchPlaytimeSeconds(
+				player.platform,
+				identity.gameName,
+				identity.tagLine,
+			);
+			if (backfillSeconds === null) {
+				// ponytail: retry next poll — do not lock 0 on a scrape miss
+				return;
 			}
 			await this.matchSync.setBackfill(player.puuid, backfillSeconds, now);
 			return;

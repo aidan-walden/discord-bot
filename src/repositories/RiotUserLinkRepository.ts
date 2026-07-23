@@ -47,6 +47,15 @@ export default class RiotUserLinkRepository {
 		return (await this.db.select().from(riotUserLinks)).map(mapRow);
 	}
 
+	async getByPuuid(puuid: string): Promise<RiotUserLink | null> {
+		const rows = await this.db
+			.select()
+			.from(riotUserLinks)
+			.where(eq(riotUserLinks.puuid, puuid))
+			.limit(1);
+		return rows[0] ? mapRow(rows[0]) : null;
+	}
+
 	async upsert(link: {
 		userId: string;
 		puuid: string;

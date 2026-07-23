@@ -103,15 +103,23 @@ describeWithDb("RiotMatchRepository", () => {
 		expect(await matches.sumTimePlayed("p1")).toBe(2000);
 	});
 
-	test("sum includes backfill_seconds and all linked accounts", async () => {
-		await sync.setBackfill("p1", 500, new Date());
-		await sync.setBackfill("p2", 300, new Date());
-		await matches.insertMatchWithParticipants(
-			makeMatch("NA1_3", [{ puuid: "p1", timePlayed: 100 }]),
-		);
-		await matches.insertMatchWithParticipants(
-			makeMatch("NA1_4", [{ puuid: "p2", timePlayed: 50 }]),
-		);
+	test("sum includes backfill_seconds and post-cutoff matches only", async () => {
+		const cutoff = new Date("2024-06-01T00:00:00Z");
+		await sync.setBackfill("p1", 500, cutoff);
+		await sync.setBackfill("p2", 300, cutoff);
+
+		const before = makeMatch("NA1_before", [{ puuid: "p1", timePlayed: 999 }]);
+		before.info.gameCreation = Date.parse("2024-05-01T12:00:00Z");
+		await matches.insertMatchWithParticipants(before);
+
+		const afterP1 = makeMatch("NA1_3", [{ puuid: "p1", timePlayed: 100 }]);
+		afterP1.info.gameCreation = Date.parse("2024-06-02T12:00:00Z");
+		await matches.insertMatchWithParticipants(afterP1);
+
+		const afterP2 = makeMatch("NA1_4", [{ puuid: "p2", timePlayed: 50 }]);
+		afterP2.info.gameCreation = Date.parse("2024-06-02T12:00:00Z");
+		await matches.insertMatchWithParticipants(afterP2);
+
 		await links.upsert({
 			userId: "u1",
 			puuid: "p1",

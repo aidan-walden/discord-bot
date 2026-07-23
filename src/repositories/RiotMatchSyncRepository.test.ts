@@ -40,6 +40,7 @@ describeWithDb("RiotMatchSyncRepository", () => {
 			backfillSeconds: 3600,
 		});
 		expect(row?.lastSyncedAt.toISOString()).toBe(at.toISOString());
+		expect(row?.backfillAsOf?.toISOString()).toBe(at.toISOString());
 	});
 
 	test("touchSynced advances cursor without clearing backfill", async () => {
@@ -51,5 +52,6 @@ describeWithDb("RiotMatchSyncRepository", () => {
 		expect(row?.backfillSeconds).toBe(100);
 		expect(row?.backfilled).toBe(true);
 		expect(row?.lastSyncedAt.toISOString()).toBe(t2.toISOString());
+		expect(row?.backfillAsOf?.toISOString()).toBe(t1.toISOString());
 	});
 });

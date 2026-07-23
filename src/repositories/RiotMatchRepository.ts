@@ -69,7 +69,15 @@ export default class RiotMatchRepository {
 				+ COALESCE(
 					(SELECT SUM(${riotMatchParticipants.timePlayed})
 					 FROM ${riotMatchParticipants}
-					 WHERE ${riotMatchParticipants.puuid} = ${puuid}),
+					 INNER JOIN ${riotMatches}
+						ON ${riotMatches.matchId} = ${riotMatchParticipants.matchId}
+					 WHERE ${riotMatchParticipants.puuid} = ${puuid}
+					   AND ${riotMatches.gameCreation} >= COALESCE(
+						(SELECT ${riotMatchSync.backfillAsOf}
+						 FROM ${riotMatchSync}
+						 WHERE ${riotMatchSync.puuid} = ${puuid}),
+						'-infinity'::timestamptz
+					   )),
 					0
 				)
 				AS total
@@ -94,7 +102,15 @@ export default class RiotMatchRepository {
 					FROM ${riotUserLinks}
 					INNER JOIN ${riotMatchParticipants}
 						ON ${riotMatchParticipants.puuid} = ${riotUserLinks.puuid}
+					INNER JOIN ${riotMatches}
+						ON ${riotMatches.matchId} = ${riotMatchParticipants.matchId}
+					LEFT JOIN ${riotMatchSync}
+						ON ${riotMatchSync.puuid} = ${riotUserLinks.puuid}
 					WHERE ${riotUserLinks.userId} = ${userId}
+					  AND ${riotMatches.gameCreation} >= COALESCE(
+						${riotMatchSync.backfillAsOf},
+						'-infinity'::timestamptz
+					  )
 				), 0)
 				AS total
 			`,

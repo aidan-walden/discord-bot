@@ -12,6 +12,7 @@ const columns = {
 	lastSyncedAt: riotMatchSync.lastSyncedAt,
 	backfilled: riotMatchSync.backfilled,
 	backfillSeconds: riotMatchSync.backfillSeconds,
+	backfillAsOf: riotMatchSync.backfillAsOf,
 };
 
 export default class RiotMatchSyncRepository {
@@ -32,13 +33,20 @@ export default class RiotMatchSyncRepository {
 	): Promise<void> {
 		await this.db
 			.insert(riotMatchSync)
-			.values({ puuid, lastSyncedAt, backfilled: true, backfillSeconds })
+			.values({
+				puuid,
+				lastSyncedAt,
+				backfilled: true,
+				backfillSeconds,
+				backfillAsOf: lastSyncedAt,
+			})
 			.onConflictDoUpdate({
 				target: riotMatchSync.puuid,
 				set: {
 					lastSyncedAt,
 					backfilled: true,
 					backfillSeconds,
+					backfillAsOf: lastSyncedAt,
 					updatedAt: sql`NOW()`,
 				},
 			});

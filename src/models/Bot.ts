@@ -49,6 +49,7 @@ import PermissionService from "../services/PermissionService";
 import RiotGamesService from "../services/RiotGamesService";
 import SpotifyClientCredentialsStrategy from "../services/SpotifyClientCredentialsStrategy";
 import SpotifyService from "../services/SpotifyService";
+import WolGgClient from "../services/wol/WolGgClient";
 import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
 import type Command from "./Command";
@@ -161,6 +162,7 @@ export default class Bot extends Client {
 			matches: this.riotMatches,
 			matchSync: new RiotMatchSyncRepository(this.db),
 			userLinks: this.riotLinks,
+			wol: new WolGgClient(),
 		});
 
 		this.holidays = new HolidayProvider();

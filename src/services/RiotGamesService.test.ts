@@ -702,8 +702,7 @@ describe("RiotGamesService", () => {
 		expect(listByPuuid).toHaveBeenCalledWith("p1");
 	});
 
-	test("sync backfills once then fetches unknown matches only", async () => {
-		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+	test("sync backfills once from wol.gg then fetches unknown matches only", async () => {
 		const fullMatch = {
 			metadata: { matchId: "NA1_new", participants: ["p1", "p2"] },
 			info: {
@@ -722,20 +721,17 @@ describe("RiotGamesService", () => {
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
 			if (href.includes("/accounts/by-puuid/")) {
-				return jsonResponse(account);
+				return jsonResponse({
+					puuid: "p1",
+					gameName: "Hide",
+					tagLine: "NA1",
+				});
 			}
 			if (href.includes("/active-games/")) {
 				return new Response(null, { status: 404 });
 			}
 			if (href.includes("/ids")) {
 				matchIdCalls.push(href);
-				if (href.includes("queue=")) {
-					// backfill pages — 2 solo games worth of estimate
-					if (href.includes("queue=420") && href.includes("start=0")) {
-						return jsonResponse(["NA1_old1", "NA1_old2"]);
-					}
-					return jsonResponse([]);
-				}
 				if (href.includes("startTime=")) {
 					return jsonResponse(["NA1_new", "NA1_known"]);
 				}
@@ -760,6 +756,7 @@ describe("RiotGamesService", () => {
 					lastSyncedAt: Date;
 					backfilled: boolean;
 					backfillSeconds: number;
+					backfillAsOf: Date | null;
 				},
 		);
 		const existingMatchIds = mock(async (ids: string[]) => {
@@ -787,6 +784,15 @@ describe("RiotGamesService", () => {
 				linkedAt: new Date(),
 			},
 		]);
+		const getByPuuid = mock(async () => ({
+			userId: "u1",
+			puuid: "p1",
+			platform: "na1" as const,
+			gameName: "Hide",
+			tagLine: "NA1",
+			linkedAt: new Date(),
+		}));
+		const fetchPlaytimeSeconds = mock(async () => 63_266 * 60);
 		const service = new RiotGamesService("key", undefined, {
 			fetch: fetcher,
 			players: [PLAYER],
@@ -800,30 +806,24 @@ describe("RiotGamesService", () => {
 				existingMatchIds,
 				insertMatchWithParticipants,
 			} as never,
-			userLinks: { listAll: listAllLinks } as never,
+			userLinks: { listAll: listAllLinks, getByPuuid } as never,
+			wol: { fetchPlaytimeSeconds } as never,
 		});
 
-		// poll 1: backfill
+		// poll 1: wol.gg backfill
 		await service.pollOnce();
 		expect(setBackfill).toHaveBeenCalledTimes(1);
+		expect(fetchPlaytimeSeconds).toHaveBeenCalledWith("na1", "Hide", "NA1");
 		const backfillArgs = setBackfill.mock.calls[0] as unknown as [
 			string,
 			number,
 			Date,
 		];
 		expect(backfillArgs[0]).toBe("p1");
-		// 2 solo (420) × 1800s
-		expect(backfillArgs[1]).toBe(2 * 1800);
+		expect(backfillArgs[1]).toBe(63_266 * 60);
 		expect(backfillArgs[2]).toEqual(new Date(1_700_100_000_000));
-		expect(
-			matchIdCalls
-				.filter((url) => url.includes("queue="))
-				.every((url) => url.includes("endTime=1700013599")),
-		).toBe(true);
+		expect(matchIdCalls.some((url) => url.includes("queue="))).toBe(false);
 		expect(insertMatchWithParticipants).not.toHaveBeenCalled();
-		expect(matchDetailCalls.filter((u) => u.includes("NA1_old"))).toHaveLength(
-			0,
-		);
 
 		// poll 2: incremental
 		const previousSyncedAt = new Date(now);
@@ -831,7 +831,8 @@ describe("RiotGamesService", () => {
 			puuid: "p1",
 			lastSyncedAt: previousSyncedAt,
 			backfilled: true,
-			backfillSeconds: 3600,
+			backfillSeconds: 63_266 * 60,
+			backfillAsOf: previousSyncedAt,
 		}));
 		now += 60_000;
 		matchDetailCalls.length = 0;
@@ -839,6 +840,7 @@ describe("RiotGamesService", () => {
 		await service.pollOnce();
 
 		expect(setBackfill).toHaveBeenCalledTimes(1);
+		expect(fetchPlaytimeSeconds).toHaveBeenCalledTimes(1);
 		expect(existingMatchIds).toHaveBeenCalled();
 		expect(insertedMatches).toHaveLength(1);
 		expect(insertedMatches[0]?.metadata.matchId).toBe("NA1_new");
@@ -851,7 +853,6 @@ describe("RiotGamesService", () => {
 			),
 		).toBe(true);
 		expect(getSync).toHaveBeenCalledTimes(2);
-		// only unknown match fetched for store (rank poll may also fetch newest)
 		expect(
 			matchDetailCalls.filter((u) => u.includes("NA1_known")),
 		).toHaveLength(0);
@@ -868,32 +869,77 @@ describe("RiotGamesService", () => {
 				linkedAt: new Date(),
 			},
 		]);
+		const getByPuuid = mock(async () => ({
+			userId: "u1",
+			puuid: "linked-puuid",
+			platform: "euw1" as const,
+			gameName: "Linked",
+			tagLine: "EUW",
+			linkedAt: new Date(),
+		}));
 		const setBackfill = mock(async () => undefined);
-		const fetcher = mock(async (url: string | URL | Request) => {
-			if (String(url).includes("/ids")) {
-				return jsonResponse([]);
-			}
-			return new Response(null, { status: 500 });
-		});
+		const fetchPlaytimeSeconds = mock(async () => 3600);
 		const service = new RiotGamesService("key", undefined, {
-			fetch: fetcher,
+			fetch: mock(async () => new Response(null, { status: 500 })),
 			players: [],
 			now: () => 1_700_100_000_000,
-			userLinks: { listAll } as never,
+			userLinks: { listAll, getByPuuid } as never,
 			matchSync: {
 				get: mock(async () => null),
 				setBackfill,
 			} as never,
 			matches: {} as never,
+			wol: { fetchPlaytimeSeconds } as never,
 		});
 
 		await service.pollOnce();
 
 		expect(listAll).toHaveBeenCalledTimes(1);
+		expect(fetchPlaytimeSeconds).toHaveBeenCalledWith("euw1", "Linked", "EUW");
 		expect(setBackfill).toHaveBeenCalledWith(
 			"linked-puuid",
-			0,
+			3600,
 			new Date(1_700_100_000_000),
 		);
+	});
+
+	test("skips backfill mark when wol.gg returns null", async () => {
+		const setBackfill = mock(async () => undefined);
+		const service = new RiotGamesService("key", undefined, {
+			fetch: mock(async (url: string | URL | Request) => {
+				if (String(url).includes("/accounts/by-puuid/")) {
+					return jsonResponse({
+						puuid: "p1",
+						gameName: "Hide",
+						tagLine: "NA1",
+					});
+				}
+				if (String(url).includes("/active-games/")) {
+					return new Response(null, { status: 404 });
+				}
+				if (String(url).includes("/league/")) {
+					return jsonResponse([]);
+				}
+				if (String(url).includes("/ids")) {
+					return jsonResponse([]);
+				}
+				return new Response(null, { status: 500 });
+			}),
+			players: [PLAYER],
+			now: () => 1_700_100_000_000,
+			userLinks: {
+				listAll: mock(async () => []),
+				getByPuuid: mock(async () => null),
+			} as never,
+			matchSync: {
+				get: mock(async () => null),
+				setBackfill,
+			} as never,
+			matches: {} as never,
+			wol: { fetchPlaytimeSeconds: mock(async () => null) } as never,
+		});
+
+		await service.pollOnce();
+		expect(setBackfill).not.toHaveBeenCalled();
 	});
 });

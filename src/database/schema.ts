@@ -154,6 +154,8 @@ export const riotMatchSync = pgTable("riot_match_sync", {
 	backfillSeconds: bigint("backfill_seconds", { mode: "number" })
 		.notNull()
 		.default(0),
+	/** Cutoff for Riot match durations; wol.gg baseline covers earlier time. */
+	backfillAsOf: timestamp("backfill_as_of", { withTimezone: true }),
 	updatedAt: updatedAt(),
 });
 
