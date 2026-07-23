@@ -351,12 +351,14 @@ async function createAudioFromTextWithBaseUrlFallback(
 	text: string,
 	audioBasePath: string,
 	voiceApiValue: string,
+	credentialReporter?: CredentialRejectionReporter,
+	audioCreator: typeof createAudioFromText = createAudioFromText,
 ): Promise<void> {
 	let lastError: unknown;
 	for (const baseUrl of TIKTOK_TTS_BASE_URLS) {
 		try {
 			config(sessionId, baseUrl);
-			await createAudioFromText(text, audioBasePath, voiceApiValue);
+			await audioCreator(text, audioBasePath, voiceApiValue);
 			return;
 		} catch (error) {
 			lastError = error;
@@ -366,6 +368,7 @@ async function createAudioFromTextWithBaseUrlFallback(
 			console.warn(`base url for tiktok ${baseUrl} failed, rotating...`);
 		}
 	}
+	credentialReporter?.recordCredentialRejection("tiktok");
 	console.warn("exhausted tiktok base URLs, tiktok tts will not work");
 	throw lastError;
 }
@@ -375,6 +378,7 @@ export async function createTikTokSpeechOgg(
 	text: string,
 	voiceApiValue: string,
 	credentialReporter?: CredentialRejectionReporter,
+	audioCreator: typeof createAudioFromText = createAudioFromText,
 ): Promise<TikTokSpeechOgg> {
 	const tempDir = await mkdtemp(path.join(tmpdir(), "tiktoktts-"));
 	const cleanup = async () => {
@@ -388,6 +392,8 @@ export async function createTikTokSpeechOgg(
 			text,
 			audioBasePath,
 			voiceApiValue,
+			credentialReporter,
+			audioCreator,
 		);
 		const durationSeconds = await transcodeAudio(
 			`${audioBasePath}.mp3`,
@@ -396,9 +402,6 @@ export async function createTikTokSpeechOgg(
 		return { oggPath, durationSeconds, cleanup };
 	} catch (error) {
 		await cleanup();
-		if (credentialReporter && isTikTokCredentialRejection(error)) {
-			credentialReporter.recordCredentialRejection("tiktok");
-		}
 		throw error;
 	}
 }

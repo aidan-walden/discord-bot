@@ -1,5 +1,6 @@
-import { describe, expect, test } from "bun:test";
+import { describe, expect, mock, test } from "bun:test";
 import {
+	createTikTokSpeechOgg,
 	isTikTokCredentialRejection,
 	resolveOutputMode,
 	TIKTOK_VOICES,
@@ -65,5 +66,29 @@ describe("isTikTokCredentialRejection", () => {
 				new Error("The provided text is too long. status_code: 2"),
 			),
 		).toBe(false);
+	});
+});
+
+describe("createTikTokSpeechOgg", () => {
+	test("records a credential rejection after exhausting every base URL", async () => {
+		const recordCredentialRejection = mock(() => undefined);
+		const audioCreator = mock(async () => {
+			throw new Error(
+				"tiktok-tts Error: Your TikTok session id might be invalid or expired.",
+			);
+		});
+
+		await expect(
+			createTikTokSpeechOgg(
+				"session-id",
+				"hello",
+				"en_us_002",
+				{ recordCredentialRejection },
+				audioCreator,
+			),
+		).rejects.toThrow("session id might be invalid or expired");
+		expect(audioCreator).toHaveBeenCalledTimes(5);
+		expect(recordCredentialRejection).toHaveBeenCalledTimes(1);
+		expect(recordCredentialRejection).toHaveBeenCalledWith("tiktok");
 	});
 });
