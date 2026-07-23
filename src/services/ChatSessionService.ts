@@ -74,6 +74,35 @@ export default class ChatSessionService {
 		);
 	}
 
+	async completeOnce(
+		systemPrompt: string,
+		userMessage: string,
+	): Promise<string> {
+		if (this.providers.length === 0) {
+			throw new Error(this.getUnavailableReason());
+		}
+
+		let lastError: unknown;
+		for (const provider of this.providers) {
+			try {
+				const content = await provider.complete(systemPrompt, [
+					{ role: "user", content: userMessage },
+				]);
+				if (!content) {
+					throw new Error("The AI assistant returned an empty response.");
+				}
+				return content;
+			} catch (error) {
+				if (!isCredentialFailure(error)) {
+					throw error;
+				}
+				this.credentialReporter?.recordCredentialRejection(provider.name);
+				lastError = error;
+			}
+		}
+		throw lastError ?? new Error("The AI assistant is unavailable.");
+	}
+
 	async prompt(session: ChatSession, input: string): Promise<string> {
 		if (this.providers.length === 0) {
 			throw new Error(this.getUnavailableReason());

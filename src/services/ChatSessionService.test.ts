@@ -65,6 +65,52 @@ describe("ChatSessionService", () => {
 		expect(secondSession.messages).toEqual([]);
 	});
 
+	test("completeOnce sends system and user messages", async () => {
+		let sentAt: { system: string; messages: LlmMessage[] } | undefined;
+		const { provider, complete } = createProvider(
+			"openai",
+			async (system, messages) => {
+				sentAt = { system, messages: structuredClone(messages) };
+				return "rewritten";
+			},
+		);
+
+		const service = new ChatSessionService([provider]);
+		const result = await service.completeOnce("sys", "hello");
+
+		expect(result).toBe("rewritten");
+		expect(complete).toHaveBeenCalledTimes(1);
+		expect(sentAt).toEqual({
+			system: "sys",
+			messages: [{ role: "user", content: "hello" }],
+		});
+	});
+
+	test("completeOnce fails over and reports a credential rejection", async () => {
+		const rejection = { status: 401, message: "Invalid API key" };
+		const { provider: openai, complete: openaiComplete } = createProvider(
+			"openai",
+			async () => {
+				throw rejection;
+			},
+		);
+		const { provider: anthropic, complete: anthropicComplete } = createProvider(
+			"anthropic",
+			async () => "from anthropic",
+		);
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new ChatSessionService([openai, anthropic], {
+			recordCredentialRejection,
+		});
+
+		const result = await service.completeOnce("sys", "hi");
+
+		expect(result).toBe("from anthropic");
+		expect(openaiComplete).toHaveBeenCalledTimes(1);
+		expect(anthropicComplete).toHaveBeenCalledTimes(1);
+		expect(recordCredentialRejection).toHaveBeenCalledWith("openai");
+	});
+
 	test("completes successful prompt lifecycle", async () => {
 		let sentAt: { system: string; messages: LlmMessage[] } | undefined;
 		const { provider, complete } = createProvider(
