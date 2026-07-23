@@ -5,20 +5,18 @@
 - Bot framework: `discord.js`.
 - Music: direct `kazagumo` dependency on top of pinned GitHub `shoukaku` plus external Lavalink nodes from `config.yml`.
 - Web/admin surface: Hono served with `Bun.serve`.
-- Persistence: Postgres through Drizzle ORM's Bun SQL driver. Do not add `pg`, `postgres`, or `postgres.js`.
+- Persistence: Postgres through `Bun.sql`. Do not add `pg`, `postgres`, or `postgres.js`.
 - Prefer Bun-native file APIs such as `Bun.file(...).text()` / `.json()` for file reads and writes; keep `node:fs` only where Bun does not cover the need well, such as directory traversal.
 
 ## Entry Points
 - [`src/index.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/index.ts) loads config, initializes the bot, optionally syncs/removes slash commands, logs in, and starts the web server.
-- [`src/models/Bot.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/models/Bot.ts) wires Discord, OpenAI, the Drizzle database, repositories, metrics, Kazagumo music setup, commands, and event registration.
+- [`src/models/Bot.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/models/Bot.ts) wires Discord, OpenAI, database access, repositories, metrics, Kazagumo music setup, commands, and event registration.
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
-- Runtime config comes from `config.yml`. Flat env vars override nested YAML paths: `BOT_TOKEN` / `DATABASE_URL` / `BOT_OWNER_ID` (top-level), `OPENAI_API_TOKEN` / `OPENAI_MODEL` → `openai.*`, `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` → `spotify.*`, `TIKTOK_SESSION_ID` → `tiktok.*`, `IMGUR_CLIENT_ID` → `imgur.*`, `RIOT_API_KEY` → `riot.RIOT_API_KEY`.
+- Runtime config comes from `config.yml`, with flat env vars able to override `BOT_TOKEN`, `DATABASE_URL`, `BOT_OWNER_ID`, and nested provider settings (`openai.*`, `anthropic.*`).
 - Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
-- `openai.OPENAI_API_TOKEN` and `openai.OPENAI_MODEL` are optional together; ChatGPT commands stay registered but report unavailable when unset.
-- `spotify.SPOTIFY_CLIENT_ID` and `spotify.SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
-- `riot.RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` (`puuid`/`platform`) drive the optional match/rank poller. Solo rank history (max 5 per puuid) is in `riot_rank_history`. Playtime = one-shot wol.gg scrape baseline (`backfill_seconds` / `backfill_as_of` on `riot_match_sync`) plus Riot Match-V5 durations stored after that cutoff (`riot_matches` / `riot_match_participants`). Discord ↔ Riot links (`riot_user_links`, puuid PK, multiple links per Discord user) power `/lol map` and `/lol view`. HTTP clients: `src/services/riot/`, wol.gg scrape in `src/services/wol/`.
+- The AI assistant (`/chatgpt` command) is served by a generic LLM provider layer (`src/services/LlmProvider.ts`) supporting OpenAI and Anthropic. Provider preference is OpenAI then Anthropic — the first with a defined API key is primary, and `ChatSessionService.prompt` fails over to the next provider when the primary rejects credentials (bad key / no balance). OpenAI needs both `OPENAI_API_TOKEN` and `OPENAI_MODEL`; Anthropic needs `ANTHROPIC_API_TOKEN` and defaults to `claude-haiku-4-5` if `ANTHROPIC_MODEL` is unset. Commands stay registered but report unavailable when no provider is configured.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.
@@ -26,15 +24,14 @@
 - Keep new command/event modules side-effect free except for their exported class.
 
 ## Persistence
-- [`src/database/schema.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/schema.ts) is the source of truth for the Postgres schema.
-- [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) applies tracked Drizzle migrations on startup. After a schema change, run `bun run db:generate` and commit the generated files.
-- Current persisted data: GPT user bans, music user bans, music guild bans, user unboxing balances, deafen sessions/summaries, Riot solo rank history, Riot matches/participants/sync, Discord ↔ Riot user links (smurfs allowed), guild settings (main channel), and bot-wide Secret Santa draws (`secret_santa_*`).
-- Repositories in `src/repositories` should accept the shared `Database` type and use Drizzle query builders. Use Drizzle `sql` fragments only for Postgres expressions that the query builder cannot state clearly.
+- [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) creates tables on startup; there is no separate migration tool.
+- Current persisted data: GPT user bans, music user bans, music guild bans, and user unboxing balances.
+- Repositories in `src/repositories` should accept `typeof Bun.sql` and use parameterized queries.
 
 ## Workflow
 - Run `bun install` after dependency changes to refresh `bun.lock` and `node_modules`.
 - Primary checks: `bun run test`, `bun run typecheck`, and `bun run check`.
-- Use `bun run format` for automated formatting and lint fixes; do not make formatting-only changes by hand.
-- GitHub Actions CI installs with `bun install --frozen-lockfile`, runs typecheck, runs `bun test` against Postgres 17, then runs `bun run check`.
+- Tests need Postgres 17. Locally `scripts/test.sh` brings it up via `podman-compose` from `compose.test.yml`; CI provides the same Postgres 17 as a GitHub Actions service container. Both expose it on `localhost:5432`, and the bot reads `DATABASE_URL_TESTING` for the test database. Keep the CI service container in sync with `compose.test.yml` (image, database, credentials, port).
+- GitHub Actions CI installs with `bun install --frozen-lockfile`, runs typecheck, runs `bun test` against the Postgres 17 service container, then runs `bun run check`.
 - `bun run check` includes `AGENTS.md`; keep this file present and broadly useful.
 - If you make architectural changes, replace outdated guidance here instead of appending.
