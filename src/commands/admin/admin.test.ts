@@ -20,7 +20,10 @@ function getAction(id: string) {
 	return action;
 }
 
-function createBot() {
+function createBot(riot?: {
+	isAvailable?: boolean;
+	getAccountByRiotId?: ReturnType<typeof mock>;
+}) {
 	const make = () => ({
 		add: mock(async () => undefined),
 		remove: mock(async () => undefined),
@@ -34,6 +37,16 @@ function createBot() {
 		},
 		guildSettings: {
 			setMainChannel: mock(async () => undefined),
+		},
+		riot: {
+			isAvailable: mock(() => riot?.isAvailable ?? true),
+			getAccountByRiotId:
+				riot?.getAccountByRiotId ??
+				mock(async () => ({
+					puuid: "test-puuid",
+					gameName: "Faker",
+					tagLine: "KR1",
+				})),
 		},
 	} as unknown as Bot;
 }
@@ -202,6 +215,78 @@ describe("ACTIONS run()", () => {
 				},
 			),
 		).rejects.toThrow("Can't set main channel here");
+	});
+
+	test("riot_to_puuid resolves Name#TAG via the Riot API", async () => {
+		const getAccountByRiotId = mock(async () => ({
+			puuid: "abc-puuid",
+			gameName: "Faker",
+			tagLine: "KR1",
+		}));
+		const bot = createBot({ getAccountByRiotId });
+
+		const result = await getAction("riot_to_puuid").run(
+			{ riot_id: "Faker#KR1", region: "NA" },
+			{ bot, guild: {} as Guild, modal: {} as ModalSubmitInteraction },
+		);
+
+		expect(getAccountByRiotId).toHaveBeenCalledWith("americas", "Faker", "KR1");
+		expect(result).toContain("abc-puuid");
+		expect(result).toContain("Faker");
+	});
+
+	test("riot_to_puuid throws when Riot API is off", async () => {
+		await expect(
+			getAction("riot_to_puuid").run(
+				{ riot_id: "Faker#KR1", region: "NA" },
+				{
+					bot: createBot({ isAvailable: false }),
+					guild: {} as Guild,
+					modal: {} as ModalSubmitInteraction,
+				},
+			),
+		).rejects.toThrow("Riot API is not configured");
+	});
+
+	test("riot_to_puuid rejects a bad riot id", async () => {
+		await expect(
+			getAction("riot_to_puuid").run(
+				{ riot_id: "NoHash", region: "NA" },
+				{
+					bot: createBot(),
+					guild: {} as Guild,
+					modal: {} as ModalSubmitInteraction,
+				},
+			),
+		).rejects.toThrow("Riot ID must be");
+	});
+
+	test("riot_to_puuid rejects an unknown region", async () => {
+		await expect(
+			getAction("riot_to_puuid").run(
+				{ riot_id: "Faker#KR1", region: "XX" },
+				{
+					bot: createBot(),
+					guild: {} as Guild,
+					modal: {} as ModalSubmitInteraction,
+				},
+			),
+		).rejects.toThrow("Unknown region");
+	});
+
+	test("riot_to_puuid throws when account is missing", async () => {
+		await expect(
+			getAction("riot_to_puuid").run(
+				{ riot_id: "Faker#KR1", region: "NA" },
+				{
+					bot: createBot({
+						getAccountByRiotId: mock(async () => null),
+					}),
+					guild: {} as Guild,
+					modal: {} as ModalSubmitInteraction,
+				},
+			),
+		).rejects.toThrow("No Riot account found");
 	});
 });
 

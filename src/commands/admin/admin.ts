@@ -20,6 +20,11 @@ import {
 	userMention,
 } from "discord.js";
 import type Command from "../../models/Command";
+import {
+	FRIENDLY_REGION_TO_PLATFORM,
+	parseFriendlyRegion,
+	platformToRegion,
+} from "../../services/RiotGamesService";
 
 type Bot = ChatInputCommandInteraction["client"]["bot"];
 
@@ -205,6 +210,45 @@ export const ACTIONS: Action[] = [
 			return `Main channel set to ${channelMention(channel.id)}.`;
 		},
 	},
+	{
+		id: "riot_to_puuid",
+		label: "🎮 Riot → PUUID",
+		style: ButtonStyle.Primary,
+		title: "Riot ID → PUUID",
+		fields: [
+			{ id: "riot_id", label: "Riot ID (Name#TAG)", min: 3, max: 32 },
+			{ id: "region", label: "Region (NA, EUW, …)", min: 2, max: 5 },
+		],
+		run: async ({ riot_id = "", region = "" }, { bot }) => {
+			if (!bot.riot.isAvailable()) {
+				throw new Error("Riot API is not configured.");
+			}
+			const hash = riot_id.indexOf("#");
+			if (hash <= 0 || hash === riot_id.length - 1) {
+				throw new Error("Riot ID must be `GameName#TAG`.");
+			}
+			const gameName = riot_id.slice(0, hash).trim();
+			const tagLine = riot_id.slice(hash + 1).trim();
+			if (!gameName || !tagLine) {
+				throw new Error("Riot ID must be `GameName#TAG`.");
+			}
+			const platform = parseFriendlyRegion(region);
+			if (!platform) {
+				throw new Error(
+					`Unknown region. Use one of: ${Object.keys(FRIENDLY_REGION_TO_PLATFORM).join(", ")}.`,
+				);
+			}
+			const account = await bot.riot.getAccountByRiotId(
+				platformToRegion(platform),
+				gameName,
+				tagLine,
+			);
+			if (!account) {
+				throw new Error("No Riot account found for that ID/region.");
+			}
+			return `${bold(escapeMarkdown(account.gameName))}#${escapeMarkdown(account.tagLine)} → ${inlineCode(account.puuid)}`;
+		},
+	},
 ];
 
 export const ACTIONS_BY_ID = new Map(
@@ -216,7 +260,7 @@ export const ROWS: string[][] = [
 	["kick_voice", "delete_message", "change_nick"],
 	["ban_gpt", "pardon_gpt"],
 	["ban_music", "pardon_music", "ban_guild_music", "pardon_guild_music"],
-	["set_main_channel"],
+	["set_main_channel", "riot_to_puuid"],
 ];
 
 export function buildPanel(): ActionRowBuilder<ButtonBuilder>[] {
