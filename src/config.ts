@@ -2,7 +2,7 @@ import { statSync } from "node:fs";
 import path from "node:path";
 import { isHttpImageUrl } from "./helpers/profilePicture";
 import Holiday from "./models/Holiday";
-import { RIOT_PLATFORMS } from "./services/riot/constants";
+import { parseRiotId, RIOT_PLATFORMS } from "./services/riot/constants";
 import type { RiotPlatform, RiotPlayerConfig } from "./services/riot/types";
 
 export type { RiotPlayerConfig };
@@ -79,6 +79,7 @@ interface AppConfigFile {
 		pollIntervalSeconds?: number;
 		players?: Array<{
 			puuid?: string;
+			riotId?: string;
 			platform?: string;
 		}>;
 	};
@@ -264,6 +265,29 @@ function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
 			throw new Error(
 				`Invalid riot.players[${index}].platform: expected one of ${RIOT_PLATFORMS.join(", ")}.`,
 			);
+		}
+		const hasPuuid =
+			record.puuid !== undefined &&
+			!(typeof record.puuid === "string" && record.puuid.trim() === "");
+		const hasRiotId =
+			record.riotId !== undefined &&
+			!(typeof record.riotId === "string" && record.riotId.trim() === "");
+		if (hasPuuid === hasRiotId) {
+			throw new Error(
+				`Invalid riot.players[${index}]: set exactly one of puuid or riotId.`,
+			);
+		}
+		if (hasRiotId) {
+			const riotId = ensureString(
+				record.riotId,
+				`riot.players[${index}].riotId`,
+			);
+			if (!parseRiotId(riotId)) {
+				throw new Error(
+					`Invalid riot.players[${index}].riotId: expected GameName#TAG.`,
+				);
+			}
+			return { riotId, platform: platform as RiotPlatform };
 		}
 		return {
 			puuid: ensureString(record.puuid, `riot.players[${index}].puuid`),

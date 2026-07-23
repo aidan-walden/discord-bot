@@ -769,14 +769,62 @@ describe("Config", () => {
 			);
 		});
 
-		test("rejects missing puuid", async () => {
+		test("parses riotId players", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						riotBlock: [
+							"riot:",
+							"  players:",
+							'    - riotId: "Hide on bush#KR1"',
+							'      platform: "kr"',
+						].join("\n"),
+					}),
+				);
+				const config = await Config.load(filePath);
+				expect(config.get("riot").players).toEqual([
+					{ riotId: "Hide on bush#KR1", platform: "kr" },
+				]);
+			});
+		});
+
+		test("rejects missing puuid and riotId", async () => {
 			await expectLoadConfigError(
 				buildYaml({
 					riotBlock: ["riot:", "  players:", '    - platform: "na1"'].join(
 						"\n",
 					),
 				}),
-				"Invalid config value for riot.players[0].puuid: expected non-empty string.",
+				"Invalid riot.players[0]: set exactly one of puuid or riotId.",
+			);
+		});
+
+		test("rejects both puuid and riotId", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					riotBlock: [
+						"riot:",
+						"  players:",
+						'    - puuid: "abc"',
+						'      riotId: "Name#TAG"',
+						'      platform: "na1"',
+					].join("\n"),
+				}),
+				"Invalid riot.players[0]: set exactly one of puuid or riotId.",
+			);
+		});
+
+		test("rejects bad riotId shape", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					riotBlock: [
+						"riot:",
+						"  players:",
+						'    - riotId: "no-hash"',
+						'      platform: "na1"',
+					].join("\n"),
+				}),
+				"Invalid riot.players[0].riotId: expected GameName#TAG.",
 			);
 		});
 

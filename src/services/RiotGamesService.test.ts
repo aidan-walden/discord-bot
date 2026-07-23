@@ -484,6 +484,40 @@ describe("RiotGamesService", () => {
 		expect(service.getPollState("p1")).toBeNull();
 	});
 
+	test("pollOnce resolves riotId via by-riot-id then uses returned puuid", async () => {
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		const urls: string[] = [];
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			urls.push(href);
+			if (href.includes("/accounts/by-riot-id/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				return jsonResponse([]);
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse([]);
+			}
+			return new Response(null, { status: 500 });
+		});
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [{ riotId: "Hide#NA1", platform: "na1" }],
+		});
+		await service.pollOnce();
+		expect(urls.some((u) => u.includes("/accounts/by-riot-id/Hide/NA1"))).toBe(
+			true,
+		);
+		expect(urls.some((u) => u.includes("/active-games/by-summoner/p1"))).toBe(
+			true,
+		);
+		expect(service.getPollState("p1")?.gameName).toBe("Hide");
+	});
+
 	test("startPoller needs a key and an account source", () => {
 		const setIntervalFn = mock(
 			() => 1 as unknown as ReturnType<typeof setInterval>,

@@ -8,6 +8,7 @@ import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
 	LOL_VIEW_CACHE_TTL_MS,
 	MATCH_IDS_PAGE_SIZE,
+	parseRiotId,
 	platformToRegion,
 	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
@@ -37,6 +38,7 @@ export {
 	FLEX_QUEUE,
 	FRIENDLY_REGION_TO_PLATFORM,
 	parseFriendlyRegion,
+	parseRiotId,
 	platformToRegion,
 	profileIconUrl,
 	queueName,
@@ -214,9 +216,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	}
 
 	getAllPollStates(): RiotPlayerPollState[] {
-		return this.players
-			.map((player) => this.snapshots.get(player.puuid))
-			.filter((state): state is RiotPlayerPollState => state !== undefined);
+		// keyed by resolved puuid after poll; insertion order matches last successful polls
+		return [...this.snapshots.values()];
 	}
 
 	async getRankHistory(puuid: string): Promise<RiotRankHistoryEntry[]> {
@@ -257,23 +258,29 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		}
 		this.polling = true;
 		try {
+			const syncPlayers = new Map<
+				string,
+				{ puuid: string; platform: RiotPlatform }
+			>();
 			for (const player of this.players) {
+				const label = playerLabel(player);
 				try {
 					const state = await this.pollPlayer(player);
-					this.snapshots.set(player.puuid, state);
+					this.snapshots.set(state.puuid, state);
 					this.emit("update", state);
+					syncPlayers.set(state.puuid, {
+						puuid: state.puuid,
+						platform: player.platform,
+					});
 				} catch (error) {
 					// ponytail: never emit("error") — unhandled crashes the process
 					console.error(
-						`Riot poll failed for ${player.puuid} (${player.platform}):`,
+						`Riot poll failed for ${label} (${player.platform}):`,
 						error,
 					);
 				}
 			}
 
-			const syncPlayers = new Map(
-				this.players.map((player) => [player.puuid, player]),
-			);
 			for (const link of (await this.userLinks?.listAll()) ?? []) {
 				if (!syncPlayers.has(link.puuid)) {
 					syncPlayers.set(link.puuid, {
@@ -362,11 +369,41 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return this.client.request(routing, path, query);
 	}
 
+	private async resolveAccount(
+		player: RiotPlayerConfig,
+	): Promise<RiotAccount | null> {
+		const region = platformToRegion(player.platform);
+		if (player.riotId) {
+			const parsed = parseRiotId(player.riotId);
+			if (!parsed) {
+				return null;
+			}
+			return this.client.getAccountByRiotId(
+				region,
+				parsed.gameName,
+				parsed.tagLine,
+			);
+		}
+		if (player.puuid) {
+			return this.client.getAccountByPuuid(region, player.puuid);
+		}
+		return null;
+	}
+
 	private async pollPlayer(
 		player: RiotPlayerConfig,
 	): Promise<RiotPlayerPollState> {
 		const region = platformToRegion(player.platform);
-		let memory = this.pollMemory.get(player.puuid);
+		const account = await this.resolveAccount(player);
+		if (!account) {
+			throw new RiotGamesError(
+				`Riot account not found for ${playerLabel(player)}`,
+				404,
+			);
+		}
+		const puuid = account.puuid;
+
+		let memory = this.pollMemory.get(puuid);
 		if (!memory) {
 			memory = {
 				lastMatchId: null,
@@ -377,7 +414,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		}
 
 		if (!memory.seededFromDb && this.rankHistory) {
-			const history = await this.rankHistory.listByPuuid(player.puuid);
+			const history = await this.rankHistory.listByPuuid(puuid);
 			const newest = history[0];
 			if (newest && memory.currentRank === null) {
 				memory.currentRank = {
@@ -391,21 +428,10 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			memory.seededFromDb = true;
 		}
 
-		const account = await this.client.getAccountByPuuid(region, player.puuid);
-		if (!account) {
-			throw new RiotGamesError(
-				`Riot account not found for puuid ${player.puuid}`,
-				404,
-			);
-		}
-
-		const active = await this.client.getActiveGame(
-			player.platform,
-			player.puuid,
-		);
+		const active = await this.client.getActiveGame(player.platform, puuid);
 		let inProgress: RiotActiveGameStatus | null = null;
 		if (active) {
-			const self = active.participants.find((p) => p.puuid === player.puuid);
+			const self = active.participants.find((p) => p.puuid === puuid);
 			inProgress = {
 				gameId: active.gameId,
 				gameStartTime: active.gameStartTime,
@@ -416,23 +442,21 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			};
 		}
 
-		const matchIds = await this.client.getMatchIdsByPuuid(
-			region,
-			player.puuid,
-			{ count: 1 },
-		);
+		const matchIds = await this.client.getMatchIdsByPuuid(region, puuid, {
+			count: 1,
+		});
 		const newestMatchId = matchIds[0] ?? null;
 
 		if (newestMatchId !== null && newestMatchId !== memory.lastMatchId) {
 			const match = await this.client.getMatch(region, newestMatchId);
 			const entries = await this.client.getLeagueEntriesByPuuid(
 				player.platform,
-				player.puuid,
+				puuid,
 			);
 			const rankAfter = soloRankFromEntries(entries);
 			const rankBefore = memory.currentRank;
 			const participant = match?.info.participants.find(
-				(p) => p.puuid === player.puuid,
+				(p) => p.puuid === puuid,
 			);
 			if (match && participant) {
 				memory.mostRecentEnded = {
@@ -454,23 +478,23 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		} else {
 			const entries = await this.client.getLeagueEntriesByPuuid(
 				player.platform,
-				player.puuid,
+				puuid,
 			);
 			memory.currentRank = soloRankFromEntries(entries);
 		}
 
 		if (memory.currentRank && this.rankHistory) {
 			await this.rankHistory.recordIfChanged(
-				player.puuid,
+				puuid,
 				memory.currentRank,
 				new Date(this.now()),
 			);
 		}
 
-		this.pollMemory.set(player.puuid, memory);
+		this.pollMemory.set(puuid, memory);
 
 		return {
-			puuid: player.puuid,
+			puuid,
 			username: `${account.gameName}#${account.tagLine}`,
 			gameName: account.gameName,
 			tagLine: account.tagLine,
@@ -505,16 +529,25 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return all;
 	}
 
-	private async resolveRiotId(
-		player: RiotPlayerConfig,
-	): Promise<{ gameName: string; tagLine: string } | null> {
-		const link = await this.userLinks?.getByPuuid(player.puuid);
+	private async resolveRiotId(player: {
+		platform: RiotPlatform;
+		puuid?: string;
+		riotId?: string;
+	}): Promise<{ gameName: string; tagLine: string } | null> {
+		if (player.riotId) {
+			return parseRiotId(player.riotId);
+		}
+		const puuid = player.puuid;
+		if (!puuid) {
+			return null;
+		}
+		const link = await this.userLinks?.getByPuuid(puuid);
 		if (link) {
 			return { gameName: link.gameName, tagLine: link.tagLine };
 		}
 		const account = await this.client.getAccountByPuuid(
 			platformToRegion(player.platform),
-			player.puuid,
+			puuid,
 		);
 		if (!account) {
 			return null;
@@ -525,7 +558,11 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	/**
 	 * One-shot wol.gg baseline when missing. No-op if already backfilled or scrape fails.
 	 */
-	async ensurePlaytimeBackfill(player: RiotPlayerConfig): Promise<void> {
+	async ensurePlaytimeBackfill(player: {
+		puuid: string;
+		platform: RiotPlatform;
+		riotId?: string;
+	}): Promise<void> {
 		if (!this.matchSync || !this.wol) {
 			return;
 		}
@@ -553,7 +590,10 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		);
 	}
 
-	private async syncPlayerMatches(player: RiotPlayerConfig): Promise<void> {
+	private async syncPlayerMatches(player: {
+		puuid: string;
+		platform: RiotPlatform;
+	}): Promise<void> {
 		if (!this.matches || !this.matchSync || !this.wol) {
 			return;
 		}
@@ -588,4 +628,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		}
 		await this.matchSync.touchSynced(player.puuid, now);
 	}
+}
+
+function playerLabel(player: RiotPlayerConfig): string {
+	return player.riotId ?? player.puuid ?? "?";
 }

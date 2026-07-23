@@ -388,9 +388,12 @@ export default class RiotApiClient {
 		if (!response.ok) {
 			const body = await response.text().catch(() => "");
 			const detail = body.slice(0, 200);
+			const decryptHint = detail.includes("Exception decrypting")
+				? " — PUUID is not valid for this API key; use riotId in config or re-resolve with the current key"
+				: "";
 			throw new RiotGamesError(
 				detail
-					? `Riot returned HTTP ${response.status}: ${detail}`
+					? `Riot returned HTTP ${response.status}: ${detail}${decryptHint}`
 					: `Riot returned HTTP ${response.status}`,
 				response.status,
 			);

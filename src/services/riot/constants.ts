@@ -98,6 +98,22 @@ export function platformToRegion(platform: RiotPlatform): RiotRegion {
 	return PLATFORM_TO_REGION[platform];
 }
 
+/** Parse `GameName#TAG`. Returns null if malformed. */
+export function parseRiotId(
+	raw: string,
+): { gameName: string; tagLine: string } | null {
+	const hash = raw.indexOf("#");
+	if (hash <= 0 || hash === raw.length - 1) {
+		return null;
+	}
+	const gameName = raw.slice(0, hash).trim();
+	const tagLine = raw.slice(hash + 1).trim();
+	if (!gameName || !tagLine) {
+		return null;
+	}
+	return { gameName, tagLine };
+}
+
 export function parseFriendlyRegion(input: string): RiotPlatform | null {
 	const key = input.trim().toUpperCase();
 	return FRIENDLY_REGION_TO_PLATFORM[key] ?? null;

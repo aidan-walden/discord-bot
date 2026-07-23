@@ -23,6 +23,7 @@ import type Command from "../../models/Command";
 import {
 	FRIENDLY_REGION_TO_PLATFORM,
 	parseFriendlyRegion,
+	parseRiotId,
 	platformToRegion,
 } from "../../services/RiotGamesService";
 
@@ -223,15 +224,11 @@ export const ACTIONS: Action[] = [
 			if (!bot.riot.isAvailable()) {
 				throw new Error("Riot API is not configured.");
 			}
-			const hash = riot_id.indexOf("#");
-			if (hash <= 0 || hash === riot_id.length - 1) {
+			const parsed = parseRiotId(riot_id);
+			if (!parsed) {
 				throw new Error("Riot ID must be `GameName#TAG`.");
 			}
-			const gameName = riot_id.slice(0, hash).trim();
-			const tagLine = riot_id.slice(hash + 1).trim();
-			if (!gameName || !tagLine) {
-				throw new Error("Riot ID must be `GameName#TAG`.");
-			}
+			const { gameName, tagLine } = parsed;
 			const platform = parseFriendlyRegion(region);
 			if (!platform) {
 				throw new Error(

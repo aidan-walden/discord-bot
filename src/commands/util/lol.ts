@@ -10,6 +10,7 @@ import type Command from "../../models/Command";
 import {
 	FLEX_QUEUE,
 	parseFriendlyRegion,
+	parseRiotId,
 	platformToRegion,
 	profileIconUrl,
 	queueName,
@@ -37,21 +38,6 @@ const FRIENDLY_REGIONS = [
 	"TW",
 	"VN",
 ] as const;
-
-function parseRiotId(
-	raw: string,
-): { gameName: string; tagLine: string } | null {
-	const hash = raw.indexOf("#");
-	if (hash <= 0 || hash === raw.length - 1) {
-		return null;
-	}
-	const gameName = raw.slice(0, hash).trim();
-	const tagLine = raw.slice(hash + 1).trim();
-	if (!gameName || !tagLine) {
-		return null;
-	}
-	return { gameName, tagLine };
-}
 
 function formatRank(entry: RiotLeagueEntry | undefined): string {
 	if (!entry) {
