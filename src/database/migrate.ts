@@ -98,4 +98,42 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 			updated_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
 	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS secret_santa_draws (
+			name TEXT PRIMARY KEY,
+			open BOOLEAN NOT NULL DEFAULT TRUE,
+			spend_limit_cents INTEGER NULL,
+			drawn_at TIMESTAMPTZ NULL,
+			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
+		)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS secret_santa_participants (
+			draw_name TEXT NOT NULL REFERENCES secret_santa_draws(name) ON DELETE CASCADE,
+			user_id TEXT NOT NULL,
+			PRIMARY KEY (draw_name, user_id)
+		)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS secret_santa_exclusions (
+			draw_name TEXT NOT NULL REFERENCES secret_santa_draws(name) ON DELETE CASCADE,
+			user_a TEXT NOT NULL,
+			user_b TEXT NOT NULL,
+			PRIMARY KEY (draw_name, user_a, user_b),
+			CHECK (user_a < user_b)
+		)
+	`;
+
+	await sql`
+		CREATE TABLE IF NOT EXISTS secret_santa_assignments (
+			draw_name TEXT NOT NULL REFERENCES secret_santa_draws(name) ON DELETE CASCADE,
+			giver_id TEXT NOT NULL,
+			recipient_id TEXT NOT NULL,
+			PRIMARY KEY (draw_name, giver_id),
+			UNIQUE (draw_name, recipient_id)
+		)
+	`;
 }

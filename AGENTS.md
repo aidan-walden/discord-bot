@@ -27,7 +27,7 @@
 
 ## Persistence
 - [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) creates tables on startup; there is no separate migration tool.
-- Current persisted data: GPT user bans, music user bans, music guild bans, user unboxing balances, deafen sessions/summaries, Riot solo rank history, Discord ↔ Riot user links, and guild settings (main channel).
+- Current persisted data: GPT user bans, music user bans, music guild bans, user unboxing balances, deafen sessions/summaries, Riot solo rank history, Discord ↔ Riot user links, guild settings (main channel), and bot-wide Secret Santa draws (`secret_santa_*`).
 - Repositories in `src/repositories` should accept `typeof Bun.sql` and use parameterized queries.
 
 ## Workflow

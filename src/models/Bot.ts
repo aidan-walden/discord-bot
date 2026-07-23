@@ -31,6 +31,7 @@ import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import GuildSettingsRepository from "../repositories/GuildSettingsRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
+import SecretSantaRepository from "../repositories/SecretSantaRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import AppleMusicService from "../services/AppleMusicService";
 import ChatSessionService from "../services/ChatSessionService";
@@ -74,6 +75,7 @@ export default class Bot extends Client {
 	readonly riot: RiotGamesService;
 	readonly riotLinks: RiotUserLinkRepository;
 	readonly guildSettings: GuildSettingsRepository;
+	readonly secretSanta: SecretSantaRepository;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -120,6 +122,7 @@ export default class Bot extends Client {
 		this.deafenTracker = new DeafenTrackerService(this.deafenSessions);
 		this.riotLinks = new RiotUserLinkRepository(this.db);
 		this.guildSettings = new GuildSettingsRepository(this.db);
+		this.secretSanta = new SecretSantaRepository(this.db);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
 			openaiConfig.OPENAI_MODEL,
