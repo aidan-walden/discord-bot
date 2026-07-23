@@ -105,8 +105,13 @@ export async function migrateDatabase(sql: typeof Bun.sql): Promise<void> {
 			open BOOLEAN NOT NULL DEFAULT TRUE,
 			spend_limit_cents INTEGER NULL,
 			drawn_at TIMESTAMPTZ NULL,
+			revision INTEGER NOT NULL DEFAULT 0,
 			created_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
 		)
+	`;
+	await sql`
+		ALTER TABLE secret_santa_draws
+		ADD COLUMN IF NOT EXISTS revision INTEGER NOT NULL DEFAULT 0
 	`;
 
 	await sql`

@@ -4,6 +4,7 @@ import {
 	ButtonStyle,
 	type ChatInputCommandInteraction,
 	EmbedBuilder,
+	inlineCode,
 	MessageFlags,
 	SlashCommandBuilder,
 	userMention,
@@ -22,6 +23,22 @@ function formatSpendLimit(cents: number | null): string {
 		return "No spend limit set.";
 	}
 	return `$${(cents / 100).toFixed(2)}`;
+}
+
+function formatMentionList(ids: string[]): string {
+	if (ids.length === 0) return "None";
+	let value = "";
+	for (let i = 0; i < ids.length; i++) {
+		const next = value
+			? `${value}, ${userMention(ids[i] as string)}`
+			: userMention(ids[i] as string);
+		const remaining = ids.length - i - 1;
+		if (`${next}${remaining ? `, and ${remaining} more` : ""}`.length > 1024) {
+			return `${value}, and ${ids.length - i} more`;
+		}
+		value = next;
+	}
+	return value;
 }
 
 function parseName(raw: string | null): string | null {
@@ -447,33 +464,33 @@ export default class SecretSanta implements Command {
 			return;
 		}
 		const repo = interaction.client.bot.secretSanta;
-		const draw = await repo.get(name);
-		if (!draw) {
+		const result = await repo.addParticipant(name, interaction.user.id);
+		if (result === "missing") {
 			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
+				content: `No draw named ${inlineCode(name)}.`,
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		if (draw.drawnAt) {
+		if (result === "locked") {
 			await interaction.reply({
 				content: "This draw already has pairings; the roster is locked.",
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		if (!draw.open) {
+		if (result === "closed") {
 			await interaction.reply({
 				content: "Opt-in is closed for this draw.",
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		const added = await repo.addParticipant(name, interaction.user.id);
 		await interaction.reply({
-			content: added
-				? `You opted in to \`${name}\`.`
-				: `You are already opted in to \`${name}\`.`,
+			content:
+				result === "added"
+					? `You opted in to ${inlineCode(name)}.`
+					: `You are already opted in to ${inlineCode(name)}.`,
 			flags: MessageFlags.Ephemeral,
 		});
 	}
@@ -486,26 +503,26 @@ export default class SecretSanta implements Command {
 			return;
 		}
 		const repo = interaction.client.bot.secretSanta;
-		const draw = await repo.get(name);
-		if (!draw) {
+		const result = await repo.removeParticipant(name, interaction.user.id);
+		if (result === "missing") {
 			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
+				content: `No draw named ${inlineCode(name)}.`,
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		if (draw.drawnAt) {
+		if (result === "locked") {
 			await interaction.reply({
 				content: "This draw already has pairings; the roster is locked.",
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		const removed = await repo.removeParticipant(name, interaction.user.id);
 		await interaction.reply({
-			content: removed
-				? `You opted out of \`${name}\`.`
-				: `You were not opted in to \`${name}\`.`,
+			content:
+				result === "removed"
+					? `You opted out of ${inlineCode(name)}.`
+					: `You were not opted in to ${inlineCode(name)}.`,
 			flags: MessageFlags.Ephemeral,
 		});
 	}
@@ -521,27 +538,27 @@ export default class SecretSanta implements Command {
 			return;
 		}
 		const repo = interaction.client.bot.secretSanta;
-		const draw = await repo.get(name);
-		if (!draw) {
+		const user = interaction.options.getUser("user", true);
+		const result = await repo.removeParticipant(name, user.id);
+		if (result === "missing") {
 			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
+				content: `No draw named ${inlineCode(name)}.`,
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		if (draw.drawnAt) {
+		if (result === "locked") {
 			await interaction.reply({
 				content: "This draw already has pairings; the roster is locked.",
 				flags: MessageFlags.Ephemeral,
 			});
 			return;
 		}
-		const user = interaction.options.getUser("user", true);
-		const removed = await repo.removeParticipant(name, user.id);
 		await interaction.reply({
-			content: removed
-				? `Removed ${userMention(user.id)} from \`${name}\`.`
-				: `${userMention(user.id)} was not in \`${name}\`.`,
+			content:
+				result === "removed"
+					? `Removed ${userMention(user.id)} from ${inlineCode(name)}.`
+					: `${userMention(user.id)} was not in ${inlineCode(name)}.`,
 			flags: MessageFlags.Ephemeral,
 		});
 	}
@@ -608,10 +625,7 @@ export default class SecretSanta implements Command {
 				},
 				{
 					name: "Participants",
-					value:
-						participants.length === 0
-							? "None"
-							: participants.map((id) => userMention(id)).join(", "),
+					value: formatMentionList(participants),
 				},
 				{
 					name: "Exclusions",
@@ -747,7 +761,7 @@ export default class SecretSanta implements Command {
 				},
 				{
 					name: `Participants (${participants.length})`,
-					value: participants.map((id) => userMention(id)).join(", "),
+					value: formatMentionList(participants),
 				},
 			);
 		const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
@@ -767,74 +781,83 @@ export default class SecretSanta implements Command {
 			flags: MessageFlags.Ephemeral,
 		});
 
-		try {
-			const click = await response.awaitMessageComponent({
+		const click = await response
+			.awaitMessageComponent({
 				filter: (i) =>
 					(i.customId === yesId || i.customId === noId) &&
 					i.user.id === interaction.user.id,
 				time: 60_000,
+			})
+			.catch(async () => {
+				await interaction
+					.editReply({
+						embeds: [embed],
+						components: [],
+						content: "Confirmation timed out.",
+					})
+					.catch(() => {});
+				return null;
 			});
+		if (!click) return;
 
-			if (click.customId === noId) {
-				await click.update({
-					content: "Cancelled.",
-					embeds: [],
-					components: [],
-				});
-				return;
-			}
-
-			const exclusions = await repo.listExclusions(name);
-			const assignment = assignSecretSanta(
-				participants,
-				exclusions.map((e) => [e.userA, e.userB] as const),
-			);
-
-			if (!assignment) {
-				await click.update({
-					content:
-						"Could not find valid pairings with the current participants and exclusions. No changes made.",
-					embeds: [],
-					components: [],
-				});
-				return;
-			}
-
-			const pairs: SecretSantaAssignment[] = [...assignment.entries()].map(
-				([giverId, recipientId]) => ({ giverId, recipientId }),
-			);
-
-			await repo.replaceAssignments(name, pairs);
-
-			console.log(
-				`[secretsanta] ${reroll ? "reroll" : "draw"} ${name}:`,
-				Object.fromEntries(assignment),
-			);
-
-			const failed = await sendAssignmentDms(
-				interaction,
-				name,
-				draw.spendLimitCents,
-				pairs,
-			);
-			const failText =
-				failed.length === 0
-					? "All DMs sent."
-					: `DMs failed: ${failed.map((id) => userMention(id)).join(", ")}`;
-
+		if (click.customId === noId) {
 			await click.update({
-				content: `${reroll ? "Rerolled" : "Drew"} ${pairs.length} pairing(s) for \`${name}\`. ${failText}`,
+				content: "Cancelled.",
 				embeds: [],
 				components: [],
 			});
-		} catch {
-			await interaction
-				.editReply({
-					embeds: [embed],
-					components: [],
-					content: "Confirmation timed out.",
-				})
-				.catch(() => {});
+			return;
 		}
+
+		await click.deferUpdate();
+		const result = await repo.finalizeAssignments(
+			name,
+			draw.revision,
+			reroll,
+			(currentParticipants, exclusions) => {
+				const assignment = assignSecretSanta(
+					currentParticipants,
+					exclusions.map((e) => [e.userA, e.userB] as const),
+				);
+				return assignment
+					? [...assignment.entries()].map(([giverId, recipientId]) => ({
+							giverId,
+							recipientId,
+						}))
+					: null;
+			},
+		);
+
+		if (result.status !== "committed") {
+			const content = {
+				missing: `No draw named ${inlineCode(name)}.`,
+				stale:
+					"This draw changed while awaiting confirmation. No changes made.",
+				"wrong-mode":
+					"This draw changed while awaiting confirmation. No changes made.",
+				"too-few": "Need at least 2 participants to draw. No changes made.",
+				impossible:
+					"Could not find valid pairings with the current participants and exclusions. No changes made.",
+			}[result.status];
+			await interaction.editReply({ content, embeds: [], components: [] });
+			return;
+		}
+
+		const failed = await sendAssignmentDms(
+			interaction,
+			name,
+			result.draw.spendLimitCents,
+			result.pairs,
+		);
+		const failText =
+			failed.length === 0
+				? "All DMs sent."
+				: `DMs failed: ${failed.map((id) => userMention(id)).join(", ")}`;
+
+		await interaction.editReply({
+			content: `${reroll ? "Rerolled" : "Drew"} ${result.pairs.length} pairing(s) for ${inlineCode(name)}. ${failText}`,
+			embeds: [],
+			components: [],
+		});
 	}
 }

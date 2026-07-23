@@ -11,6 +11,7 @@ type Draw = {
 	open: boolean;
 	spendLimitCents: number | null;
 	drawnAt: Date | null;
+	revision: number;
 	createdAt: Date;
 };
 
@@ -19,6 +20,7 @@ function draw(partial: Partial<Draw> & { name: string }): Draw {
 		open: true,
 		spendLimitCents: null,
 		drawnAt: null,
+		revision: 0,
 		createdAt: new Date(),
 		...partial,
 	};
@@ -32,6 +34,8 @@ function buildInteraction(opts: {
 	amountUsd?: number;
 	users?: Record<string, { id: string } | null>;
 	secretSanta?: Record<string, ReturnType<typeof mock>>;
+	click?: "yes" | "no";
+	events?: string[];
 }): ChatInputCommandInteraction {
 	const userId = opts.userId ?? "admin-1";
 	const secretSanta = {
@@ -41,12 +45,12 @@ function buildInteraction(opts: {
 		delete: mock(async () => false),
 		setOpen: mock(async () => null),
 		setSpendLimitCents: mock(async () => null),
-		addParticipant: mock(async () => true),
-		removeParticipant: mock(async () => true),
+		addParticipant: mock(async () => "added"),
+		removeParticipant: mock(async () => "removed"),
 		listParticipants: mock(async () => [] as string[]),
 		addExclusions: mock(async () => 0),
 		listExclusions: mock(async () => [] as { userA: string; userB: string }[]),
-		replaceAssignments: mock(async () => undefined),
+		finalizeAssignments: mock(async () => ({ status: "missing" })),
 		listAssignments: mock(async () => []),
 		participantCount: mock(async () => 0),
 		...opts.secretSanta,
@@ -85,16 +89,31 @@ function buildInteraction(opts: {
 				secretSanta,
 			},
 			users: {
-				fetch: mock(async () => ({
-					send: mock(async () => undefined),
-				})),
+				fetch: mock(async () => {
+					opts.events?.push("dm");
+					return { send: mock(async () => undefined) };
+				}),
 			},
 		},
-		reply: mock(async () => ({
-			awaitMessageComponent: mock(async () => {
-				throw new Error("timeout");
+		reply: mock(
+			async (payload: {
+				components?: { components: { data: { custom_id?: string } }[] }[];
+			}) => ({
+				awaitMessageComponent: mock(async () => {
+					if (!opts.click) throw new Error("timeout");
+					const index = opts.click === "yes" ? 0 : 1;
+					return {
+						customId:
+							payload.components?.[0]?.components[index]?.data.custom_id,
+						user: { id: userId },
+						deferUpdate: mock(async () => {
+							opts.events?.push("defer");
+						}),
+						update: mock(async () => undefined),
+					};
+				}),
 			}),
-		})),
+		),
 		deferReply: mock(async () => undefined),
 		editReply: mock(async () => undefined),
 	} as unknown as ChatInputCommandInteraction;
@@ -131,7 +150,7 @@ describe("SecretSanta", () => {
 			sub: "opt-in",
 			name: "party",
 			secretSanta: {
-				get: mock(async () => draw({ name: "party", open: false })),
+				addParticipant: mock(async () => "closed"),
 			},
 		});
 		await new SecretSanta().execute(interaction);
@@ -139,6 +158,7 @@ describe("SecretSanta", () => {
 			content: "Opt-in is closed for this draw.",
 			flags: MessageFlags.Ephemeral,
 		});
+		expect(interaction.client.bot.secretSanta.get).not.toHaveBeenCalled();
 	});
 
 	test("opt-in blocked when drawn", async () => {
@@ -146,9 +166,7 @@ describe("SecretSanta", () => {
 			sub: "opt-in",
 			name: "party",
 			secretSanta: {
-				get: mock(async () =>
-					draw({ name: "party", drawnAt: new Date("2026-01-01") }),
-				),
+				addParticipant: mock(async () => "locked"),
 			},
 		});
 		await new SecretSanta().execute(interaction);
@@ -156,6 +174,19 @@ describe("SecretSanta", () => {
 			content: "This draw already has pairings; the roster is locked.",
 			flags: MessageFlags.Ephemeral,
 		});
+	});
+
+	test("opt-out blocked atomically when drawn", async () => {
+		const interaction = buildInteraction({
+			sub: "opt-out",
+			secretSanta: { removeParticipant: mock(async () => "locked") },
+		});
+		await new SecretSanta().execute(interaction);
+		expect(interaction.reply).toHaveBeenCalledWith({
+			content: "This draw already has pairings; the roster is locked.",
+			flags: MessageFlags.Ephemeral,
+		});
+		expect(interaction.client.bot.secretSanta.get).not.toHaveBeenCalled();
 	});
 
 	test("status list never includes pairings field data from assignments", async () => {
@@ -208,6 +239,95 @@ describe("SecretSanta", () => {
 		const ids = payload.components[0]?.components.map((c) => c.data.custom_id);
 		expect(ids?.[0]).toContain("secretsanta:draw:yes:");
 		expect(ids?.[1]).toContain("secretsanta:draw:no:");
+	});
+
+	test("draw defers before finalizing and DMs committed pairs", async () => {
+		const events: string[] = [];
+		const committed = [
+			{ giverId: "u1", recipientId: "u2" },
+			{ giverId: "u2", recipientId: "u3" },
+			{ giverId: "u3", recipientId: "u1" },
+		];
+		const interaction = buildInteraction({
+			sub: "draw",
+			click: "yes",
+			events,
+			secretSanta: {
+				get: mock(async () => draw({ name: "party" })),
+				listParticipants: mock(async () => ["u1", "u2"]),
+				finalizeAssignments: mock(async () => {
+					events.push("finalize");
+					return {
+						status: "committed",
+						draw: draw({ name: "party", revision: 1 }),
+						pairs: committed,
+					};
+				}),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+
+		expect(events).toEqual(["defer", "finalize", "dm", "dm", "dm"]);
+		expect(interaction.client.users.fetch).toHaveBeenCalledTimes(3);
+		expect(interaction.editReply).toHaveBeenLastCalledWith({
+			content: "Drew 3 pairing(s) for `party`. All DMs sent.",
+			embeds: [],
+			components: [],
+		});
+	});
+
+	test("stale confirmation sends no DMs and is not a timeout", async () => {
+		const interaction = buildInteraction({
+			sub: "draw",
+			click: "yes",
+			secretSanta: {
+				get: mock(async () => draw({ name: "party" })),
+				listParticipants: mock(async () => ["u1", "u2"]),
+				finalizeAssignments: mock(async () => ({ status: "stale" })),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+
+		expect(interaction.client.users.fetch).not.toHaveBeenCalled();
+		expect(interaction.editReply).toHaveBeenCalledWith({
+			content:
+				"This draw changed while awaiting confirmation. No changes made.",
+			embeds: [],
+			components: [],
+		});
+	});
+
+	test("participant embed fields fit Discord's limit", async () => {
+		const participants = Array.from(
+			{ length: 100 },
+			(_, index) => `${100000000000000000n + BigInt(index)}`,
+		);
+		for (const [sub, name] of [
+			["status", "party"],
+			["draw", "party"],
+		] as const) {
+			const interaction = buildInteraction({
+				sub,
+				name,
+				secretSanta: {
+					get: mock(async () => draw({ name })),
+					listParticipants: mock(async () => participants),
+				},
+			});
+			await new SecretSanta().execute(interaction);
+			const payload = (interaction.reply as ReturnType<typeof mock>).mock
+				.calls[0]?.[0] as {
+				embeds: { data: { fields?: { name: string; value: string }[] } }[];
+			};
+			const field = payload.embeds[0]?.data.fields?.find((candidate) =>
+				candidate.name.startsWith("Participants"),
+			);
+			expect(field?.value.length).toBeLessThanOrEqual(1024);
+			const parts = field?.value.split(", ") ?? [];
+			expect(field?.value).toEndWith(
+				`and ${participants.length - parts.length + 1} more`,
+			);
+		}
 	});
 
 	test("rejects invalid name", async () => {
