@@ -95,6 +95,10 @@ export function renderPrometheusMetrics(bot: Bot): string {
 		isConfigured(spotify.SPOTIFY_CLIENT_SECRET);
 	const credentialStatuses = [
 		["openai", isConfigured(bot.config.get("openai").OPENAI_API_TOKEN)],
+		[
+			"anthropic",
+			isConfigured(bot.config.get("anthropic").ANTHROPIC_API_TOKEN),
+		],
 		["spotify", spotifyConfigured],
 		["tiktok", isConfigured(bot.config.get("tiktok").TIKTOK_SESSION_ID)],
 		["imgur", isConfigured(bot.config.get("imgur").IMGUR_CLIENT_ID)],

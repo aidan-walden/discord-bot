@@ -161,7 +161,7 @@ describe("MessageCreate", () => {
 
 		expect(bot.chatSessions.closeSession).toHaveBeenCalledWith(session);
 		expect(message.reply).toHaveBeenCalledWith(
-			"You're banned from using ChatGPT.",
+			"You're banned from using the AI assistant.",
 		);
 	});
 
@@ -218,7 +218,7 @@ describe("MessageCreate", () => {
 		await new MessageCreate().execute(bot, message);
 
 		expect(message.reply).toHaveBeenCalledWith(
-			"ChatGPT failed to respond. Please contact <@owner-1>",
+			"The AI assistant failed to respond. Please contact <@owner-1>",
 		);
 		errorSpy.mockRestore();
 	});

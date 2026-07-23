@@ -6,6 +6,10 @@ openai:
   OPENAI_API_TOKEN: ""
   OPENAI_MODEL: ""
 
+anthropic:
+  ANTHROPIC_API_TOKEN: ""
+  ANTHROPIC_MODEL: ""
+
 tiktok:
   TIKTOK_SESSION_ID: ""
 

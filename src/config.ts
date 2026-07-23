@@ -32,6 +32,11 @@ export interface OpenAIConfig {
 	OPENAI_MODEL?: string;
 }
 
+export interface AnthropicConfig {
+	ANTHROPIC_API_TOKEN?: string;
+	ANTHROPIC_MODEL?: string;
+}
+
 export interface SpotifyConfig {
 	SPOTIFY_CLIENT_ID?: string;
 	SPOTIFY_CLIENT_SECRET?: string;
@@ -65,6 +70,7 @@ interface AppConfigFile {
 		users?: string[];
 	};
 	openai?: OpenAIConfig;
+	anthropic?: AnthropicConfig;
 	spotify?: SpotifyConfig;
 	tiktok?: TikTokConfig;
 	imgur?: ImgurConfig;
@@ -91,6 +97,7 @@ export interface AppConfig {
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	deafentracker: DeafenTrackerConfig;
 	openai: OpenAIConfig;
+	anthropic: AnthropicConfig;
 	spotify: SpotifyConfig;
 	tiktok: TikTokConfig;
 	imgur: ImgurConfig;
@@ -104,6 +111,7 @@ const FLAT_ENV_KEYS = ["BOT_TOKEN", "DATABASE_URL", "BOT_OWNER_ID"] as const;
 
 const NESTED_ENV_KEYS = {
 	openai: ["OPENAI_API_TOKEN", "OPENAI_MODEL"],
+	anthropic: ["ANTHROPIC_API_TOKEN", "ANTHROPIC_MODEL"],
 	spotify: ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"],
 	tiktok: ["TIKTOK_SESSION_ID"],
 	imgur: ["IMGUR_CLIENT_ID"],
@@ -305,6 +313,14 @@ function validateOpenAI(value: unknown): OpenAIConfig {
 	return result;
 }
 
+function validateAnthropic(value: unknown): AnthropicConfig {
+	const record = validateApiCategory(value, "anthropic");
+	let result: AnthropicConfig = {};
+	result = withOptionalStringField(result, record, "ANTHROPIC_API_TOKEN");
+	result = withOptionalStringField(result, record, "ANTHROPIC_MODEL");
+	return result;
+}
+
 function validateSpotify(value: unknown): SpotifyConfig {
 	const record = validateApiCategory(value, "spotify");
 	let result: SpotifyConfig = {};
@@ -480,6 +496,7 @@ function validateConfigFile(
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
 	const openai = validateOpenAI(configFile.openai);
+	const anthropic = validateAnthropic(configFile.anthropic);
 	const spotify = validateSpotify(configFile.spotify);
 	const tiktok = validateTikTok(configFile.tiktok);
 	const imgur = validateImgur(configFile.imgur);
@@ -505,6 +522,7 @@ function validateConfigFile(
 		holidayProfilePictures,
 		deafentracker,
 		openai,
+		anthropic,
 		spotify,
 		tiktok,
 		imgur,

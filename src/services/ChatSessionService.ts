@@ -1,6 +1,9 @@
-import type OpenAI from "openai";
-import type { ChatCompletionMessageParam } from "openai/resources/chat/completions/completions";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
+import {
+	isCredentialFailure,
+	type LlmMessage,
+	type LlmProvider,
+} from "./LlmProvider";
 
 const SYSTEM_PROMPT = "You are a helpful assistant.";
 const MAX_HISTORY_MESSAGES = 20;
@@ -10,7 +13,7 @@ export type ChatSession = {
 	rootChannelId: string;
 	threadChannelId: string;
 	isBusy: boolean;
-	messages: ChatCompletionMessageParam[];
+	messages: LlmMessage[];
 };
 
 export default class ChatSessionService {
@@ -18,25 +21,16 @@ export default class ChatSessionService {
 	private readonly sessionsByRootKey = new Map<string, ChatSession>();
 
 	constructor(
-		private readonly openai: OpenAI | null,
-		private readonly model: string | undefined,
+		private readonly providers: LlmProvider[],
 		private readonly credentialReporter?: CredentialRejectionReporter,
 	) {}
 
 	isAvailable(): boolean {
-		return this.openai !== null && Boolean(this.model);
+		return this.providers.length > 0;
 	}
 
 	getUnavailableReason(): string {
-		if (!this.openai) {
-			return "ChatGPT is unavailable because OPENAI_API_TOKEN is not configured.";
-		}
-
-		if (!this.model) {
-			return "ChatGPT is unavailable because OPENAI_MODEL is not configured.";
-		}
-
-		return "ChatGPT is unavailable.";
+		return "The AI assistant is unavailable because no LLM provider (OpenAI or Anthropic) is configured.";
 	}
 
 	getByThreadId(threadChannelId: string): ChatSession | undefined {
@@ -65,7 +59,7 @@ export default class ChatSessionService {
 			rootChannelId,
 			threadChannelId,
 			isBusy: false,
-			messages: [{ role: "system", content: SYSTEM_PROMPT }],
+			messages: [],
 		};
 
 		this.sessionsByThreadId.set(threadChannelId, session);
@@ -81,7 +75,7 @@ export default class ChatSessionService {
 	}
 
 	async prompt(session: ChatSession, input: string): Promise<string> {
-		if (!this.openai || !this.model) {
+		if (this.providers.length === 0) {
 			throw new Error(this.getUnavailableReason());
 		}
 
@@ -90,27 +84,32 @@ export default class ChatSessionService {
 		this.trimSessionHistory(session);
 
 		try {
-			const completion = await this.openai.chat.completions.create({
-				model: this.model,
-				messages: session.messages,
-			});
-			const content = completion.choices[0]?.message.content?.trim();
-			if (!content) {
-				throw new Error("ChatGPT returned an empty response.");
-			}
+			let lastError: unknown;
+			for (const provider of this.providers) {
+				try {
+					const content = await provider.complete(
+						SYSTEM_PROMPT,
+						session.messages,
+					);
+					if (!content) {
+						throw new Error("The AI assistant returned an empty response.");
+					}
 
-			session.messages.push({ role: "assistant", content });
-			this.trimSessionHistory(session);
-			return content;
-		} catch (error) {
-			if (
-				typeof error === "object" &&
-				error !== null &&
-				"status" in error &&
-				error.status === 401
-			) {
-				this.credentialReporter?.recordCredentialRejection("openai");
+					session.messages.push({ role: "assistant", content });
+					this.trimSessionHistory(session);
+					return content;
+				} catch (error) {
+					// Only failover on credential/quota failures; anything else
+					// (empty response, network) is surfaced immediately.
+					if (!isCredentialFailure(error)) {
+						throw error;
+					}
+					this.credentialReporter?.recordCredentialRejection(provider.name);
+					lastError = error;
+				}
 			}
+			throw lastError ?? new Error("The AI assistant is unavailable.");
+		} catch (error) {
 			const lastMessage = session.messages.at(-1);
 			if (lastMessage?.role === "user" && lastMessage.content === input) {
 				session.messages.pop();
@@ -126,13 +125,8 @@ export default class ChatSessionService {
 	}
 
 	private trimSessionHistory(session: ChatSession): void {
-		if (session.messages.length <= MAX_HISTORY_MESSAGES + 1) {
-			return;
+		if (session.messages.length > MAX_HISTORY_MESSAGES) {
+			session.messages = session.messages.slice(-MAX_HISTORY_MESSAGES);
 		}
-
-		session.messages = [
-			session.messages[0] ?? { role: "system", content: SYSTEM_PROMPT },
-			...session.messages.slice(-MAX_HISTORY_MESSAGES),
-		];
 	}
 }

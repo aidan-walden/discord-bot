@@ -7,6 +7,7 @@ import metrics from "./metrics";
 function createMockBot(): Bot {
 	const config = {
 		openai: { OPENAI_API_TOKEN: "openai-secret" },
+		anthropic: { ANTHROPIC_API_TOKEN: "anthropic-secret" },
 		spotify: {
 			SPOTIFY_CLIENT_ID: "spotify-client",
 			SPOTIFY_CLIENT_SECRET: "  ",
@@ -68,6 +69,9 @@ describe("prometheus metrics route", () => {
 			'discord_bot_external_api_credentials_configured{provider="openai"} 1',
 		);
 		expect(body).toContain(
+			'discord_bot_external_api_credentials_configured{provider="anthropic"} 1',
+		);
+		expect(body).toContain(
 			'discord_bot_external_api_credentials_configured{provider="spotify"} 0',
 		);
 		expect(body).toContain(
@@ -83,9 +87,13 @@ describe("prometheus metrics route", () => {
 			'discord_bot_external_api_credentials_rejected{provider="openai"} 0',
 		);
 		expect(body).toContain(
+			'discord_bot_external_api_credentials_rejected{provider="anthropic"} 0',
+		);
+		expect(body).toContain(
 			'discord_bot_external_api_credentials_rejected{provider="spotify"} 1',
 		);
 		expect(body).not.toContain("openai-secret");
+		expect(body).not.toContain("anthropic-secret");
 		expect(body).not.toContain("tiktok-secret");
 		expect(body.endsWith("\n")).toBe(true);
 	});

@@ -12,6 +12,8 @@ const CONFIG_ENV_KEYS = [
 	"BOT_OWNER_ID",
 	"OPENAI_API_TOKEN",
 	"OPENAI_MODEL",
+	"ANTHROPIC_API_TOKEN",
+	"ANTHROPIC_MODEL",
 	"TIKTOK_SESSION_ID",
 	"SPOTIFY_CLIENT_ID",
 	"SPOTIFY_CLIENT_SECRET",
@@ -353,6 +355,24 @@ describe("Config", () => {
 				},
 			},
 			{
+				name: "ANTHROPIC_API_TOKEN",
+				env: { ANTHROPIC_API_TOKEN: "env-anthropic-token" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("anthropic").ANTHROPIC_API_TOKEN).toBe(
+						"env-anthropic-token",
+					);
+				},
+			},
+			{
+				name: "ANTHROPIC_MODEL",
+				env: { ANTHROPIC_MODEL: "env-anthropic-model" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("anthropic").ANTHROPIC_MODEL).toBe(
+						"env-anthropic-model",
+					);
+				},
+			},
+			{
 				name: "TIKTOK_SESSION_ID",
 				env: { TIKTOK_SESSION_ID: "env-tiktok-session" },
 				assert: (config: ConfigInstance) => {
@@ -439,6 +459,24 @@ describe("Config", () => {
 				});
 			});
 		}
+
+		test("anthropic defaults to an empty config when the block is omitted", async () => {
+			const filePath = await writeTempConfig(buildYaml());
+			const config = await Config.load(filePath);
+
+			expect(config.get("anthropic")).toEqual({});
+		});
+
+		test("anthropic parses token and model from the config file", async () => {
+			const yaml = `${buildYaml()}\nanthropic:\n  ANTHROPIC_API_TOKEN: "file-anthropic-token"\n  ANTHROPIC_MODEL: "file-anthropic-model"`;
+			const filePath = await writeTempConfig(yaml);
+			const config = await Config.load(filePath);
+
+			expect(config.get("anthropic")).toEqual({
+				ANTHROPIC_API_TOKEN: "file-anthropic-token",
+				ANTHROPIC_MODEL: "file-anthropic-model",
+			});
+		});
 	});
 
 	describe("missing required keys", () => {

@@ -24,6 +24,7 @@
 		"typescript": "^5"
 	},
 	"dependencies": {
+		"@anthropic-ai/sdk": "^0.112.3",
 		"@discordjs/voice": "^0.19.2",
 		"@spotify/web-api-ts-sdk": "^1.2.0",
 		"canvaskit-wasm": "^0.41.1",

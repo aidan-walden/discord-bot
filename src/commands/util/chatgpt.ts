@@ -37,21 +37,21 @@ async function fetchManagedThread(
 export default class ChatGpt implements Command {
 	data = new SlashCommandBuilder()
 		.setName("chatgpt")
-		.setDescription("Talk to ChatGPT in a managed thread")
+		.setDescription("Talk to the AI assistant in a managed thread")
 		.setContexts([InteractionContextType.Guild])
 		.addSubcommand((subcommand) =>
 			subcommand
 				.setName("ask")
-				.setDescription("Start or continue a ChatGPT session")
+				.setDescription("Start or continue an AI assistant session")
 				.addStringOption((option) =>
 					option
 						.setName("prompt")
-						.setDescription("What you want to ask ChatGPT")
+						.setDescription("What you want to ask the AI assistant")
 						.setRequired(true),
 				),
 		)
 		.addSubcommand((subcommand) =>
-			subcommand.setName("end").setDescription("End your ChatGPT session"),
+			subcommand.setName("end").setDescription("End your AI assistant session"),
 		);
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
@@ -75,7 +75,7 @@ export default class ChatGpt implements Command {
 				interaction.user.id,
 			)
 		) {
-			await interaction.editReply("You're banned from using ChatGPT.");
+			await interaction.editReply("You're banned from using the AI assistant.");
 			return;
 		}
 
@@ -112,7 +112,7 @@ export default class ChatGpt implements Command {
 		if (activeChannel.isThread()) {
 			if (session && session.userId !== interaction.user.id) {
 				await interaction.editReply(
-					"That ChatGPT session belongs to another user.",
+					"That AI assistant session belongs to another user.",
 				);
 				return;
 			}
@@ -136,12 +136,12 @@ export default class ChatGpt implements Command {
 
 			if (!thread) {
 				const seedMessage = await activeChannel.send({
-					content: `Starting a ChatGPT session for ${userMention(interaction.user.id)}.`,
+					content: `Starting an AI assistant session for ${userMention(interaction.user.id)}.`,
 				});
 				thread = await seedMessage.startThread({
 					name: getThreadDisplayName(interaction.user.username),
 					autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
-					reason: `ChatGPT session for ${interaction.user.tag}`,
+					reason: `AI assistant session for ${interaction.user.tag}`,
 				});
 				session = interaction.client.bot.chatSessions.createSession(
 					interaction.user.id,
@@ -151,25 +151,27 @@ export default class ChatGpt implements Command {
 			}
 		} else {
 			await interaction.editReply(
-				"ChatGPT sessions can only be started from a server.",
+				"AI assistant sessions can only be started from a server.",
 			);
 			return;
 		}
 
 		if (!session || !thread) {
-			await interaction.editReply("Failed to create or locate ChatGPT thread.");
+			await interaction.editReply(
+				"Failed to create or locate the AI assistant thread.",
+			);
 			return;
 		}
 
 		if (session.isBusy) {
 			await interaction.editReply(
-				`OpenAI is still processing your previous message in ${channelMention(thread.id)}.`,
+				`The AI assistant is still processing your previous message in ${channelMention(thread.id)}.`,
 			);
 			return;
 		}
 
 		await interaction.editReply(
-			`ChatGPT is responding in ${channelMention(thread.id)}.`,
+			`The AI assistant is responding in ${channelMention(thread.id)}.`,
 		);
 
 		try {
@@ -180,9 +182,9 @@ export default class ChatGpt implements Command {
 			);
 			await sendLongMessage(thread, response, {}, false);
 		} catch (error) {
-			console.error("ChatGPT ask command failed:", error);
+			console.error("AI assistant ask command failed:", error);
 			await thread.send(
-				`ChatGPT failed to respond. Please contact ${userMention(interaction.client.bot.config.get("BOT_OWNER_ID"))}`,
+				`The AI assistant failed to respond. Please contact ${userMention(interaction.client.bot.config.get("BOT_OWNER_ID"))}`,
 			);
 		}
 	}
@@ -210,14 +212,14 @@ export default class ChatGpt implements Command {
 
 		if (!session) {
 			await interaction.editReply(
-				"You do not have an active ChatGPT session in this channel.",
+				"You do not have an active AI assistant session in this channel.",
 			);
 			return;
 		}
 
 		if (session.userId !== interaction.user.id) {
 			await interaction.editReply(
-				"That ChatGPT session belongs to another user.",
+				"That AI assistant session belongs to another user.",
 			);
 			return;
 		}
@@ -229,10 +231,10 @@ export default class ChatGpt implements Command {
 		);
 		if (thread) {
 			await thread.send(
-				`ChatGPT session ended by ${userMention(interaction.user.id)}.`,
+				`AI assistant session ended by ${userMention(interaction.user.id)}.`,
 			);
 		}
 
-		await interaction.editReply("Ended your active ChatGPT session.");
+		await interaction.editReply("Ended your active AI assistant session.");
 	}
 }

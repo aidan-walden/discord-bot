@@ -42,7 +42,7 @@ export default class MessageCreate implements BotEvent {
 
 		if (await bot.permissions.isGptUserBanned(message.author.id)) {
 			bot.chatSessions.closeSession(session);
-			await message.reply("You're banned from using ChatGPT.");
+			await message.reply("You're banned from using the AI assistant.");
 			return;
 		}
 
@@ -61,9 +61,9 @@ export default class MessageCreate implements BotEvent {
 			const response = await bot.chatSessions.prompt(session, prompt);
 			await sendLongMessage(message.channel, response, {}, false);
 		} catch (error) {
-			console.error("ChatGPT thread response failed:", error);
+			console.error("AI assistant thread response failed:", error);
 			await message.reply(
-				`ChatGPT failed to respond. Please contact ${userMention(bot.config.get("BOT_OWNER_ID"))}`,
+				`The AI assistant failed to respond. Please contact ${userMention(bot.config.get("BOT_OWNER_ID"))}`,
 			);
 		}
 	}

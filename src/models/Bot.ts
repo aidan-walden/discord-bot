@@ -18,7 +18,6 @@ import {
 	type Snowflake,
 } from "discord.js";
 import { Kazagumo } from "kazagumo";
-import OpenAI from "openai";
 import { Connectors } from "shoukaku";
 import type { Config, ProfilePictureState } from "../config";
 import { createDatabase, type Database } from "../database/client";
@@ -43,6 +42,7 @@ import DeafenTrackerService, {
 	isDeafenTrackerActive,
 } from "../services/DeafenTrackerService";
 import HolidayProvider from "../services/HolidayProvider";
+import { createLlmProviders } from "../services/LlmProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import MusicLinkService from "../services/MusicLinkService";
 import PermissionService from "../services/PermissionService";
@@ -66,7 +66,6 @@ export default class Bot extends Client {
 	readonly adminUserIds: ReadonlySet<string>;
 	readonly config: Config;
 	readonly db: Database;
-	readonly openai: OpenAI | null;
 	readonly permissions: PermissionService;
 	readonly chatSessions: ChatSessionService;
 	readonly spotify: SpotifyService;
@@ -116,10 +115,6 @@ export default class Bot extends Client {
 		]);
 		this.db = createDatabase(config.get("DATABASE_URL"));
 		this.metrics = new MetricsCollector();
-		const openaiConfig = config.get("openai");
-		this.openai = openaiConfig.OPENAI_API_TOKEN
-			? new OpenAI({ apiKey: openaiConfig.OPENAI_API_TOKEN })
-			: null;
 		this.permissions = new PermissionService(
 			this.adminUserIds,
 			new BanRepository(this.db, gptUserBans),
@@ -134,8 +129,7 @@ export default class Bot extends Client {
 		this.guildSettings = new GuildSettingsRepository(this.db);
 		this.secretSanta = new SecretSantaRepository(this.db);
 		this.chatSessions = new ChatSessionService(
-			this.openai,
-			openaiConfig.OPENAI_MODEL,
+			createLlmProviders(config.get("openai"), config.get("anthropic")),
 			this.metrics,
 		);
 

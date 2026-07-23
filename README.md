@@ -8,7 +8,7 @@ Install dependencies with `bun install`.
 Make sure that these values are defined in `config.yml`
 
 - `BOT_TOKEN`: Discord bot token
-- `openai.OPENAI_API_TOKEN`: optional OpenAI API token, used for ChatGPT sessions
+- `openai.OPENAI_API_TOKEN` / `anthropic.ANTHROPIC_API_TOKEN`: optional LLM provider keys for the AI assistant. Preference is OpenAI then Anthropic — the first with a key is used, and requests fail over to the next when the primary's key is rejected. Anthropic defaults to `claude-haiku-4-5` when `ANTHROPIC_MODEL` is unset; OpenAI requires `OPENAI_MODEL`.
 - `ADMIN_USER_IDS`: list of Discord user IDs treated as bot admins
 - `lavalink.nodes`: Lavalink node configuration
 

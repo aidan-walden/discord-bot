@@ -1,32 +1,25 @@
 import { describe, expect, mock, test } from "bun:test";
-import type OpenAI from "openai";
-import type { ChatCompletion } from "openai/resources/chat/completions/completions";
 import ChatSessionService from "./ChatSessionService";
+import type { LlmMessage, LlmProvider } from "./LlmProvider";
 
-function createOpenAiMock() {
-	const create = mock((_request: { model: string; messages: unknown[] }) =>
-		Promise.resolve({ choices: [] } as unknown as ChatCompletion),
-	);
-	const openai = {
-		chat: {
-			completions: {
-				create,
-			},
-		},
-	} as unknown as OpenAI;
+const SYSTEM_PROMPT = "You are a helpful assistant.";
 
-	return { create, openai };
-}
+type CompleteFn = (system: string, messages: LlmMessage[]) => Promise<string>;
 
-function makeCompletion(content: string | null | undefined) {
-	return { choices: [{ message: { content } }] } as unknown as ChatCompletion;
-}
-
-function makeHistoryMessage(index: number, offset = 1) {
+function createProvider(
+	name: LlmProvider["name"],
+	complete: CompleteFn,
+): { provider: LlmProvider; complete: ReturnType<typeof mock<CompleteFn>> } {
+	const completeMock = mock(complete);
 	return {
-		role: ((index + offset) % 2 === 0 ? "user" : "assistant") as
-			| "user"
-			| "assistant",
+		provider: { name, label: name, complete: completeMock },
+		complete: completeMock,
+	};
+}
+
+function makeHistoryMessage(index: number, offset = 0): LlmMessage {
+	return {
+		role: (index + offset) % 2 === 0 ? "user" : "assistant",
 		content: `m${index + offset}`,
 	};
 }
@@ -44,43 +37,22 @@ function makeDeferred<T>() {
 }
 
 describe("ChatSessionService", () => {
-	test("reports availability and unavailable reasons for constructor combinations", () => {
-		const { openai } = createOpenAiMock();
+	test("reports availability based on configured providers", () => {
+		const { provider } = createProvider("openai", async () => "ok");
 
-		const cases = [
-			{
-				openai: null,
-				model: undefined,
-				isAvailable: false,
-				reason:
-					"ChatGPT is unavailable because OPENAI_API_TOKEN is not configured.",
-			},
-			{
-				openai,
-				model: undefined,
-				isAvailable: false,
-				reason:
-					"ChatGPT is unavailable because OPENAI_MODEL is not configured.",
-			},
-			{
-				openai,
-				model: "gpt-test",
-				isAvailable: true,
-				reason: "ChatGPT is unavailable.",
-			},
-		] as const;
+		const withProviders = new ChatSessionService([provider]);
+		expect(withProviders.isAvailable()).toBe(true);
 
-		for (const testCase of cases) {
-			const service = new ChatSessionService(testCase.openai, testCase.model);
-
-			expect(service.isAvailable()).toBe(testCase.isAvailable);
-			expect(service.getUnavailableReason()).toBe(testCase.reason);
-		}
+		const withoutProviders = new ChatSessionService([]);
+		expect(withoutProviders.isAvailable()).toBe(false);
+		expect(withoutProviders.getUnavailableReason()).toBe(
+			"The AI assistant is unavailable because no LLM provider (OpenAI or Anthropic) is configured.",
+		);
 	});
 
 	test("replaces existing session when same user starts new session in same root channel", () => {
-		const { openai } = createOpenAiMock();
-		const service = new ChatSessionService(openai, "gpt-test");
+		const { provider } = createProvider("openai", async () => "ok");
+		const service = new ChatSessionService([provider]);
 
 		const firstSession = service.createSession("user-1", "root-1", "thread-1");
 		const secondSession = service.createSession("user-1", "root-1", "thread-2");
@@ -90,112 +62,131 @@ describe("ChatSessionService", () => {
 		expect(service.getByThreadId("thread-2")).toBe(secondSession);
 		expect(firstSession).not.toBe(secondSession);
 		expect(secondSession.isBusy).toBe(false);
-		expect(secondSession.messages).toEqual([
-			{ role: "system", content: "You are a helpful assistant." },
-		]);
+		expect(secondSession.messages).toEqual([]);
 	});
 
 	test("completes successful prompt lifecycle", async () => {
-		const { create, openai } = createOpenAiMock();
-		let requestAtSend:
-			| {
-					model: string;
-					messages: unknown[];
-			  }
-			| undefined;
-		create.mockImplementationOnce(
-			async (request: { model: string; messages: unknown[] }) => {
-				requestAtSend = {
-					model: request.model,
-					messages: structuredClone(request.messages),
-				};
-				return makeCompletion("  Hello back.  ");
+		let sentAt: { system: string; messages: LlmMessage[] } | undefined;
+		const { provider, complete } = createProvider(
+			"openai",
+			async (system, messages) => {
+				sentAt = { system, messages: structuredClone(messages) };
+				return "Hello back.";
 			},
 		);
 
-		const service = new ChatSessionService(openai, "gpt-test");
+		const service = new ChatSessionService([provider]);
 		const session = service.createSession("user-1", "root-1", "thread-1");
 
 		const result = await service.prompt(session, "Hello?");
 
 		expect(result).toBe("Hello back.");
-		expect(create).toHaveBeenCalledTimes(1);
-		expect(requestAtSend).toEqual({
-			model: "gpt-test",
-			messages: [
-				{ role: "system", content: "You are a helpful assistant." },
-				{ role: "user", content: "Hello?" },
-			],
+		expect(complete).toHaveBeenCalledTimes(1);
+		expect(sentAt).toEqual({
+			system: SYSTEM_PROMPT,
+			messages: [{ role: "user", content: "Hello?" }],
 		});
 		expect(session.isBusy).toBe(false);
 		expect(session.messages).toEqual([
-			{ role: "system", content: "You are a helpful assistant." },
 			{ role: "user", content: "Hello?" },
 			{ role: "assistant", content: "Hello back." },
 		]);
 	});
 
-	test("rolls back session when OpenAI returns empty response", async () => {
-		const { create, openai } = createOpenAiMock();
-		create.mockResolvedValueOnce(makeCompletion("   "));
-
-		const service = new ChatSessionService(openai, "gpt-test");
+	test("rolls back session when the provider returns an empty response", async () => {
+		const { provider } = createProvider("openai", async () => "");
+		const service = new ChatSessionService([provider]);
 		const session = service.createSession("user-1", "root-1", "thread-1");
 
 		expect(service.prompt(session, "Hello?")).rejects.toThrow(
-			"ChatGPT returned an empty response.",
+			"The AI assistant returned an empty response.",
 		);
 
-		expect(session.messages).toEqual([
-			{ role: "system", content: "You are a helpful assistant." },
-		]);
+		expect(session.messages).toEqual([]);
 		expect(session.isBusy).toBe(false);
 	});
 
-	test("rolls back newest user message when OpenAI call fails", async () => {
-		const { create, openai } = createOpenAiMock();
-		create.mockRejectedValueOnce(new Error("OpenAI exploded"));
-
-		const service = new ChatSessionService(openai, "gpt-test");
+	test("rolls back newest user message when the provider call fails", async () => {
+		const { provider } = createProvider("openai", async () => {
+			throw new Error("provider exploded");
+		});
+		const service = new ChatSessionService([provider]);
 		const session = service.createSession("user-1", "root-1", "thread-1");
 		session.messages = [
-			{ role: "system", content: "You are a helpful assistant." },
 			{ role: "user", content: "old user" },
 			{ role: "assistant", content: "old assistant" },
 		];
 
 		expect(service.prompt(session, "new user")).rejects.toThrow(
-			"OpenAI exploded",
+			"provider exploded",
 		);
 
 		expect(session.messages).toEqual([
-			{ role: "system", content: "You are a helpful assistant." },
 			{ role: "user", content: "old user" },
 			{ role: "assistant", content: "old assistant" },
 		]);
 		expect(session.isBusy).toBe(false);
 	});
 
-	test("reports an OpenAI credential rejection", async () => {
-		const { create, openai } = createOpenAiMock();
+	test("fails over to the next provider on a credential rejection", async () => {
 		const rejection = { status: 401, message: "Invalid API key" };
-		create.mockRejectedValueOnce(rejection);
+		const { provider: openai, complete: openaiComplete } = createProvider(
+			"openai",
+			async () => {
+				throw rejection;
+			},
+		);
+		const { provider: anthropic, complete: anthropicComplete } = createProvider(
+			"anthropic",
+			async () => "from anthropic",
+		);
 		const recordCredentialRejection = mock(() => undefined);
-		const service = new ChatSessionService(openai, "gpt-test", {
+		const service = new ChatSessionService([openai, anthropic], {
+			recordCredentialRejection,
+		});
+		const session = service.createSession("user-1", "root-1", "thread-1");
+
+		const result = await service.prompt(session, "Hello?");
+
+		expect(result).toBe("from anthropic");
+		expect(openaiComplete).toHaveBeenCalledTimes(1);
+		expect(anthropicComplete).toHaveBeenCalledTimes(1);
+		expect(recordCredentialRejection).toHaveBeenCalledWith("openai");
+		expect(session.messages).toEqual([
+			{ role: "user", content: "Hello?" },
+			{ role: "assistant", content: "from anthropic" },
+		]);
+	});
+
+	test("records a rejection and rethrows when the only provider's key is rejected", async () => {
+		const rejection = { status: 401, message: "Invalid API key" };
+		const { provider } = createProvider("openai", async () => {
+			throw rejection;
+		});
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new ChatSessionService([provider], {
 			recordCredentialRejection,
 		});
 		const session = service.createSession("user-1", "root-1", "thread-1");
 
 		expect(service.prompt(session, "Hello?")).rejects.toBe(rejection);
-
 		expect(recordCredentialRejection).toHaveBeenCalledWith("openai");
+		expect(session.messages).toEqual([]);
 	});
 
-	test("does not report non-authentication OpenAI failures", async () => {
-		const { create, openai } = createOpenAiMock();
-		create.mockRejectedValueOnce({ status: 429, message: "Rate limited" });
+	test("does not fail over on a plain rate-limit error", async () => {
+		const { provider: openai, complete: openaiComplete } = createProvider(
+			"openai",
+			async () => {
+				throw { status: 429, message: "Rate limited" };
+			},
+		);
+		const { complete: anthropicComplete, provider: anthropic } = createProvider(
+			"anthropic",
+			async () => "should not run",
+		);
 		const recordCredentialRejection = mock(() => undefined);
-		const service = new ChatSessionService(openai, "gpt-test", {
+		const service = new ChatSessionService([openai, anthropic], {
 			recordCredentialRejection,
 		});
 		const session = service.createSession("user-1", "root-1", "thread-1");
@@ -205,54 +196,66 @@ describe("ChatSessionService", () => {
 			message: "Rate limited",
 		});
 
+		expect(openaiComplete).toHaveBeenCalledTimes(1);
+		expect(anthropicComplete).not.toHaveBeenCalled();
 		expect(recordCredentialRejection).not.toHaveBeenCalled();
 	});
 
-	test("trims history before send and after assistant response", async () => {
-		const { create, openai } = createOpenAiMock();
-		let sentMessages: unknown[] | undefined;
-		create.mockImplementationOnce(async (request: { messages: unknown[] }) => {
-			sentMessages = structuredClone(request.messages);
-			return makeCompletion("answer");
+	test("fails over on an insufficient-quota 429", async () => {
+		const { provider: openai } = createProvider("openai", async () => {
+			throw { status: 429, code: "insufficient_quota" };
+		});
+		const { provider: anthropic, complete: anthropicComplete } = createProvider(
+			"anthropic",
+			async () => "from anthropic",
+		);
+		const recordCredentialRejection = mock(() => undefined);
+		const service = new ChatSessionService([openai, anthropic], {
+			recordCredentialRejection,
+		});
+		const session = service.createSession("user-1", "root-1", "thread-1");
+
+		const result = await service.prompt(session, "Hello?");
+
+		expect(result).toBe("from anthropic");
+		expect(anthropicComplete).toHaveBeenCalledTimes(1);
+		expect(recordCredentialRejection).toHaveBeenCalledWith("openai");
+	});
+
+	test("trims history before send and after the assistant response", async () => {
+		let sentMessages: LlmMessage[] | undefined;
+		const { provider } = createProvider("openai", async (_system, messages) => {
+			sentMessages = structuredClone(messages);
+			return "answer";
 		});
 
-		const service = new ChatSessionService(openai, "gpt-test");
+		const service = new ChatSessionService([provider]);
 		const session = service.createSession("user-1", "root-1", "thread-1");
-		session.messages = [
-			{ role: "system", content: "You are a helpful assistant." },
-			...Array.from({ length: 20 }, (_, index) => makeHistoryMessage(index)),
-		];
+		session.messages = Array.from({ length: 20 }, (_, index) =>
+			makeHistoryMessage(index),
+		);
 
 		await service.prompt(session, "new-user");
 
-		expect(sentMessages).toHaveLength(21);
-		expect(sentMessages?.[0]).toEqual({
-			role: "system",
-			content: "You are a helpful assistant.",
-		});
-		expect(sentMessages?.slice(1)).toEqual([
-			...Array.from({ length: 19 }, (_, index) => makeHistoryMessage(index, 2)),
-			{ role: "user", content: "new-user" },
-		]);
+		expect(sentMessages).toHaveLength(20);
+		expect(sentMessages?.at(-1)).toEqual({ role: "user", content: "new-user" });
 
-		expect(session.messages).toHaveLength(21);
-		expect(session.messages[0]).toEqual({
-			role: "system",
-			content: "You are a helpful assistant.",
+		expect(session.messages).toHaveLength(20);
+		expect(session.messages.at(-1)).toEqual({
+			role: "assistant",
+			content: "answer",
 		});
-		expect(session.messages.slice(1)).toEqual([
-			...Array.from({ length: 18 }, (_, index) => makeHistoryMessage(index, 3)),
-			{ role: "user", content: "new-user" },
-			{ role: "assistant", content: "answer" },
-		]);
+		expect(session.messages.at(-2)).toEqual({
+			role: "user",
+			content: "new-user",
+		});
 	});
 
 	test("resets isBusy in finally after in-flight failure", async () => {
-		const { create, openai } = createOpenAiMock();
-		const deferred = makeDeferred<ChatCompletion>();
-		create.mockImplementationOnce(() => deferred.promise);
+		const deferred = makeDeferred<string>();
+		const { provider } = createProvider("openai", () => deferred.promise);
 
-		const service = new ChatSessionService(openai, "gpt-test");
+		const service = new ChatSessionService([provider]);
 		const session = service.createSession("user-1", "root-1", "thread-1");
 
 		const pending = service.prompt(session, "wait");

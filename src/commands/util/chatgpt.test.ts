@@ -100,7 +100,7 @@ describe("ChatGpt handleAsk", () => {
 		const { interaction } = createInteraction({ banned: true });
 		await new ChatGpt().execute(interaction);
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			"You're banned from using ChatGPT.",
+			"You're banned from using the AI assistant.",
 		);
 	});
 
@@ -134,7 +134,7 @@ describe("ChatGpt handleAsk", () => {
 		});
 		await new ChatGpt().execute(interaction);
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			"That ChatGPT session belongs to another user.",
+			"That AI assistant session belongs to another user.",
 		);
 	});
 
@@ -182,7 +182,7 @@ describe("ChatGpt handleAsk", () => {
 		});
 		await new ChatGpt().execute(interaction);
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			"ChatGPT sessions can only be started from a server.",
+			"AI assistant sessions can only be started from a server.",
 		);
 	});
 
@@ -212,7 +212,7 @@ describe("ChatGpt handleAsk", () => {
 		});
 		await new ChatGpt().execute(interaction);
 		expect(thread.send).toHaveBeenCalledWith(
-			"ChatGPT failed to respond. Please contact <@owner-1>",
+			"The AI assistant failed to respond. Please contact <@owner-1>",
 		);
 		errorSpy.mockRestore();
 	});
@@ -237,7 +237,7 @@ describe("ChatGpt handleEnd", () => {
 		});
 		await new ChatGpt().execute(interaction);
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			"You do not have an active ChatGPT session in this channel.",
+			"You do not have an active AI assistant session in this channel.",
 		);
 	});
 
@@ -248,7 +248,7 @@ describe("ChatGpt handleEnd", () => {
 		});
 		await new ChatGpt().execute(interaction);
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			"That ChatGPT session belongs to another user.",
+			"That AI assistant session belongs to another user.",
 		);
 	});
 
@@ -264,7 +264,7 @@ describe("ChatGpt handleEnd", () => {
 		expect(chatSessions.closeSession).toHaveBeenCalledWith(session);
 		expect(thread.send).toHaveBeenCalled();
 		expect(interaction.editReply).toHaveBeenCalledWith(
-			"Ended your active ChatGPT session.",
+			"Ended your active AI assistant session.",
 		);
 	});
 });
