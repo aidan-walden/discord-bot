@@ -3,7 +3,9 @@ import type RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepos
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
+	LOL_VIEW_CACHE_TTL_MS,
 	platformToRegion,
+	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
 } from "./riot/constants";
 import RiotApiClient from "./riot/RiotApiClient";
@@ -14,6 +16,7 @@ import type {
 	RiotActiveGameStatus,
 	RiotEndedGameStats,
 	RiotLeagueEntry,
+	RiotLolView,
 	RiotMatch,
 	RiotPlatform,
 	RiotPlayerConfig,
@@ -32,6 +35,7 @@ export {
 	platformToRegion,
 	profileIconUrl,
 	queueName,
+	RECENT_MATCH_COUNT,
 	RIOT_PLATFORMS,
 	RIOT_REGIONS,
 	SOLO_QUEUE,
@@ -42,6 +46,7 @@ export type {
 	RiotActiveGameStatus,
 	RiotEndedGameStats,
 	RiotLeagueEntry,
+	RiotLolView,
 	RiotMatch,
 	RiotMatchParticipant,
 	RiotPlatform,
@@ -105,6 +110,10 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	private readonly now: () => number;
 	private readonly pollMemory = new Map<string, PlayerPollMemory>();
 	private readonly snapshots = new Map<string, RiotPlayerPollState>();
+	private readonly lolViewCache = new Map<
+		string,
+		{ expiresAt: number; value: RiotLolView }
+	>();
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private polling = false;
 
@@ -134,6 +143,52 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 
 	clearCache(): void {
 		this.client.clearCache();
+		this.lolViewCache.clear();
+	}
+
+	async getLolView(
+		platform: RiotPlatform,
+		puuid: string,
+		fallbackNames?: { gameName: string; tagLine: string },
+	): Promise<RiotLolView> {
+		const cached = this.lolViewCache.get(puuid);
+		if (cached && cached.expiresAt > this.now()) {
+			return cached.value;
+		}
+
+		const region = platformToRegion(platform);
+		const [account, entries, active, matchIds, summoner, history] =
+			await Promise.all([
+				this.client.getAccountByPuuid(region, puuid),
+				this.client.getLeagueEntriesByPuuid(platform, puuid),
+				this.client.getActiveGame(platform, puuid),
+				this.client.getMatchIdsByPuuid(region, puuid, {
+					count: RECENT_MATCH_COUNT,
+				}),
+				this.client.getSummonerByPuuid(platform, puuid),
+				this.getRankHistory(puuid),
+			]);
+
+		const matches = (
+			await Promise.all(matchIds.map((id) => this.client.getMatch(region, id)))
+		).filter((m): m is RiotMatch => m !== null);
+
+		const view: RiotLolView = {
+			puuid,
+			platform,
+			gameName: account?.gameName ?? fallbackNames?.gameName ?? "Unknown",
+			tagLine: account?.tagLine ?? fallbackNames?.tagLine ?? "???",
+			entries,
+			active,
+			matches,
+			summoner,
+			history,
+		};
+		this.lolViewCache.set(puuid, {
+			expiresAt: this.now() + LOL_VIEW_CACHE_TTL_MS,
+			value: view,
+		});
+		return view;
 	}
 
 	getPollState(puuid: string): RiotPlayerPollState | null {

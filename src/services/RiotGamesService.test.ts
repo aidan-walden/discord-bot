@@ -226,11 +226,19 @@ describe("RiotGamesService", () => {
 		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 
-	test("does not cache match id lists or league entries", async () => {
+	test("caches league entries and summoner within TTL; not match id lists", async () => {
+		let now = 1_000;
 		const fetcher = mock(async (url: string | URL | Request) => {
 			const href = String(url);
 			if (href.includes("/ids")) {
 				return jsonResponse(["m1"]);
+			}
+			if (href.includes("/summoner/")) {
+				return jsonResponse({
+					puuid: "p",
+					profileIconId: 1,
+					summonerLevel: 10,
+				});
 			}
 			return jsonResponse([
 				{
@@ -243,13 +251,109 @@ describe("RiotGamesService", () => {
 				},
 			]);
 		});
-		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+		});
 
 		await service.getMatchIdsByPuuid("americas", "p");
 		await service.getMatchIdsByPuuid("americas", "p");
 		await service.getLeagueEntriesByPuuid("na1", "p");
 		await service.getLeagueEntriesByPuuid("na1", "p");
+		await service.getSummonerByPuuid("na1", "p");
+		await service.getSummonerByPuuid("na1", "p");
+		// match ids ×2 + league ×1 + summoner ×1
 		expect(fetcher).toHaveBeenCalledTimes(4);
+
+		now += 60_000 + 1;
+		await service.getLeagueEntriesByPuuid("na1", "p");
+		expect(fetcher).toHaveBeenCalledTimes(5);
+	});
+
+	test("does not cache active game", async () => {
+		const fetcher = mock(async () => new Response(null, { status: 404 }));
+		const service = new RiotGamesService("key", undefined, { fetch: fetcher });
+		await service.getActiveGame("na1", "p");
+		await service.getActiveGame("na1", "p");
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	test("waits on default app rate limit without prior headers", async () => {
+		const sleeps: number[] = [];
+		let now = 0;
+		const fetcher = mock(async () =>
+			jsonResponse({ puuid: "p", gameName: "a", tagLine: "b" }),
+		);
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+			sleep: async (ms) => {
+				sleeps.push(ms);
+				now += ms;
+			},
+		});
+
+		for (let i = 0; i < 20; i++) {
+			service.clearCache();
+			await service.getAccountByRiotId("americas", `a${i}`, "b");
+		}
+		expect(sleeps).toEqual([]);
+
+		service.clearCache();
+		await service.getAccountByRiotId("americas", "a20", "b");
+		expect(sleeps.length).toBe(1);
+		expect(sleeps[0]).toBeGreaterThan(0);
+	});
+
+	test("getLolView caches 5 minutes per puuid", async () => {
+		let now = 1_000;
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			if (href.includes("/accounts/by-puuid/")) {
+				return jsonResponse({
+					puuid: href.includes("p2") ? "p2" : "p1",
+					gameName: href.includes("p2") ? "Two" : "One",
+					tagLine: "NA1",
+				});
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				return jsonResponse([]);
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse([]);
+			}
+			if (href.includes("/summoner/")) {
+				return jsonResponse({
+					puuid: "p1",
+					profileIconId: 1,
+					summonerLevel: 1,
+				});
+			}
+			return new Response(null, { status: 500 });
+		});
+		const service = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+		});
+
+		const first = await service.getLolView("na1", "p1");
+		const second = await service.getLolView("na1", "p1");
+		expect(first).toEqual(second);
+		const callsAfterFirstPlayer = fetcher.mock.calls.length;
+
+		await service.getLolView("na1", "p1");
+		expect(fetcher).toHaveBeenCalledTimes(callsAfterFirstPlayer);
+
+		await service.getLolView("na1", "p2");
+		expect(fetcher.mock.calls.length).toBeGreaterThan(callsAfterFirstPlayer);
+
+		const afterP2 = fetcher.mock.calls.length;
+		now += 5 * 60_000 + 1;
+		await service.getLolView("na1", "p1");
+		expect(fetcher.mock.calls.length).toBeGreaterThan(afterP2);
 	});
 
 	test("waits when app rate-limit bucket is exhausted", async () => {
@@ -520,9 +624,11 @@ describe("RiotGamesService", () => {
 		]);
 		const recordIfChanged = mock(async () => null);
 
+		let now = 1_000;
 		const service = new RiotGamesService("key", undefined, {
 			fetch: fetcher,
 			players: [PLAYER],
+			now: () => now,
 			rankHistory: { listByPuuid, recordIfChanged } as never,
 		});
 
@@ -538,6 +644,8 @@ describe("RiotGamesService", () => {
 
 		matchId = "NA1_2";
 		lp = 68;
+		// past league cache TTL so rank after new match is fresh
+		now += 60_000 + 1;
 		await service.pollOnce();
 
 		expect(updates).toHaveLength(2);

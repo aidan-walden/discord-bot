@@ -38,8 +38,6 @@ const FRIENDLY_REGIONS = [
 	"VN",
 ] as const;
 
-const RECENT_MATCH_COUNT = 5;
-
 function parseRiotId(
 	raw: string,
 ): { gameName: string; tagLine: string } | null {
@@ -248,37 +246,22 @@ export default class Lol implements Command {
 
 		await interaction.deferReply();
 
-		const riot = interaction.client.bot.riot;
-		const region = platformToRegion(link.platform);
+		const view = await interaction.client.bot.riot.getLolView(
+			link.platform,
+			link.puuid,
+			{ gameName: link.gameName, tagLine: link.tagLine },
+		);
 
-		const [account, entries, active, matchIds, summoner, history] =
-			await Promise.all([
-				riot.getAccountByPuuid(region, link.puuid),
-				riot.getLeagueEntriesByPuuid(link.platform, link.puuid),
-				riot.getActiveGame(link.platform, link.puuid),
-				riot.getMatchIdsByPuuid(region, link.puuid, {
-					count: RECENT_MATCH_COUNT,
-				}),
-				riot.getSummonerByPuuid(link.platform, link.puuid),
-				riot.getRankHistory(link.puuid),
-			]);
+		const solo = view.entries.find((e) => e.queueType === SOLO_QUEUE);
+		const flex = view.entries.find((e) => e.queueType === FLEX_QUEUE);
 
-		const matches = (
-			await Promise.all(matchIds.map((id) => riot.getMatch(region, id)))
-		).filter((m): m is RiotMatch => m !== null);
-
-		const gameName = account?.gameName ?? link.gameName;
-		const tagLine = account?.tagLine ?? link.tagLine;
-		const solo = entries.find((e) => e.queueType === SOLO_QUEUE);
-		const flex = entries.find((e) => e.queueType === FLEX_QUEUE);
-
-		const recentLines = matches
+		const recentLines = view.matches
 			.map((m) => matchLine(m, link.puuid))
 			.filter((line): line is string => line !== null);
 
 		const embed = new EmbedBuilder()
 			.setTitle(
-				`${escapeMarkdown(gameName)}#${escapeMarkdown(tagLine)} · ${platformLabel(link.platform)}`,
+				`${escapeMarkdown(view.gameName)}#${escapeMarkdown(view.tagLine)} · ${platformLabel(link.platform)}`,
 			)
 			.setDescription(userMention(member.id))
 			.addFields(
@@ -286,17 +269,17 @@ export default class Lol implements Command {
 				{ name: "Flex", value: formatRank(flex), inline: true },
 			);
 
-		if (summoner) {
-			embed.setFooter({ text: `Level ${summoner.summonerLevel}` });
-			embed.setThumbnail(profileIconUrl(summoner.profileIconId));
+		if (view.summoner) {
+			embed.setFooter({ text: `Level ${view.summoner.summonerLevel}` });
+			embed.setThumbnail(profileIconUrl(view.summoner.profileIconId));
 		}
 
-		if (active) {
-			const self = active.participants.find((p) => p.puuid === link.puuid);
+		if (view.active) {
+			const self = view.active.participants.find((p) => p.puuid === link.puuid);
 			const champ = self ? `Champ ${self.championId}` : "Unknown";
 			embed.addFields({
 				name: "In Game",
-				value: `${champ} · ${queueName(active.gameQueueConfigId)} · ${formatDuration(active.gameLength)}`,
+				value: `${champ} · ${queueName(view.active.gameQueueConfigId)} · ${formatDuration(view.active.gameLength)}`,
 			});
 		}
 
@@ -307,10 +290,10 @@ export default class Lol implements Command {
 			});
 		}
 
-		if (history.length > 0) {
+		if (view.history.length > 0) {
 			embed.addFields({
 				name: "Rank History",
-				value: history
+				value: view.history
 					.map(
 						(h) =>
 							`${h.tier} ${h.rank} ${h.leaguePoints} LP (${h.wins}W ${h.losses}L)`,

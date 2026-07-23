@@ -43,7 +43,16 @@ export const PLATFORM_TO_REGION: Record<RiotPlatform, RiotRegion> = {
 
 export const ACCOUNT_CACHE_TTL_MS = 10 * 60_000;
 export const MATCH_CACHE_TTL_MS = 60 * 60_000;
+export const SUMMONER_CACHE_TTL_MS = 10 * 60_000;
+export const LEAGUE_CACHE_TTL_MS = 60_000;
+export const LOL_VIEW_CACHE_TTL_MS = 5 * 60_000;
 export const DEFAULT_429_RETRY_MS = 1_000;
+/** Personal-key app limits applied before response headers arrive. */
+export const DEFAULT_APP_RATE_LIMITS = [
+	{ limit: 20, windowMs: 1_000 },
+	{ limit: 100, windowMs: 120_000 },
+] as const;
+export const RECENT_MATCH_COUNT = 5;
 export const SOLO_QUEUE = "RANKED_SOLO_5x5";
 export const FLEX_QUEUE = "RANKED_FLEX_SR";
 export const DEFAULT_POLL_INTERVAL_SECONDS = 60;

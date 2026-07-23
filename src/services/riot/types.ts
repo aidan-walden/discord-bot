@@ -127,6 +127,19 @@ export interface RiotRankHistoryEntry {
 	detectedAt: Date;
 }
 
+/** Snapshot for `/lol view`, cached per puuid. */
+export interface RiotLolView {
+	puuid: string;
+	platform: RiotPlatform;
+	gameName: string;
+	tagLine: string;
+	entries: RiotLeagueEntry[];
+	active: RiotActiveGame | null;
+	matches: RiotMatch[];
+	summoner: RiotSummoner | null;
+	history: RiotRankHistoryEntry[];
+}
+
 export class RiotGamesError extends Error {
 	readonly status: number;
 	readonly retryAfterMs?: number;

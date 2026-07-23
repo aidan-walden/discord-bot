@@ -2,7 +2,10 @@ import type { CredentialRejectionReporter } from "../ExternalApiCredentialStatus
 import {
 	ACCOUNT_CACHE_TTL_MS,
 	DEFAULT_429_RETRY_MS,
+	DEFAULT_APP_RATE_LIMITS,
+	LEAGUE_CACHE_TTL_MS,
 	MATCH_CACHE_TTL_MS,
+	SUMMONER_CACHE_TTL_MS,
 } from "./constants";
 import type {
 	Fetcher,
@@ -82,6 +85,11 @@ export default class RiotApiClient {
 	private readonly now: () => number;
 	private readonly accountCache = new Map<string, CacheEntry<RiotAccount>>();
 	private readonly matchCache = new Map<string, CacheEntry<RiotMatch>>();
+	private readonly summonerCache = new Map<string, CacheEntry<RiotSummoner>>();
+	private readonly leagueCache = new Map<
+		string,
+		CacheEntry<RiotLeagueEntry[]>
+	>();
 	/** host → bucketKey → state */
 	private readonly rateBuckets = new Map<string, Map<string, RateBucket>>();
 
@@ -103,6 +111,8 @@ export default class RiotApiClient {
 	clearCache(): void {
 		this.accountCache.clear();
 		this.matchCache.clear();
+		this.summonerCache.clear();
+		this.leagueCache.clear();
 	}
 
 	async getAccountByRiotId(
@@ -166,6 +176,7 @@ export default class RiotApiClient {
 		if (!this.apiKey) {
 			return [];
 		}
+		// ponytail: no match-id cache — poller must see new games immediately
 		const path = `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids`;
 		return this.request<string[]>(region, path, {
 			start: opts?.start,
@@ -209,8 +220,19 @@ export default class RiotApiClient {
 		if (!this.apiKey) {
 			return [];
 		}
+		const cacheKey = `${platform}:${puuid}`;
+		const cached = this.getCached(this.leagueCache, cacheKey);
+		if (cached) {
+			return cached;
+		}
+
 		const path = `/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`;
-		return this.request<RiotLeagueEntry[]>(platform, path);
+		const entries = await this.request<RiotLeagueEntry[]>(platform, path);
+		this.leagueCache.set(cacheKey, {
+			expiresAt: this.now() + LEAGUE_CACHE_TTL_MS,
+			value: entries,
+		});
+		return entries;
 	}
 
 	async getActiveGame(
@@ -238,6 +260,12 @@ export default class RiotApiClient {
 		if (!this.apiKey) {
 			return null;
 		}
+		const cacheKey = `${platform}:${puuid}`;
+		const cached = this.getCached(this.summonerCache, cacheKey);
+		if (cached) {
+			return cached;
+		}
+
 		const path = `/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`;
 		try {
 			const raw = await this.request<{
@@ -245,11 +273,16 @@ export default class RiotApiClient {
 				profileIconId: number;
 				summonerLevel: number;
 			}>(platform, path);
-			return {
+			const summoner = {
 				puuid: raw.puuid,
 				profileIconId: raw.profileIconId,
 				summonerLevel: raw.summonerLevel,
 			};
+			this.summonerCache.set(cacheKey, {
+				expiresAt: this.now() + SUMMONER_CACHE_TTL_MS,
+				value: summoner,
+			});
+			return summoner;
 		} catch (error) {
 			if (error instanceof RiotGamesError && error.status === 404) {
 				return null;
@@ -320,7 +353,7 @@ export default class RiotApiClient {
 		url: string,
 		retried = false,
 	): Promise<T> {
-		await this.waitForRateLimit(host);
+		await this.acquireRateLimit(host);
 
 		const response = await this.fetcher(url, {
 			headers: { "X-Riot-Token": this.apiKey as string },
@@ -353,26 +386,50 @@ export default class RiotApiClient {
 		return (await response.json()) as T;
 	}
 
-	private async waitForRateLimit(host: string): Promise<void> {
-		const buckets = this.rateBuckets.get(host);
+	private ensureDefaultBuckets(host: string): Map<string, RateBucket> {
+		let buckets = this.rateBuckets.get(host);
 		if (!buckets) {
-			return;
+			buckets = new Map();
+			this.rateBuckets.set(host, buckets);
 		}
-
 		const now = this.now();
-		let waitMs = 0;
-		for (const bucket of buckets.values()) {
-			const elapsed = now - bucket.windowStartMs;
-			if (elapsed >= bucket.windowMs) {
-				bucket.count = 0;
-				bucket.windowStartMs = now;
-				continue;
-			}
-			if (bucket.count >= bucket.limit) {
-				waitMs = Math.max(waitMs, bucket.windowMs - elapsed);
+		for (const def of DEFAULT_APP_RATE_LIMITS) {
+			const key = `app:${def.windowMs}`;
+			if (!buckets.has(key)) {
+				buckets.set(key, {
+					limit: def.limit,
+					windowMs: def.windowMs,
+					count: 0,
+					windowStartMs: now,
+				});
 			}
 		}
-		if (waitMs > 0) {
+		return buckets;
+	}
+
+	private async acquireRateLimit(host: string): Promise<void> {
+		const buckets = this.ensureDefaultBuckets(host);
+
+		for (;;) {
+			const now = this.now();
+			let waitMs = 0;
+			for (const bucket of buckets.values()) {
+				const elapsed = now - bucket.windowStartMs;
+				if (elapsed >= bucket.windowMs) {
+					bucket.count = 0;
+					bucket.windowStartMs = now;
+					continue;
+				}
+				if (bucket.count >= bucket.limit) {
+					waitMs = Math.max(waitMs, bucket.windowMs - elapsed);
+				}
+			}
+			if (waitMs <= 0) {
+				for (const bucket of buckets.values()) {
+					bucket.count += 1;
+				}
+				return;
+			}
 			await this.sleep(waitMs);
 		}
 	}
@@ -405,12 +462,7 @@ export default class RiotApiClient {
 			return;
 		}
 
-		let buckets = this.rateBuckets.get(host);
-		if (!buckets) {
-			buckets = new Map();
-			this.rateBuckets.set(host, buckets);
-		}
-
+		const buckets = this.ensureDefaultBuckets(host);
 		const now = this.now();
 		for (const entry of limits) {
 			if (entry.count === undefined) {
@@ -430,7 +482,9 @@ export default class RiotApiClient {
 					windowStartMs: now,
 				});
 			} else {
-				existing.count = entry.count;
+				// Prefer the higher count so local reserves are not wiped by a lagging header.
+				existing.count = Math.max(existing.count, entry.count);
+				existing.limit = entry.limit;
 			}
 		}
 	}
