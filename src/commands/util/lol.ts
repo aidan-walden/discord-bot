@@ -223,6 +223,11 @@ export default class Lol implements Command {
 			tagLine: account.tagLine,
 		});
 
+		// Warm playtime for later consumers; view also awaits ensure if still cold.
+		void interaction.client.bot.riot
+			.ensurePlaytimeBackfill({ puuid: account.puuid, platform })
+			.catch(() => undefined);
+
 		await interaction.editReply(
 			`Linked ${userMention(member.id)} → **${escapeMarkdown(account.gameName)}#${escapeMarkdown(account.tagLine)}** (${platformLabel(platform)}).`,
 		);
@@ -253,6 +258,18 @@ export default class Lol implements Command {
 		}
 
 		await interaction.deferReply();
+
+		const links = await interaction.client.bot.riotLinks.listByUserId(
+			member.id,
+		);
+		await Promise.all(
+			links.map((account) =>
+				interaction.client.bot.riot.ensurePlaytimeBackfill({
+					puuid: account.puuid,
+					platform: account.platform,
+				}),
+			),
+		);
 
 		const [view, playtimeSeconds] = await Promise.all([
 			interaction.client.bot.riot.getLolView(link.platform, link.puuid, {

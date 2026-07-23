@@ -852,7 +852,8 @@ describe("RiotGamesService", () => {
 					url.includes("endTime=1700100060"),
 			),
 		).toBe(true);
-		expect(getSync).toHaveBeenCalledTimes(2);
+		// ensurePlaytimeBackfill + syncPlayerMatches each call get once per poll
+		expect(getSync).toHaveBeenCalledTimes(4);
 		expect(
 			matchDetailCalls.filter((u) => u.includes("NA1_known")),
 		).toHaveLength(0);
@@ -941,5 +942,69 @@ describe("RiotGamesService", () => {
 
 		await service.pollOnce();
 		expect(setBackfill).not.toHaveBeenCalled();
+	});
+
+	test("ensurePlaytimeBackfill is idempotent when already backfilled", async () => {
+		const setBackfill = mock(async () => undefined);
+		const fetchPlaytimeSeconds = mock(async () => 999);
+		const service = new RiotGamesService("key", undefined, {
+			now: () => 1_700_100_000_000,
+			userLinks: {
+				getByPuuid: mock(async () => ({
+					userId: "u1",
+					puuid: "p1",
+					platform: "na1" as const,
+					gameName: "Hide",
+					tagLine: "NA1",
+					linkedAt: new Date(),
+				})),
+			} as never,
+			matchSync: {
+				get: mock(async () => ({
+					puuid: "p1",
+					lastSyncedAt: new Date(),
+					backfilled: true,
+					backfillSeconds: 3600,
+					backfillAsOf: new Date(),
+				})),
+				setBackfill,
+			} as never,
+			wol: { fetchPlaytimeSeconds } as never,
+		});
+
+		await service.ensurePlaytimeBackfill(PLAYER);
+		expect(fetchPlaytimeSeconds).not.toHaveBeenCalled();
+		expect(setBackfill).not.toHaveBeenCalled();
+	});
+
+	test("ensurePlaytimeBackfill writes when cold", async () => {
+		const setBackfill = mock(async () => undefined);
+		const fetchPlaytimeSeconds = mock(async () => 7200);
+		const service = new RiotGamesService("key", undefined, {
+			now: () => 1_700_100_000_000,
+			userLinks: {
+				getByPuuid: mock(async () => ({
+					userId: "u1",
+					puuid: "p1",
+					platform: "na1" as const,
+					gameName: "Hide",
+					tagLine: "NA1",
+					linkedAt: new Date(),
+				})),
+			} as never,
+			matchSync: {
+				get: mock(async () => null),
+				setBackfill,
+			} as never,
+			wol: { fetchPlaytimeSeconds } as never,
+		});
+
+		await service.ensurePlaytimeBackfill(PLAYER);
+		expect(fetchPlaytimeSeconds).toHaveBeenCalledWith("na1", "Hide", "NA1");
+		expect(setBackfill).toHaveBeenCalledWith(
+			"p1",
+			7200,
+			new Date(1_700_100_000_000),
+		);
 	});
 });

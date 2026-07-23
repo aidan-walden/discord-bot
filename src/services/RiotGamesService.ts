@@ -516,33 +516,50 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return { gameName: account.gameName, tagLine: account.tagLine };
 	}
 
+	/**
+	 * One-shot wol.gg baseline when missing. No-op if already backfilled or scrape fails.
+	 */
+	async ensurePlaytimeBackfill(player: RiotPlayerConfig): Promise<void> {
+		if (!this.matchSync || !this.wol) {
+			return;
+		}
+		const row = await this.matchSync.get(player.puuid);
+		if (row?.backfilled) {
+			return;
+		}
+		const identity = await this.resolveRiotId(player);
+		if (!identity) {
+			return;
+		}
+		const backfillSeconds = await this.wol.fetchPlaytimeSeconds(
+			player.platform,
+			identity.gameName,
+			identity.tagLine,
+		);
+		if (backfillSeconds === null) {
+			// ponytail: retry later — do not lock 0 on a scrape miss
+			return;
+		}
+		await this.matchSync.setBackfill(
+			player.puuid,
+			backfillSeconds,
+			new Date(this.now()),
+		);
+	}
+
 	private async syncPlayerMatches(player: RiotPlayerConfig): Promise<void> {
 		if (!this.matches || !this.matchSync || !this.wol) {
 			return;
 		}
-		const region = platformToRegion(player.platform);
-		const now = new Date(this.now());
-		const endTime = Math.floor(now.getTime() / 1000);
+		await this.ensurePlaytimeBackfill(player);
 		const row = await this.matchSync.get(player.puuid);
-
 		if (!row?.backfilled) {
-			const identity = await this.resolveRiotId(player);
-			if (!identity) {
-				return;
-			}
-			const backfillSeconds = await this.wol.fetchPlaytimeSeconds(
-				player.platform,
-				identity.gameName,
-				identity.tagLine,
-			);
-			if (backfillSeconds === null) {
-				// ponytail: retry next poll — do not lock 0 on a scrape miss
-				return;
-			}
-			await this.matchSync.setBackfill(player.puuid, backfillSeconds, now);
 			return;
 		}
 
+		const region = platformToRegion(player.platform);
+		const now = new Date(this.now());
+		const endTime = Math.floor(now.getTime() / 1000);
 		const incrementalStartTime = Math.max(
 			0,
 			Math.floor(row.lastSyncedAt.getTime() / 1000) -

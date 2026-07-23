@@ -64,6 +64,7 @@ function buildInteraction(opts: BuildOpts = {}): ChatInputCommandInteraction {
 					tagLine: "KR1",
 				},
 		),
+		ensurePlaytimeBackfill: mock(async () => undefined),
 		getLolView: mock(async () => ({
 			puuid: "p1",
 			platform: "na1" as const,
@@ -133,6 +134,7 @@ function buildInteraction(opts: BuildOpts = {}): ChatInputCommandInteraction {
 	const linkResult = opts.link === undefined ? defaultLink : opts.link;
 	const riotLinks = {
 		getPrimaryByUserId: mock(async () => linkResult),
+		listByUserId: mock(async () => (linkResult ? [linkResult] : [])),
 		upsert: mock(async (row: unknown) => row),
 	};
 	const riotMatches = {
@@ -198,6 +200,9 @@ describe("Lol", () => {
 			gameName: "Faker",
 			tagLine: "KR1",
 		});
+		expect(
+			interaction.client.bot.riot.ensurePlaytimeBackfill,
+		).toHaveBeenCalledWith({ puuid: "p1", platform: "na1" });
 		expect(interaction.editReply).toHaveBeenCalled();
 	});
 
@@ -241,6 +246,12 @@ describe("Lol", () => {
 		const interaction = buildInteraction({ subcommand: "view" });
 		await new Lol().execute(interaction);
 		expect(interaction.deferReply).toHaveBeenCalled();
+		expect(interaction.client.bot.riotLinks.listByUserId).toHaveBeenCalledWith(
+			"self",
+		);
+		expect(
+			interaction.client.bot.riot.ensurePlaytimeBackfill,
+		).toHaveBeenCalledWith({ puuid: "p1", platform: "na1" });
 		expect(
 			interaction.client.bot.riotMatches.sumTimePlayedForUser,
 		).toHaveBeenCalledWith("self");
