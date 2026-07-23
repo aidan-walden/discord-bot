@@ -23,9 +23,11 @@ const baseYaml = [
 	'BOT_TOKEN: "file-bot-token"',
 	'DATABASE_URL: "postgres://file-db"',
 	'BOT_OWNER_ID: "file-owner"',
-	'OPENAI_API_TOKEN: "file-openai-token"',
-	'OPENAI_MODEL: "file-model"',
-	'TIKTOK_SESSION_ID: "file-tiktok-session"',
+	"openai:",
+	'  OPENAI_API_TOKEN: "file-openai-token"',
+	'  OPENAI_MODEL: "file-model"',
+	"tiktok:",
+	'  TIKTOK_SESSION_ID: "file-tiktok-session"',
 	"ADMIN_USER_IDS:",
 	'  - "admin-a"',
 	'  - "admin-b"',
@@ -110,6 +112,8 @@ type YamlOptions = {
 	baseProfilePictureBlock?: string;
 	holidayProfilePicturesBlock?: string;
 	deafentrackerBlock?: string;
+	openaiBlock?: string;
+	tiktokBlock?: string;
 	riotBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
@@ -128,6 +132,8 @@ function buildYaml(options: YamlOptions = {}) {
 		baseProfilePictureBlock,
 		holidayProfilePicturesBlock,
 		deafentrackerBlock,
+		openaiBlock,
+		tiktokBlock,
 		riotBlock,
 		lavalinkBlock,
 		omitKeys = [],
@@ -146,16 +152,32 @@ function buildYaml(options: YamlOptions = {}) {
 		lines.push(`BOT_OWNER_ID: ${JSON.stringify(BOT_OWNER_ID)}`);
 	}
 
-	if (!omitKeys.includes("OPENAI_API_TOKEN")) {
-		lines.push(`OPENAI_API_TOKEN: ${JSON.stringify(OPENAI_API_TOKEN)}`);
+	if (openaiBlock !== undefined) {
+		if (openaiBlock.length > 0) {
+			lines.push(openaiBlock);
+		}
+	} else if (
+		!omitKeys.includes("OPENAI_API_TOKEN") ||
+		!omitKeys.includes("OPENAI_MODEL")
+	) {
+		lines.push("openai:");
+		if (!omitKeys.includes("OPENAI_API_TOKEN")) {
+			lines.push(`  OPENAI_API_TOKEN: ${JSON.stringify(OPENAI_API_TOKEN)}`);
+		}
+		if (!omitKeys.includes("OPENAI_MODEL")) {
+			lines.push(`  OPENAI_MODEL: ${JSON.stringify(OPENAI_MODEL)}`);
+		}
 	}
 
-	if (!omitKeys.includes("OPENAI_MODEL")) {
-		lines.push(`OPENAI_MODEL: ${JSON.stringify(OPENAI_MODEL)}`);
-	}
-
-	if (!omitKeys.includes("TIKTOK_SESSION_ID")) {
-		lines.push(`TIKTOK_SESSION_ID: ${JSON.stringify(TIKTOK_SESSION_ID)}`);
+	if (tiktokBlock !== undefined) {
+		if (tiktokBlock.length > 0) {
+			lines.push(tiktokBlock);
+		}
+	} else if (!omitKeys.includes("TIKTOK_SESSION_ID")) {
+		lines.push(
+			"tiktok:",
+			`  TIKTOK_SESSION_ID: ${JSON.stringify(TIKTOK_SESSION_ID)}`,
+		);
 	}
 
 	if (adminUserIdsBlock === undefined) {
@@ -318,21 +340,25 @@ describe("Config", () => {
 				name: "OPENAI_MODEL",
 				env: { OPENAI_MODEL: "env-model" },
 				assert: (config: ConfigInstance) => {
-					expect(config.get("OPENAI_MODEL")).toBe("env-model");
+					expect(config.get("openai").OPENAI_MODEL).toBe("env-model");
 				},
 			},
 			{
 				name: "OPENAI_API_TOKEN",
 				env: { OPENAI_API_TOKEN: "env-openai-token" },
 				assert: (config: ConfigInstance) => {
-					expect(config.get("OPENAI_API_TOKEN")).toBe("env-openai-token");
+					expect(config.get("openai").OPENAI_API_TOKEN).toBe(
+						"env-openai-token",
+					);
 				},
 			},
 			{
 				name: "TIKTOK_SESSION_ID",
 				env: { TIKTOK_SESSION_ID: "env-tiktok-session" },
 				assert: (config: ConfigInstance) => {
-					expect(config.get("TIKTOK_SESSION_ID")).toBe("env-tiktok-session");
+					expect(config.get("tiktok").TIKTOK_SESSION_ID).toBe(
+						"env-tiktok-session",
+					);
 				},
 			},
 		] as const;
@@ -384,21 +410,21 @@ describe("Config", () => {
 				name: "OPENAI_MODEL",
 				env: { OPENAI_MODEL: "" },
 				assert: (config: ConfigInstance) => {
-					expect(config.get("OPENAI_MODEL")).toBe("");
+					expect(config.get("openai").OPENAI_MODEL).toBe("");
 				},
 			},
 			{
 				name: "OPENAI_API_TOKEN",
 				env: { OPENAI_API_TOKEN: "" },
 				assert: (config: ConfigInstance) => {
-					expect(config.get("OPENAI_API_TOKEN")).toBe("");
+					expect(config.get("openai").OPENAI_API_TOKEN).toBe("");
 				},
 			},
 			{
 				name: "TIKTOK_SESSION_ID",
 				env: { TIKTOK_SESSION_ID: "" },
 				assert: (config: ConfigInstance) => {
-					expect(config.get("TIKTOK_SESSION_ID")).toBe("");
+					expect(config.get("tiktok").TIKTOK_SESSION_ID).toBe("");
 				},
 			},
 		] as const;
@@ -800,7 +826,9 @@ describe("Config", () => {
 					const config = await Config.load(filePath, clock);
 
 					expect(config.get("BOT_TOKEN")).toBe("env-bot-token");
-					expect(config.get("OPENAI_API_TOKEN")).toBe("env-openai-token");
+					expect(config.get("openai").OPENAI_API_TOKEN).toBe(
+						"env-openai-token",
+					);
 
 					config.set("ADMIN_USER_IDS", ["new-admin"]);
 					clock.advanceBy(5_000);
@@ -808,7 +836,10 @@ describe("Config", () => {
 
 					const persisted = await readTempConfig(filePath);
 					expect(persisted.BOT_TOKEN).toBe("file-bot-token");
-					expect(persisted.OPENAI_API_TOKEN).toBe("file-openai-token");
+					expect(
+						(persisted.openai as { OPENAI_API_TOKEN?: string } | undefined)
+							?.OPENAI_API_TOKEN,
+					).toBe("file-openai-token");
 					expect(persisted.ADMIN_USER_IDS).toEqual(["new-admin"]);
 				},
 			);
@@ -842,16 +873,19 @@ describe("Config", () => {
 				);
 
 				try {
-					config.set("OPENAI_MODEL", undefined as never);
+					config.set("openai", undefined as never);
 
 					expect(consoleWarn).toHaveBeenCalledWith(
-						"undefined passed to Config.set for key OPENAI_MODEL, ignoring...",
+						"undefined passed to Config.set for key openai, ignoring...",
 					);
-					expect(config.get("OPENAI_MODEL")).toBe("file-model");
+					expect(config.get("openai").OPENAI_MODEL).toBe("file-model");
 					expect(clock.getPendingTimers()).toEqual([]);
 
 					const persisted = await readTempConfig(filePath);
-					expect(persisted.OPENAI_MODEL).toBe("file-model");
+					expect(
+						(persisted.openai as { OPENAI_MODEL?: string } | undefined)
+							?.OPENAI_MODEL,
+					).toBe("file-model");
 				} finally {
 					consoleWarn.mockRestore();
 				}
@@ -864,13 +898,13 @@ describe("Config", () => {
 				const filePath = await writeTempConfig(buildYaml());
 				const config = await Config.load(filePath, clock);
 
-				config.set("OPENAI_MODEL", null);
+				config.set("openai", null);
 				clock.advanceBy(5_000);
 				await config.flush();
 
-				expect(config.get("OPENAI_MODEL")).toBeUndefined();
+				expect(config.get("openai")).toEqual({});
 				const persisted = await readTempConfig(filePath);
-				expect("OPENAI_MODEL" in persisted).toBe(false);
+				expect("openai" in persisted).toBe(false);
 			});
 		});
 	});

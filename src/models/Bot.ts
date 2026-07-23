@@ -105,9 +105,9 @@ export default class Bot extends Client {
 		this.adminUserIds = new Set(config.get("ADMIN_USER_IDS"));
 		this.db = new Bun.SQL(config.get("DATABASE_URL"));
 		this.metrics = new MetricsCollector();
-		const openaiApiToken = config.get("OPENAI_API_TOKEN");
-		this.openai = openaiApiToken
-			? new OpenAI({ apiKey: openaiApiToken })
+		const openaiConfig = config.get("openai");
+		this.openai = openaiConfig.OPENAI_API_TOKEN
+			? new OpenAI({ apiKey: openaiConfig.OPENAI_API_TOKEN })
 			: null;
 		this.permissions = new PermissionService(
 			this.adminUserIds,
@@ -122,18 +122,17 @@ export default class Bot extends Client {
 		this.guildSettings = new GuildSettingsRepository(this.db);
 		this.chatSessions = new ChatSessionService(
 			this.openai,
-			config.get("OPENAI_MODEL"),
+			openaiConfig.OPENAI_MODEL,
 			this.metrics,
 		);
 
-		const spotifyClientId = config.get("SPOTIFY_CLIENT_ID");
-		const spotifyClientSecret = config.get("SPOTIFY_CLIENT_SECRET");
+		const spotifyConfig = config.get("spotify");
 		const spotifyClient =
-			spotifyClientId && spotifyClientSecret
+			spotifyConfig.SPOTIFY_CLIENT_ID && spotifyConfig.SPOTIFY_CLIENT_SECRET
 				? new SpotifyApi(
 						new SpotifyClientCredentialsStrategy(
-							spotifyClientId,
-							spotifyClientSecret,
+							spotifyConfig.SPOTIFY_CLIENT_ID,
+							spotifyConfig.SPOTIFY_CLIENT_SECRET,
 							this.metrics,
 						),
 					)
@@ -141,8 +140,8 @@ export default class Bot extends Client {
 		this.spotify = new SpotifyService(spotifyClient, this.metrics);
 		this.appleMusic = new AppleMusicService();
 		this.musicLinks = new MusicLinkService(this.spotify, this.appleMusic);
-		const riotApiKey = config.get("RIOT_API_KEY")?.trim() || null;
 		const riotConfig = config.get("riot");
+		const riotApiKey = riotConfig.RIOT_API_KEY?.trim() || null;
 		this.riot = new RiotGamesService(riotApiKey, this.metrics, {
 			pollIntervalSeconds: riotConfig.pollIntervalSeconds,
 			players: riotConfig.players,

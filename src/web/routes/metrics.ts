@@ -89,15 +89,16 @@ export function renderPrometheusMetrics(bot: Bot): string {
 		commandValues,
 	);
 
+	const spotify = bot.config.get("spotify");
 	const spotifyConfigured =
-		isConfigured(bot.config.get("SPOTIFY_CLIENT_ID")) &&
-		isConfigured(bot.config.get("SPOTIFY_CLIENT_SECRET"));
+		isConfigured(spotify.SPOTIFY_CLIENT_ID) &&
+		isConfigured(spotify.SPOTIFY_CLIENT_SECRET);
 	const credentialStatuses = [
-		["openai", isConfigured(bot.config.get("OPENAI_API_TOKEN"))],
+		["openai", isConfigured(bot.config.get("openai").OPENAI_API_TOKEN)],
 		["spotify", spotifyConfigured],
-		["tiktok", isConfigured(bot.config.get("TIKTOK_SESSION_ID"))],
-		["imgur", isConfigured(bot.config.get("IMGUR_CLIENT_ID"))],
-		["riot", isConfigured(bot.config.get("RIOT_API_KEY"))],
+		["tiktok", isConfigured(bot.config.get("tiktok").TIKTOK_SESSION_ID)],
+		["imgur", isConfigured(bot.config.get("imgur").IMGUR_CLIENT_ID)],
+		["riot", isConfigured(bot.config.get("riot").RIOT_API_KEY)],
 	] as const;
 	addMetric(
 		lines,

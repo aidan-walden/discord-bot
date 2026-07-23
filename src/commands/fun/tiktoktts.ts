@@ -88,7 +88,8 @@ export default class TiktokTts implements Command {
 			return;
 		}
 
-		const sessionId = interaction.client.bot.config.get("TIKTOK_SESSION_ID");
+		const sessionId =
+			interaction.client.bot.config.get("tiktok").TIKTOK_SESSION_ID;
 		if (!sessionId?.trim()) {
 			await interaction.reply({
 				content: "TikTok TTS is not configured.",

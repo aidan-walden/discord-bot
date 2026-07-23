@@ -8,7 +8,7 @@ Install dependencies with `bun install`.
 Make sure that these values are defined in `config.yml`
 
 - `BOT_TOKEN`: Discord bot token
-- `OPENAI_API_TOKEN`: optional OpenAI API token, used for ChatGPT sessions
+- `openai.OPENAI_API_TOKEN`: optional OpenAI API token, used for ChatGPT sessions
 - `ADMIN_USER_IDS`: list of Discord user IDs treated as bot admins
 - `lavalink.nodes`: Lavalink node configuration
 

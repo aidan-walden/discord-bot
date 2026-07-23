@@ -37,7 +37,7 @@ function createCommandInteraction(options: {
 			client: {
 				bot: {
 					config: {
-						get: () => options.sessionId,
+						get: () => ({ TIKTOK_SESSION_ID: options.sessionId }),
 					},
 					music: { getPlayer },
 				},

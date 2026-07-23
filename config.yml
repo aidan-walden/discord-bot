@@ -1,12 +1,20 @@
 BOT_TOKEN: ""
 DATABASE_URL: ""
-OPENAI_API_TOKEN: ""
-OPENAI_MODEL: ""
-TIKTOK_SESSION_ID: ""
-SPOTIFY_CLIENT_ID: ""
-SPOTIFY_CLIENT_SECRET: ""
-RIOT_API_KEY: ""
 ADMIN_USER_IDS: []
+
+openai:
+  OPENAI_API_TOKEN: ""
+  OPENAI_MODEL: ""
+
+tiktok:
+  TIKTOK_SESSION_ID: ""
+
+spotify:
+  SPOTIFY_CLIENT_ID: ""
+  SPOTIFY_CLIENT_SECRET: ""
+
+imgur:
+  IMGUR_CLIENT_ID: ""
 
 deafentracker:
   enabled: false
@@ -14,6 +22,7 @@ deafentracker:
   users: []
 
 riot:
+  RIOT_API_KEY: ""
   pollIntervalSeconds: 60
   players: []
 

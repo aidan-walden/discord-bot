@@ -14,11 +14,11 @@
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
-- Runtime config comes from `config.yml`, with env vars able to override `BOT_TOKEN`, `DATABASE_URL`, `BOT_OWNER_ID`, OpenAI settings, and Spotify credentials.
+- Runtime config comes from `config.yml`. Flat env vars override nested YAML paths: `BOT_TOKEN` / `DATABASE_URL` / `BOT_OWNER_ID` (top-level), `OPENAI_API_TOKEN` / `OPENAI_MODEL` → `openai.*`, `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` → `spotify.*`, `TIKTOK_SESSION_ID` → `tiktok.*`, `IMGUR_CLIENT_ID` → `imgur.*`, `RIOT_API_KEY` → `riot.RIOT_API_KEY`.
 - Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
-- `OPENAI_API_TOKEN` and `OPENAI_MODEL` are optional together; ChatGPT commands stay registered but report unavailable when unset.
-- `SPOTIFY_CLIENT_ID` and `SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
-- `RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` (`puuid`/`platform`) drive the optional match poller. Solo rank history (max 5 per puuid) is in `riot_rank_history`. Discord ↔ Riot links (`riot_user_links`) power `/lol map` and `/lol view`. HTTP client lives under `src/services/riot/`.
+- `openai.OPENAI_API_TOKEN` and `openai.OPENAI_MODEL` are optional together; ChatGPT commands stay registered but report unavailable when unset.
+- `spotify.SPOTIFY_CLIENT_ID` and `spotify.SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
+- `riot.RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` (`puuid`/`platform`) drive the optional match poller. Solo rank history (max 5 per puuid) is in `riot_rank_history`. Discord ↔ Riot links (`riot_user_links`) power `/lol map` and `/lol view`. HTTP client lives under `src/services/riot/`.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.

@@ -5,14 +5,16 @@ import type { AppContext } from "../context";
 import metrics from "./metrics";
 
 function createMockBot(): Bot {
-	const config = new Map<string, string | undefined>([
-		["OPENAI_API_TOKEN", "openai-secret"],
-		["SPOTIFY_CLIENT_ID", "spotify-client"],
-		["SPOTIFY_CLIENT_SECRET", "  "],
-		["TIKTOK_SESSION_ID", "tiktok-secret"],
-		["IMGUR_CLIENT_ID", undefined],
-		["RIOT_API_KEY", undefined],
-	]);
+	const config = {
+		openai: { OPENAI_API_TOKEN: "openai-secret" },
+		spotify: {
+			SPOTIFY_CLIENT_ID: "spotify-client",
+			SPOTIFY_CLIENT_SECRET: "  ",
+		},
+		tiktok: { TIKTOK_SESSION_ID: "tiktok-secret" },
+		imgur: { IMGUR_CLIENT_ID: undefined },
+		riot: { RIOT_API_KEY: undefined },
+	};
 
 	return {
 		metrics: {
@@ -32,7 +34,7 @@ function createMockBot(): Bot {
 			]),
 		},
 		config: {
-			get: (key: string) => config.get(key),
+			get: (key: keyof typeof config) => config[key],
 		},
 	} as unknown as Bot;
 }

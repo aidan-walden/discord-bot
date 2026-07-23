@@ -27,7 +27,26 @@ export interface DeafenTrackerConfig {
 	users: string[];
 }
 
+export interface OpenAIConfig {
+	OPENAI_API_TOKEN?: string;
+	OPENAI_MODEL?: string;
+}
+
+export interface SpotifyConfig {
+	SPOTIFY_CLIENT_ID?: string;
+	SPOTIFY_CLIENT_SECRET?: string;
+}
+
+export interface TikTokConfig {
+	TIKTOK_SESSION_ID?: string;
+}
+
+export interface ImgurConfig {
+	IMGUR_CLIENT_ID?: string;
+}
+
 export interface RiotConfig {
+	RIOT_API_KEY?: string;
 	pollIntervalSeconds: number;
 	players: RiotPlayerConfig[];
 }
@@ -36,13 +55,6 @@ interface AppConfigFile {
 	BOT_TOKEN?: string;
 	BOT_OWNER_ID?: string;
 	DATABASE_URL?: string;
-	OPENAI_API_TOKEN?: string;
-	OPENAI_MODEL?: string;
-	TIKTOK_SESSION_ID?: string;
-	SPOTIFY_CLIENT_ID?: string;
-	SPOTIFY_CLIENT_SECRET?: string;
-	IMGUR_CLIENT_ID?: string;
-	RIOT_API_KEY?: string;
 	ADMIN_USER_IDS?: string[];
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
@@ -52,7 +64,12 @@ interface AppConfigFile {
 		muted_is_deafened?: boolean;
 		users?: string[];
 	};
+	openai?: OpenAIConfig;
+	spotify?: SpotifyConfig;
+	tiktok?: TikTokConfig;
+	imgur?: ImgurConfig;
 	riot?: {
+		RIOT_API_KEY?: string;
 		pollIntervalSeconds?: number;
 		players?: Array<{
 			puuid?: string;
@@ -68,23 +85,30 @@ export interface AppConfig {
 	BOT_TOKEN: string;
 	DATABASE_URL: string;
 	BOT_OWNER_ID: string;
-	OPENAI_API_TOKEN?: string;
-	OPENAI_MODEL?: string;
-	TIKTOK_SESSION_ID?: string;
-	SPOTIFY_CLIENT_ID?: string;
-	SPOTIFY_CLIENT_SECRET?: string;
-	IMGUR_CLIENT_ID?: string;
-	RIOT_API_KEY?: string;
 	ADMIN_USER_IDS: string[];
 	profilePicture?: ProfilePictureState;
 	baseProfilePicture?: string;
 	holidayProfilePictures?: HolidayProfilePicturesConfig;
 	deafentracker: DeafenTrackerConfig;
+	openai: OpenAIConfig;
+	spotify: SpotifyConfig;
+	tiktok: TikTokConfig;
+	imgur: ImgurConfig;
 	riot: RiotConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
 }
+
+const FLAT_ENV_KEYS = ["BOT_TOKEN", "DATABASE_URL", "BOT_OWNER_ID"] as const;
+
+const NESTED_ENV_KEYS = {
+	openai: ["OPENAI_API_TOKEN", "OPENAI_MODEL"],
+	spotify: ["SPOTIFY_CLIENT_ID", "SPOTIFY_CLIENT_SECRET"],
+	tiktok: ["TIKTOK_SESSION_ID"],
+	imgur: ["IMGUR_CLIENT_ID"],
+	riot: ["RIOT_API_KEY"],
+} as const;
 
 export interface ConfigClock {
 	setTimeout(callback: () => void, delay: number): NodeJS.Timeout;
@@ -240,6 +264,65 @@ function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
 	});
 }
 
+function pickOptionalString(
+	record: Record<string, unknown>,
+	key: string,
+): string | undefined {
+	const value = record[key];
+	return value === undefined ? undefined : (value as string);
+}
+
+function validateApiCategory(
+	value: unknown,
+	category: string,
+): Record<string, unknown> {
+	if (value === undefined) {
+		return {};
+	}
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error(`Invalid config value for ${category}: expected object.`);
+	}
+	return value as Record<string, unknown>;
+}
+
+function withOptionalStringField<T extends object>(
+	result: T,
+	record: Record<string, unknown>,
+	key: string,
+): T {
+	const value = pickOptionalString(record, key);
+	if (value !== undefined) {
+		(result as Record<string, string>)[key] = value;
+	}
+	return result;
+}
+
+function validateOpenAI(value: unknown): OpenAIConfig {
+	const record = validateApiCategory(value, "openai");
+	let result: OpenAIConfig = {};
+	result = withOptionalStringField(result, record, "OPENAI_API_TOKEN");
+	result = withOptionalStringField(result, record, "OPENAI_MODEL");
+	return result;
+}
+
+function validateSpotify(value: unknown): SpotifyConfig {
+	const record = validateApiCategory(value, "spotify");
+	let result: SpotifyConfig = {};
+	result = withOptionalStringField(result, record, "SPOTIFY_CLIENT_ID");
+	result = withOptionalStringField(result, record, "SPOTIFY_CLIENT_SECRET");
+	return result;
+}
+
+function validateTikTok(value: unknown): TikTokConfig {
+	const record = validateApiCategory(value, "tiktok");
+	return withOptionalStringField({}, record, "TIKTOK_SESSION_ID");
+}
+
+function validateImgur(value: unknown): ImgurConfig {
+	const record = validateApiCategory(value, "imgur");
+	return withOptionalStringField({}, record, "IMGUR_CLIENT_ID");
+}
+
 function validateRiot(value: unknown): RiotConfig {
 	if (value === undefined) {
 		return {
@@ -264,10 +347,14 @@ function validateRiot(value: unknown): RiotConfig {
 		}
 		pollIntervalSeconds = record.pollIntervalSeconds;
 	}
-	return {
-		pollIntervalSeconds,
-		players: validateRiotPlayers(record.players),
-	};
+	return withOptionalStringField(
+		{
+			pollIntervalSeconds,
+			players: validateRiotPlayers(record.players),
+		},
+		record,
+		"RIOT_API_KEY",
+	);
 }
 
 function validateProfilePicture(
@@ -392,6 +479,10 @@ function validateConfigFile(
 
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
+	const openai = validateOpenAI(configFile.openai);
+	const spotify = validateSpotify(configFile.spotify);
+	const tiktok = validateTikTok(configFile.tiktok);
+	const imgur = validateImgur(configFile.imgur);
 	const riot = validateRiot(configFile.riot);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
@@ -408,18 +499,15 @@ function validateConfigFile(
 		BOT_TOKEN: botToken,
 		BOT_OWNER_ID: botOwnerId,
 		DATABASE_URL: databaseUrl,
-		OPENAI_API_TOKEN: configFile.OPENAI_API_TOKEN,
-		OPENAI_MODEL: configFile.OPENAI_MODEL,
-		TIKTOK_SESSION_ID: configFile.TIKTOK_SESSION_ID,
-		SPOTIFY_CLIENT_ID: configFile.SPOTIFY_CLIENT_ID,
-		SPOTIFY_CLIENT_SECRET: configFile.SPOTIFY_CLIENT_SECRET,
-		IMGUR_CLIENT_ID: configFile.IMGUR_CLIENT_ID,
-		RIOT_API_KEY: configFile.RIOT_API_KEY,
 		ADMIN_USER_IDS: adminUserIds,
 		profilePicture,
 		baseProfilePicture,
 		holidayProfilePictures,
 		deafentracker,
+		openai,
+		spotify,
+		tiktok,
+		imgur,
 		riot,
 		lavalink: {
 			nodes: lavalinkNodes,
@@ -430,21 +518,27 @@ function validateConfigFile(
 function getEnvironmentOverrides(): AppConfigFile {
 	const overrides: AppConfigFile = {};
 
-	for (const key of [
-		"BOT_TOKEN",
-		"DATABASE_URL",
-		"BOT_OWNER_ID",
-		"OPENAI_API_TOKEN",
-		"OPENAI_MODEL",
-		"TIKTOK_SESSION_ID",
-		"SPOTIFY_CLIENT_ID",
-		"SPOTIFY_CLIENT_SECRET",
-		"IMGUR_CLIENT_ID",
-		"RIOT_API_KEY",
-	] as const) {
+	for (const key of FLAT_ENV_KEYS) {
 		const value = process.env[key];
 		if (value !== undefined) {
 			overrides[key] = value;
+		}
+	}
+
+	for (const [category, keys] of Object.entries(NESTED_ENV_KEYS) as Array<
+		[keyof typeof NESTED_ENV_KEYS, readonly string[]]
+	>) {
+		const nested: Record<string, string> = {};
+		let hasValue = false;
+		for (const key of keys) {
+			const value = process.env[key];
+			if (value !== undefined) {
+				nested[key] = value;
+				hasValue = true;
+			}
+		}
+		if (hasValue) {
+			overrides[category] = nested as AppConfigFile[typeof category];
 		}
 	}
 
@@ -477,10 +571,27 @@ function applyEnvironmentOverrides(
 	configFile: AppConfigFile,
 	environmentOverrides: AppConfigFile,
 ): AppConfigFile {
-	return {
-		...cloneConfigFile(configFile),
-		...cloneConfigFile(environmentOverrides),
-	};
+	const next = cloneConfigFile(configFile);
+	const env = cloneConfigFile(environmentOverrides);
+
+	for (const key of FLAT_ENV_KEYS) {
+		if (env[key] !== undefined) {
+			next[key] = env[key];
+		}
+	}
+
+	for (const category of Object.keys(NESTED_ENV_KEYS) as Array<
+		keyof typeof NESTED_ENV_KEYS
+	>) {
+		if (env[category] !== undefined) {
+			next[category] = {
+				...next[category],
+				...env[category],
+			} as AppConfigFile[typeof category];
+		}
+	}
+
+	return next;
 }
 
 function serializeConfigFile(configFile: AppConfigFile): string {
