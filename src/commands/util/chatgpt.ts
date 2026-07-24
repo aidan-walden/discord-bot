@@ -11,6 +11,10 @@ import {
 } from "discord.js";
 import { sendLongMessage } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
+import {
+	LlmUserRateLimitError,
+	llmRateLimitNotice,
+} from "../../services/LlmProvider";
 
 function getThreadDisplayName(username: string): string {
 	return `chatgpt-${username}`.slice(0, 100);
@@ -182,6 +186,13 @@ export default class ChatGpt implements Command {
 			);
 			await sendLongMessage(thread, response, {}, false);
 		} catch (error) {
+			if (error instanceof LlmUserRateLimitError) {
+				await interaction.followUp({
+					content: llmRateLimitNotice(error),
+					flags: MessageFlags.Ephemeral,
+				});
+				return;
+			}
 			console.error("AI assistant ask command failed:", error);
 			await thread.send(
 				`The AI assistant failed to respond. Please contact ${userMention(interaction.client.bot.config.get("BOT_OWNER_ID"))}`,

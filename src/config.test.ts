@@ -114,6 +114,7 @@ type YamlOptions = {
 	baseProfilePictureBlock?: string;
 	holidayProfilePicturesBlock?: string;
 	deafentrackerBlock?: string;
+	llmBlock?: string;
 	openaiBlock?: string;
 	tiktokBlock?: string;
 	riotBlock?: string;
@@ -134,6 +135,7 @@ function buildYaml(options: YamlOptions = {}) {
 		baseProfilePictureBlock,
 		holidayProfilePicturesBlock,
 		deafentrackerBlock,
+		llmBlock,
 		openaiBlock,
 		tiktokBlock,
 		riotBlock,
@@ -208,6 +210,10 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (deafentrackerBlock !== undefined && deafentrackerBlock.length > 0) {
 		lines.push(deafentrackerBlock);
+	}
+
+	if (llmBlock !== undefined && llmBlock.length > 0) {
+		lines.push(llmBlock);
 	}
 
 	if (riotBlock !== undefined && riotBlock.length > 0) {
@@ -709,6 +715,36 @@ describe("Config", () => {
 				"Invalid config value for deafentracker.users: expected array of strings.",
 			);
 		});
+	});
+
+	describe("llm validation", () => {
+		test("defaults user requests per hour to five", async () => {
+			const filePath = await writeTempConfig(buildYaml());
+			const config = await Config.load(filePath);
+
+			expect(config.get("llm")).toEqual({ userRequestsPerHour: 5 });
+		});
+
+		test("loads a configured user request limit", async () => {
+			const filePath = await writeTempConfig(
+				buildYaml({ llmBlock: "llm:\n  userRequestsPerHour: 12" }),
+			);
+			const config = await Config.load(filePath);
+
+			expect(config.get("llm")).toEqual({ userRequestsPerHour: 12 });
+		});
+
+		test.each(["0", "-1", "1.5", '"five"', "null"])(
+			"rejects invalid user request limit %s",
+			async (value) => {
+				await expectLoadConfigError(
+					buildYaml({
+						llmBlock: `llm:\n  userRequestsPerHour: ${value}`,
+					}),
+					"Invalid config value for llm.userRequestsPerHour: expected positive integer.",
+				);
+			},
+		);
 	});
 
 	describe("riot validation", () => {

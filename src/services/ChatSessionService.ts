@@ -3,6 +3,7 @@ import {
 	isCredentialFailure,
 	type LlmMessage,
 	type LlmProvider,
+	type LlmRequestContext,
 } from "./LlmProvider";
 
 const SYSTEM_PROMPT = "You are a helpful assistant.";
@@ -75,6 +76,7 @@ export default class ChatSessionService {
 	}
 
 	async completeOnce(
+		userId: string,
 		systemPrompt: string,
 		userMessage: string,
 	): Promise<string> {
@@ -82,10 +84,11 @@ export default class ChatSessionService {
 			throw new Error(this.getUnavailableReason());
 		}
 
+		const request: LlmRequestContext = { userId, requestId: Symbol() };
 		let lastError: unknown;
 		for (const provider of this.providers) {
 			try {
-				const content = await provider.complete(systemPrompt, [
+				const content = await provider.complete(request, systemPrompt, [
 					{ role: "user", content: userMessage },
 				]);
 				if (!content) {
@@ -111,12 +114,17 @@ export default class ChatSessionService {
 		session.isBusy = true;
 		session.messages.push({ role: "user", content: input });
 		this.trimSessionHistory(session);
+		const request: LlmRequestContext = {
+			userId: session.userId,
+			requestId: Symbol(),
+		};
 
 		try {
 			let lastError: unknown;
 			for (const provider of this.providers) {
 				try {
 					const content = await provider.complete(
+						request,
 						SYSTEM_PROMPT,
 						session.messages,
 					);

@@ -9,6 +9,7 @@ Make sure that these values are defined in `config.yml`
 
 - `BOT_TOKEN`: Discord bot token
 - `openai.OPENAI_API_TOKEN` / `anthropic.ANTHROPIC_API_TOKEN`: optional LLM provider keys for the AI assistant. Preference is OpenAI then Anthropic — the first with a key is used, and requests fail over to the next when the primary's key is rejected. Anthropic defaults to `claude-haiku-4-5` when `ANTHROPIC_MODEL` is unset; OpenAI requires `OPENAI_MODEL`.
+- `llm.userRequestsPerHour`: optional rolling per-user LLM request limit. Defaults to `5`. Admins are exempt, and the admin panel can save per-user overrides (`-1` means unlimited).
 - `ADMIN_USER_IDS`: list of Discord user IDs treated as bot admins
 - `lavalink.nodes`: Lavalink node configuration
 

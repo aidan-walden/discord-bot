@@ -16,7 +16,7 @@
 ## Config
 - Runtime config comes from `config.yml`, with flat env vars able to override `BOT_TOKEN`, `DATABASE_URL`, `BOT_OWNER_ID`, and nested provider settings (`openai.*`, `anthropic.*`).
 - Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
-- The AI assistant (`/chatgpt` command) is served by a generic LLM provider layer (`src/services/LlmProvider.ts`) supporting OpenAI and Anthropic. Provider preference is OpenAI then Anthropic — the first with a defined API key is primary, and `ChatSessionService.prompt` fails over to the next provider when the primary rejects credentials (bad key / no balance). OpenAI needs both `OPENAI_API_TOKEN` and `OPENAI_MODEL`; Anthropic needs `ANTHROPIC_API_TOKEN` and defaults to `claude-haiku-4-5` if `ANTHROPIC_MODEL` is unset. Commands stay registered but report unavailable when no provider is configured.
+- The AI assistant (`/chatgpt` command) is served by a generic LLM provider layer (`src/services/LlmProvider.ts`) supporting OpenAI and Anthropic. Provider preference is OpenAI then Anthropic — the first with a defined API key is primary, and `ChatSessionService.prompt` fails over to the next provider when the primary rejects credentials (bad key / no balance). OpenAI needs both `OPENAI_API_TOKEN` and `OPENAI_MODEL`; Anthropic needs `ANTHROPIC_API_TOKEN` and defaults to `claude-haiku-4-5` if `ANTHROPIC_MODEL` is unset. `llm.userRequestsPerHour` sets the rolling per-user limit and defaults to 5; admins are exempt, and admin-panel overrides persist in Postgres. Commands stay registered but report unavailable when no provider is configured.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.
@@ -25,8 +25,8 @@
 
 ## Persistence
 - [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) creates tables on startup; there is no separate migration tool.
-- Current persisted data: GPT user bans, music user bans, music guild bans, and user unboxing balances.
-- Repositories in `src/repositories` should accept `typeof Bun.sql` and use parameterized queries.
+- Current persisted data includes GPT and music bans, LLM user rate-limit overrides, user unboxing balances, deafen sessions, Riot data, guild settings, and Secret Santa draws.
+- Repositories in `src/repositories` accept the shared Drizzle `Database` type and use typed query-builder operations.
 
 ## Workflow
 - Run `bun install` after dependency changes to refresh `bun.lock` and `node_modules`.

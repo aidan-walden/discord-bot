@@ -7,6 +7,10 @@ import {
 import { sendLongMessage } from "../helpers/sendLongMessage";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
+import {
+	LlmUserRateLimitError,
+	llmRateLimitNotice,
+} from "../services/LlmProvider";
 
 export default class MessageCreate implements BotEvent {
 	once = false;
@@ -61,6 +65,10 @@ export default class MessageCreate implements BotEvent {
 			const response = await bot.chatSessions.prompt(session, prompt);
 			await sendLongMessage(message.channel, response, {}, false);
 		} catch (error) {
+			if (error instanceof LlmUserRateLimitError) {
+				await message.reply(llmRateLimitNotice(error));
+				return;
+			}
 			console.error("AI assistant thread response failed:", error);
 			await message.reply(
 				`The AI assistant failed to respond. Please contact ${userMention(bot.config.get("BOT_OWNER_ID"))}`,

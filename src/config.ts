@@ -37,6 +37,10 @@ export interface AnthropicConfig {
 	ANTHROPIC_MODEL?: string;
 }
 
+export interface LlmConfig {
+	userRequestsPerHour: number;
+}
+
 export interface SpotifyConfig {
 	SPOTIFY_CLIENT_ID?: string;
 	SPOTIFY_CLIENT_SECRET?: string;
@@ -71,6 +75,9 @@ interface AppConfigFile {
 	};
 	openai?: OpenAIConfig;
 	anthropic?: AnthropicConfig;
+	llm?: {
+		userRequestsPerHour?: number;
+	};
 	spotify?: SpotifyConfig;
 	tiktok?: TikTokConfig;
 	imgur?: ImgurConfig;
@@ -98,6 +105,7 @@ export interface AppConfig {
 	deafentracker: DeafenTrackerConfig;
 	openai: OpenAIConfig;
 	anthropic: AnthropicConfig;
+	llm: LlmConfig;
 	spotify: SpotifyConfig;
 	tiktok: TikTokConfig;
 	imgur: ImgurConfig;
@@ -238,6 +246,31 @@ function validateDeafenTracker(value: unknown): DeafenTrackerConfig {
 const RIOT_PLATFORM_SET = new Set<string>(RIOT_PLATFORMS);
 const RIOT_PLAYER_KEYS = new Set(["riotId", "platform"]);
 const DEFAULT_RIOT_POLL_INTERVAL_SECONDS = 60;
+const DEFAULT_LLM_USER_REQUESTS_PER_HOUR = 5;
+
+function validateLlm(value: unknown): LlmConfig {
+	if (value === undefined) {
+		return { userRequestsPerHour: DEFAULT_LLM_USER_REQUESTS_PER_HOUR };
+	}
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Invalid config value for llm: expected object.");
+	}
+	const userRequestsPerHour = (value as Record<string, unknown>)
+		.userRequestsPerHour;
+	if (userRequestsPerHour === undefined) {
+		return { userRequestsPerHour: DEFAULT_LLM_USER_REQUESTS_PER_HOUR };
+	}
+	if (
+		typeof userRequestsPerHour !== "number" ||
+		!Number.isSafeInteger(userRequestsPerHour) ||
+		userRequestsPerHour <= 0
+	) {
+		throw new Error(
+			"Invalid config value for llm.userRequestsPerHour: expected positive integer.",
+		);
+	}
+	return { userRequestsPerHour };
+}
 
 function validateRiotPlayers(value: unknown): RiotPlayerConfig[] {
 	if (value === undefined) {
@@ -509,6 +542,7 @@ function validateConfigFile(
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
 	const openai = validateOpenAI(configFile.openai);
 	const anthropic = validateAnthropic(configFile.anthropic);
+	const llm = validateLlm(configFile.llm);
 	const spotify = validateSpotify(configFile.spotify);
 	const tiktok = validateTikTok(configFile.tiktok);
 	const imgur = validateImgur(configFile.imgur);
@@ -535,6 +569,7 @@ function validateConfigFile(
 		deafentracker,
 		openai,
 		anthropic,
+		llm,
 		spotify,
 		tiktok,
 		imgur,

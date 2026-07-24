@@ -29,6 +29,21 @@ export const gptUserBans = banTable("gpt_user_bans", "user_id");
 export const musicUserBans = banTable("music_user_bans", "user_id");
 export const musicGuildBans = banTable("music_guild_bans", "guild_id");
 
+export const llmUserRateLimits = pgTable(
+	"llm_user_rate_limits",
+	{
+		userId: text("user_id").primaryKey(),
+		requestsPerHour: integer("requests_per_hour").notNull(),
+		updatedAt: updatedAt(),
+	},
+	(table) => [
+		check(
+			"llm_user_rate_limits_requests_per_hour_check",
+			sql`${table.requestsPerHour} = -1 OR ${table.requestsPerHour} > 0`,
+		),
+	],
+);
+
 export const userBalances = pgTable("user_balances", {
 	userId: text("user_id").primaryKey(),
 	balanceCents: integer("balance_cents").notNull().default(0),

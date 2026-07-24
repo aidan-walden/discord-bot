@@ -1,16 +1,30 @@
 import { describe, expect, mock, test } from "bun:test";
 import ChatSessionService from "./ChatSessionService";
-import type { LlmMessage, LlmProvider } from "./LlmProvider";
+import type { LlmMessage, LlmProvider, LlmRequestContext } from "./LlmProvider";
 
 const SYSTEM_PROMPT = "You are a helpful assistant.";
 
-type CompleteFn = (system: string, messages: LlmMessage[]) => Promise<string>;
+type CompleteHandler = (
+	system: string,
+	messages: LlmMessage[],
+) => Promise<string>;
+type CompleteFn = (
+	request: LlmRequestContext,
+	system: string,
+	messages: LlmMessage[],
+) => Promise<string>;
 
 function createProvider(
 	name: LlmProvider["name"],
-	complete: CompleteFn,
+	complete: CompleteHandler,
 ): { provider: LlmProvider; complete: ReturnType<typeof mock<CompleteFn>> } {
-	const completeMock = mock(complete);
+	const completeMock = mock(
+		async (
+			_request: LlmRequestContext,
+			system: string,
+			messages: LlmMessage[],
+		) => complete(system, messages),
+	);
 	return {
 		provider: { name, label: name, complete: completeMock },
 		complete: completeMock,
@@ -76,7 +90,7 @@ describe("ChatSessionService", () => {
 		);
 
 		const service = new ChatSessionService([provider]);
-		const result = await service.completeOnce("sys", "hello");
+		const result = await service.completeOnce("user-1", "sys", "hello");
 
 		expect(result).toBe("rewritten");
 		expect(complete).toHaveBeenCalledTimes(1);
@@ -103,7 +117,7 @@ describe("ChatSessionService", () => {
 			recordCredentialRejection,
 		});
 
-		const result = await service.completeOnce("sys", "hi");
+		const result = await service.completeOnce("user-1", "sys", "hi");
 
 		expect(result).toBe("from anthropic");
 		expect(openaiComplete).toHaveBeenCalledTimes(1);

@@ -148,6 +148,38 @@ export const ACTIONS: Action[] = [
 		},
 	},
 	{
+		id: "set_gpt_rate_limit",
+		label: "⏱️ Set GPT Rate Limit",
+		style: ButtonStyle.Primary,
+		title: "Set GPT Rate Limit",
+		fields: [
+			ID_FIELD("user_id", "User ID"),
+			{
+				id: "requests_per_hour",
+				label: "Limit (0 = default, -1 = unlimited)",
+				min: 1,
+				max: 10,
+			},
+		],
+		run: async ({ user_id, requests_per_hour }, { bot }) => {
+			const id = snowflake(user_id, "user ID");
+			const rawLimit = requests_per_hour?.trim() ?? "";
+			if (!/^-?\d+$/.test(rawLimit)) {
+				throw new Error("Rate limit must be -1, 0, or a positive integer.");
+			}
+			const limit = Number(rawLimit);
+			// Range validation lives in setOverride, next to the DB constraint.
+			await bot.llmRateLimits.setOverride(id, limit);
+			if (limit === -1) {
+				return `Set ${userMention(id)}'s GPT rate limit to unlimited.`;
+			}
+			if (limit === 0) {
+				return `Restored ${userMention(id)}'s default GPT rate limit.`;
+			}
+			return `Set ${userMention(id)}'s GPT rate limit to ${limit} requests per hour.`;
+		},
+	},
+	{
 		id: "ban_music",
 		label: "🚫 Ban from 🎵Music",
 		style: ButtonStyle.Danger,
@@ -255,7 +287,7 @@ export const ACTIONS_BY_ID = new Map(
 // Button rows (≤5 buttons each), mirroring the old panel grouping.
 export const ROWS: string[][] = [
 	["kick_voice", "delete_message", "change_nick"],
-	["ban_gpt", "pardon_gpt"],
+	["ban_gpt", "pardon_gpt", "set_gpt_rate_limit"],
 	["ban_music", "pardon_music", "ban_guild_music", "pardon_guild_music"],
 	["set_main_channel", "riot_to_puuid"],
 ];

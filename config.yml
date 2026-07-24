@@ -10,6 +10,9 @@ anthropic:
   ANTHROPIC_API_TOKEN: ""
   ANTHROPIC_MODEL: ""
 
+llm:
+  userRequestsPerHour: 5
+
 tiktok:
   TIKTOK_SESSION_ID: ""
 

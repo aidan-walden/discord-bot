@@ -38,6 +38,9 @@ function createBot(riot?: {
 		guildSettings: {
 			setMainChannel: mock(async () => undefined),
 		},
+		llmRateLimits: {
+			setOverride: mock(async () => undefined),
+		},
 		riot: {
 			isAvailable: mock(() => riot?.isAvailable ?? true),
 			getAccountByRiotId:
@@ -174,6 +177,47 @@ describe("ACTIONS run()", () => {
 		);
 
 		expect(bot.permissions[repo][method]).toHaveBeenCalledWith(VALID_ID);
+	});
+
+	test.each([
+		["12", 12, "12 requests per hour"],
+		["0", 0, "default GPT rate limit"],
+		["-1", -1, "unlimited"],
+	] as const)(
+		"set_gpt_rate_limit accepts %s",
+		async (value, expected, message) => {
+			const bot = createBot();
+
+			const result = await getAction("set_gpt_rate_limit").run(
+				{ user_id: VALID_ID, requests_per_hour: value },
+				{
+					bot,
+					guild: {} as Guild,
+					modal: {} as ModalSubmitInteraction,
+				},
+			);
+
+			expect(bot.llmRateLimits.setOverride).toHaveBeenCalledWith(
+				VALID_ID,
+				expected,
+			);
+			expect(result).toContain(message);
+		},
+	);
+
+	// Range rejection (-2, 2147483648) is covered in LlmProvider.test.ts, where
+	// setOverride validates it.
+	test.each(["nope", "1.5"])("set_gpt_rate_limit rejects %s", async (value) => {
+		await expect(
+			getAction("set_gpt_rate_limit").run(
+				{ user_id: VALID_ID, requests_per_hour: value },
+				{
+					bot: createBot(),
+					guild: {} as Guild,
+					modal: {} as ModalSubmitInteraction,
+				},
+			),
+		).rejects.toThrow("Rate limit");
 	});
 
 	test("set_main_channel upserts guild main channel", async () => {

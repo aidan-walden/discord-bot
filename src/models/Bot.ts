@@ -30,6 +30,7 @@ import {
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import GuildSettingsRepository from "../repositories/GuildSettingsRepository";
+import LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
 import RiotMatchRepository from "../repositories/RiotMatchRepository";
 import RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
@@ -42,7 +43,10 @@ import DeafenTrackerService, {
 	isDeafenTrackerActive,
 } from "../services/DeafenTrackerService";
 import HolidayProvider from "../services/HolidayProvider";
-import { createLlmProviders } from "../services/LlmProvider";
+import {
+	createLlmProviders,
+	LlmUserRateLimiter,
+} from "../services/LlmProvider";
 import MetricsCollector from "../services/MetricsCollector";
 import MusicLinkService from "../services/MusicLinkService";
 import PermissionService from "../services/PermissionService";
@@ -67,6 +71,7 @@ export default class Bot extends Client {
 	readonly config: Config;
 	readonly db: Database;
 	readonly permissions: PermissionService;
+	readonly llmRateLimits: LlmUserRateLimiter;
 	readonly chatSessions: ChatSessionService;
 	readonly spotify: SpotifyService;
 	readonly appleMusic: AppleMusicService;
@@ -128,8 +133,17 @@ export default class Bot extends Client {
 		this.riotMatches = new RiotMatchRepository(this.db);
 		this.guildSettings = new GuildSettingsRepository(this.db);
 		this.secretSanta = new SecretSantaRepository(this.db);
+		this.llmRateLimits = new LlmUserRateLimiter(
+			config.get("llm").userRequestsPerHour,
+			new LlmUserRateLimitRepository(this.db),
+			(userId) => this.permissions.isAdminUser(userId),
+		);
 		this.chatSessions = new ChatSessionService(
-			createLlmProviders(config.get("openai"), config.get("anthropic")),
+			createLlmProviders(
+				config.get("openai"),
+				config.get("anthropic"),
+				this.llmRateLimits,
+			),
 			this.metrics,
 		);
 
