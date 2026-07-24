@@ -52,6 +52,17 @@ export default class DeafenTrackerService {
 		return this.activeSessions.has(this.key(guildId, userId));
 	}
 
+	getActiveSessionSeconds(guildId: string, userId: string): number | null {
+		const session = this.activeSessions.get(this.key(guildId, userId));
+		if (!session) {
+			return null;
+		}
+		return Math.max(
+			0,
+			Math.floor((this.now().getTime() - session.startedAt.getTime()) / 1000),
+		);
+	}
+
 	/**
 	 * Start, end, or ignore a session based on whether the user crossed the
 	 * counting boundary. Ending a session persists it via the repository.

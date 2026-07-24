@@ -174,3 +174,29 @@ describe("DeafenTrackerService.applyTransition", () => {
 		expect(repository.recordSession).not.toHaveBeenCalled();
 	});
 });
+
+describe("DeafenTrackerService.getActiveSessionSeconds", () => {
+	function fixedClock(dates: [Date, ...Date[]]): () => Date {
+		let index = 0;
+		return () => dates[Math.min(index++, dates.length - 1)] ?? dates[0];
+	}
+
+	test("returns null when there is no active session", () => {
+		const service = new DeafenTrackerService(createRepository());
+		expect(service.getActiveSessionSeconds("guild-123", "user-123")).toBe(null);
+	});
+
+	test("returns elapsed seconds for an active session", async () => {
+		const startedAt = new Date("2026-01-01T00:00:00.000Z");
+		const now = new Date("2026-01-01T02:00:00.000Z");
+		const service = new DeafenTrackerService(
+			createRepository(),
+			fixedClock([startedAt, now]),
+		);
+		const state = createVoiceState({ channelId: "voice-1", deaf: true });
+
+		await service.applyTransition(state, false, true);
+
+		expect(service.getActiveSessionSeconds("guild-123", "user-123")).toBe(7200);
+	});
+});

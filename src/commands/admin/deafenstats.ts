@@ -49,8 +49,13 @@ export default class DeafenStats implements Command {
 			member.id,
 			interaction.guildId,
 		);
+		const activeSeconds =
+			interaction.client.bot.deafenTracker.getActiveSessionSeconds(
+				interaction.guildId,
+				member.id,
+			);
 
-		if (!summary) {
+		if (!summary && activeSeconds === null) {
 			await interaction.reply({
 				content: `No deafen data recorded for ${userMention(member.id)}.`,
 				flags: MessageFlags.Ephemeral,
@@ -63,20 +68,28 @@ export default class DeafenStats implements Command {
 			.addFields(
 				{
 					name: "Total Deafened",
-					value: formatDuration(summary.totalDeafenSeconds),
+					value: formatDuration(summary?.totalDeafenSeconds ?? 0),
 					inline: true,
 				},
 				{
 					name: "Longest Session",
-					value: formatDuration(summary.longestDeafenSeconds),
+					value: formatDuration(summary?.longestDeafenSeconds ?? 0),
 					inline: true,
 				},
 				{
 					name: "Sessions",
-					value: `${summary.sessionCount}`,
+					value: `${summary?.sessionCount ?? 0}`,
 					inline: true,
 				},
 			);
+
+		if (activeSeconds !== null) {
+			embed.addFields({
+				name: "Current Session",
+				value: formatDuration(activeSeconds),
+				inline: true,
+			});
+		}
 
 		await interaction.reply({
 			embeds: [embed],
