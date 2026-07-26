@@ -1,5 +1,9 @@
 import { describe, expect, mock, spyOn, test } from "bun:test";
-import { type ChatInputCommandInteraction, TextChannel } from "discord.js";
+import {
+	type ChatInputCommandInteraction,
+	type MessageCreateOptions,
+	TextChannel,
+} from "discord.js";
 import type { ChatSession } from "../../services/ChatSessionService";
 import ChatGpt from "./chatgpt";
 
@@ -14,12 +18,18 @@ function createSession(overrides: Partial<ChatSession> = {}): ChatSession {
 	};
 }
 
+type SendPayload = string | MessageCreateOptions;
+
+function normalizeSendPayload(payload: SendPayload): MessageCreateOptions {
+	return typeof payload === "string" ? { content: payload } : payload;
+}
+
 function createThreadChannel(overrides: Record<string, unknown> = {}) {
 	return {
 		id: "thread-1",
 		parentId: "root-1",
 		isThread: () => true,
-		send: mock(async () => undefined),
+		send: mock(async (_payload: SendPayload) => undefined),
 		sendTyping: mock(async () => undefined),
 		...overrides,
 	};
@@ -173,6 +183,24 @@ describe("ChatGpt handleAsk", () => {
 		expect(text.send).toHaveBeenCalled();
 		expect(chatSessions.createSession).toHaveBeenCalled();
 		expect(chatSessions.prompt).toHaveBeenCalled();
+	});
+
+	test("echoes the prompt into the thread before the response", async () => {
+		const thread = createThreadChannel();
+		const { interaction } = createInteraction({
+			channel: thread,
+			prompt: "**why** @everyone",
+			sessions: { byThreadId: createSession() },
+		});
+		await new ChatGpt().execute(interaction);
+		const sent = thread.send.mock.calls.map(([payload]) =>
+			normalizeSendPayload(payload),
+		);
+		expect(sent.map((options) => options.content)).toEqual([
+			"<@user-1> asked:\n\\*\\*why\\*\\* @everyone",
+			"response",
+		]);
+		expect(sent[0]?.allowedMentions).toEqual({ parse: [] });
 	});
 
 	test("rejects when the channel is neither a thread nor a text channel", async () => {

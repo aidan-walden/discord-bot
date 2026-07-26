@@ -2,6 +2,7 @@ import {
 	type AnyThreadChannel,
 	type ChatInputCommandInteraction,
 	channelMention,
+	escapeMarkdown,
 	InteractionContextType,
 	MessageFlags,
 	SlashCommandBuilder,
@@ -179,6 +180,14 @@ export default class ChatGpt implements Command {
 		);
 
 		try {
+			// The prompt only exists as a slash command option, so without this the
+			// thread shows an answer with no question.
+			await sendLongMessage(
+				thread,
+				`${userMention(interaction.user.id)} asked:\n${escapeMarkdown(prompt)}`,
+				{},
+				false,
+			);
 			await thread.sendTyping();
 			const response = await interaction.client.bot.chatSessions.prompt(
 				session,
