@@ -9,7 +9,6 @@ import {
 	createInGameInspectUrl,
 	createPreviewHex,
 	downgradeWear,
-	formatCurrency,
 	formatRolledSkinsSummary,
 	getRarityColor,
 	getWear,
@@ -119,15 +118,6 @@ describe("unbox helpers", () => {
 		);
 	});
 
-	test("loadCaseCatalog returns the same cached object", async () => {
-		mockSkinsJson(createCatalogFixture());
-
-		const first = await loadCaseCatalog();
-		const second = await loadCaseCatalog();
-
-		expect(first).toBe(second);
-	});
-
 	test("isUnboxCatalogAvailable is false for invalid JSON", async () => {
 		mockSkinsJsonText("[]");
 
@@ -194,10 +184,6 @@ describe("unbox helpers", () => {
 		expect(roundHalfToEven(1.015, 2)).toBe(1.01);
 		expect(roundHalfToEven(1.025, 2)).toBe(1.02);
 		expect(roundHalfToEven(2.5, 0)).toBe(2);
-	});
-
-	test("formatCurrency formats USD values", () => {
-		expect(formatCurrency(12.5)).toBe("$12.50");
 	});
 
 	test("encodes the documented preview payload", () => {

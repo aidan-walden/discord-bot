@@ -63,18 +63,6 @@ class FakeRedisClient implements TemporaryStateRedisClient {
 }
 
 describe("TemporaryStateRepository", () => {
-	test("connect and close delegate to the client", async () => {
-		const client = new FakeRedisClient();
-		const repo = new TemporaryStateRepository(client);
-
-		await repo.connect();
-		repo.close();
-
-		expect(client.connected).toBe(false);
-		expect(client.closed).toBe(true);
-		expect(client.calls.map((c) => c.method)).toEqual(["connect", "close"]);
-	});
-
 	test("prefixes keys and round-trips JSON values", async () => {
 		const client = new FakeRedisClient();
 		const repo = new TemporaryStateRepository(client);

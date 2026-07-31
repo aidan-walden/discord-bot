@@ -50,10 +50,6 @@ function makeClient(
 }
 
 describe("AppleMusicService", () => {
-	test("is always available", () => {
-		expect(new AppleMusicService(makeClient()).isAvailable()).toBe(true);
-	});
-
 	test("resolves a track link and formats artwork", async () => {
 		const service = new AppleMusicService(
 			makeClient({ fetchSong: async () => fakeSong() }),

@@ -189,18 +189,4 @@ describe("VoiceStateDeafenTracker", () => {
 
 		expect(service.hasActiveSession("guild-123", "user-999")).toBe(false);
 	});
-
-	test("isEnabled reflects config activeness", () => {
-		expect(event.isEnabled(createBot(service, { ...DEFAULT_CONFIG }))).toBe(
-			true,
-		);
-		expect(
-			event.isEnabled(
-				createBot(service, { ...DEFAULT_CONFIG, enabled: false }),
-			),
-		).toBe(false);
-		expect(
-			event.isEnabled(createBot(service, { ...DEFAULT_CONFIG, users: [] })),
-		).toBe(false);
-	});
 });

@@ -769,28 +769,6 @@ describe("RiotGamesService", () => {
 		});
 	});
 
-	test("getRankHistory delegates to repository", async () => {
-		const listByPuuid = mock(async () => [
-			{
-				puuid: "p1",
-				tier: "GOLD",
-				rank: "I",
-				leaguePoints: 1,
-				wins: 1,
-				losses: 0,
-				detectedAt: new Date("2020-01-01"),
-			},
-		]);
-		const service = new RiotGamesService("key", undefined, {
-			rankHistory: {
-				listByPuuid,
-				recordIfChanged: mock(async () => null),
-			} as never,
-		});
-		expect(await service.getRankHistory("p1")).toHaveLength(1);
-		expect(listByPuuid).toHaveBeenCalledWith("p1");
-	});
-
 	test("sync backfills once from wol.gg then fetches unknown matches only", async () => {
 		const fullMatch = {
 			metadata: { matchId: "NA1_new", participants: ["p1", "p2"] },

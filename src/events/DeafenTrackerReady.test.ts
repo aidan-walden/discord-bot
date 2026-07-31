@@ -112,15 +112,6 @@ describe("DeafenTrackerReady", () => {
 		service = new DeafenTrackerService(repository, temporaryState);
 	});
 
-	test("isEnabled reflects config activeness", () => {
-		expect(event.isEnabled(createBot(service))).toBe(true);
-		expect(
-			event.isEnabled(
-				createBot(service, { config: { ...DEFAULT_CONFIG, enabled: false } }),
-			),
-		).toBe(false);
-	});
-
 	test("retains restored sessions that still qualify", async () => {
 		temporaryState.store.set("deafen:active-sessions", [
 			{

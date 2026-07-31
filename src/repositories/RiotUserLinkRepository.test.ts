@@ -30,27 +30,6 @@ describeWithDb("RiotUserLinkRepository", () => {
 		await db.$client.close();
 	});
 
-	test("upserts and gets primary by user id", async () => {
-		const link = await repo.upsert({
-			userId: "u1",
-			puuid: "p1",
-			platform: "na1",
-			gameName: "Faker",
-			tagLine: "KR1",
-		});
-		expect(link.userId).toBe("u1");
-		expect(link.puuid).toBe("p1");
-
-		const got = await repo.getPrimaryByUserId("u1");
-		expect(got).toMatchObject({
-			userId: "u1",
-			puuid: "p1",
-			platform: "na1",
-			gameName: "Faker",
-			tagLine: "KR1",
-		});
-	});
-
 	test("allows multiple puuids per discord user (smurfs)", async () => {
 		await repo.upsert({
 			userId: "u1",

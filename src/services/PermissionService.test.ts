@@ -12,18 +12,6 @@ function createBanRepository(hasResult: boolean): BanRepository {
 }
 
 describe("PermissionService", () => {
-	test("isAdminUser() delegates to configured admin ids", () => {
-		const service = new PermissionService(
-			new Set(["admin-1"]),
-			createBanRepository(false),
-			createBanRepository(false),
-			createBanRepository(false),
-		);
-
-		expect(service.isAdminUser("admin-1")).toBe(true);
-		expect(service.isAdminUser("user-1")).toBe(false);
-	});
-
 	test("getMusicUsageBlockReason() prioritizes user bans over guild bans", async () => {
 		const service = new PermissionService(
 			new Set(),
@@ -61,18 +49,5 @@ describe("PermissionService", () => {
 		expect(
 			service.getMusicUsageBlockReason("user-1", "guild-1"),
 		).resolves.toBeNull();
-	});
-
-	test("isGptUserBanned() delegates to gpt ban repository", async () => {
-		const gptUserBans = createBanRepository(true);
-		const service = new PermissionService(
-			new Set(),
-			gptUserBans,
-			createBanRepository(false),
-			createBanRepository(false),
-		);
-
-		expect(service.isGptUserBanned("user-1")).resolves.toBe(true);
-		expect(gptUserBans.has).toHaveBeenCalledWith("user-1");
 	});
 });

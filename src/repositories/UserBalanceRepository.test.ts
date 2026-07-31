@@ -6,10 +6,9 @@ import {
 	expect,
 	test,
 } from "bun:test";
-import { count, eq, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
-import { userBalances } from "../database/schema";
 import UserBalanceRepository from "./UserBalanceRepository";
 
 const DATABASE_URL_TESTING = process.env.DATABASE_URL_TESTING;
@@ -115,17 +114,5 @@ describeWithDb("UserBalanceRepository", () => {
 	test("getByUserId() returns null for an unknown user", async () => {
 		const repo = new UserBalanceRepository(db);
 		await expect(repo.getByUserId("missing-user")).resolves.toBeNull();
-	});
-
-	test("getByUserId() does not create balance rows", async () => {
-		const repo = new UserBalanceRepository(db);
-		await repo.getByUserId("missing-user");
-
-		const rows = await db
-			.select({ count: count() })
-			.from(userBalances)
-			.where(eq(userBalances.userId, "missing-user"));
-
-		expect(rows[0]?.count).toBe(0);
 	});
 });

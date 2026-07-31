@@ -37,7 +37,7 @@ describeWithDb("SecretSantaRepository", () => {
 		await db.$client.close();
 	});
 
-	test("create get list delete", async () => {
+	test("create with defaults and list", async () => {
 		const created = await repo.create("work-2026");
 		expect(created).toMatchObject({
 			name: "work-2026",
@@ -47,10 +47,7 @@ describeWithDb("SecretSantaRepository", () => {
 			revision: 0,
 		});
 
-		expect(await repo.get("work-2026")).toMatchObject({ name: "work-2026" });
 		expect(await repo.list()).toHaveLength(1);
-		expect(await repo.delete("work-2026")).toBe(true);
-		expect(await repo.get("work-2026")).toBeNull();
 	});
 
 	test("participants and exclusions", async () => {

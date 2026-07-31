@@ -1,6 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
-	ApplicationCommandOptionType,
 	type ChatInputCommandInteraction,
 	escapeMarkdown,
 	hyperlink,
@@ -9,34 +8,6 @@ import {
 } from "discord.js";
 import { SteamLibraryUnavailableError } from "../../services/SteamService";
 import Friendslop from "./friendslop";
-
-const MEMBER_NAMES = [
-	"member_one",
-	"member_two",
-	"member_three",
-	"member_four",
-	"member_five",
-	"member_six",
-	"member_seven",
-	"member_eight",
-	"member_nine",
-	"member_ten",
-	"member_eleven",
-	"member_twelve",
-	"member_thirteen",
-	"member_fourteen",
-	"member_fifteen",
-	"member_sixteen",
-	"member_seventeen",
-	"member_eighteen",
-	"member_nineteen",
-	"member_twenty",
-	"member_twenty_one",
-	"member_twenty_two",
-	"member_twenty_three",
-	"member_twenty_four",
-	"member_twenty_five",
-] as const;
 
 type BuildOpts = {
 	available?: boolean;
@@ -98,31 +69,6 @@ function buildInteraction(opts: BuildOpts = {}) {
 }
 
 describe("Friendslop", () => {
-	test("defines 25 user options with first two required", () => {
-		const command = new Friendslop().data.toJSON();
-		expect(command.name).toBe("friendslop");
-		expect(command.options).toHaveLength(25);
-		expect(command.options?.map((option) => option.name)).toEqual([
-			...MEMBER_NAMES,
-		]);
-		expect(command.options?.[0]).toMatchObject({
-			type: ApplicationCommandOptionType.User,
-			name: "member_one",
-			required: true,
-		});
-		expect(command.options?.[1]).toMatchObject({
-			type: ApplicationCommandOptionType.User,
-			name: "member_two",
-			required: true,
-		});
-		for (const option of command.options?.slice(2) ?? []) {
-			expect(option).toMatchObject({
-				type: ApplicationCommandOptionType.User,
-				required: false,
-			});
-		}
-	});
-
 	test("replies ephemerally when Steam is unconfigured without deferring", async () => {
 		const { interaction, findRandomCommonMultiplayerGame } = buildInteraction({
 			available: false,

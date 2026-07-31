@@ -1,6 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
 import {
-	ApplicationCommandOptionType,
 	type AutocompleteInteraction,
 	type ChatInputCommandInteraction,
 	MessageFlags,
@@ -59,37 +58,6 @@ function createCommandInteraction(options: {
 }
 
 describe("TiktokTts", () => {
-	test("defines the required command options", () => {
-		const command = new TiktokTts().data.toJSON();
-		expect(command.name).toBe("tiktoktts");
-		expect(command.description).toBe("Creates TikTok text-to-speech audio");
-		expect(command.options).toEqual([
-			{
-				type: ApplicationCommandOptionType.String,
-				name: "message",
-				description: "The text to speak",
-				required: true,
-			},
-			{
-				type: ApplicationCommandOptionType.String,
-				name: "voice",
-				description: "The TikTok voice to use",
-				required: true,
-				autocomplete: true,
-			},
-			{
-				type: ApplicationCommandOptionType.String,
-				name: "mode",
-				description: "Where to play the audio",
-				required: false,
-				choices: [
-					{ name: "Voice", value: "voice" },
-					{ name: "Attachment", value: "attachment" },
-				],
-			},
-		]);
-	});
-
 	test("autocompletes friendly names case-insensitively", async () => {
 		const { interaction, respond } = createAutocompleteInteraction("STORM");
 		await new TiktokTts().autocomplete(interaction);

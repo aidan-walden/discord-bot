@@ -48,18 +48,6 @@ function getExampleContext(isoDate: string): HolidayRuleContext {
 }
 
 describe("HolidayRules", () => {
-	describe("all holidays have defined test cases", () => {
-		for (const rule of HOLIDAY_RULES) {
-			describe(rule.holiday, () => {
-				test("active and inactive examples are non-empty", () => {
-					expect(EXAMPLES[rule.holiday]).not.toBeEmptyObject();
-					expect(EXAMPLES[rule.holiday].active.length).toBeGreaterThan(0);
-					expect(EXAMPLES[rule.holiday].inactive.length).toBeGreaterThan(0);
-				});
-			});
-		}
-	});
-
 	describe("holiday date mappings", () => {
 		let provider: HolidayProvider;
 

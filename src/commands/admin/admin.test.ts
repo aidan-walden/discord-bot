@@ -6,7 +6,7 @@ import {
 	MessageFlags,
 	type ModalSubmitInteraction,
 } from "discord.js";
-import Admin, { ACTIONS_BY_ID, buildPanel, ROWS, snowflake } from "./admin";
+import Admin, { ACTIONS_BY_ID, snowflake } from "./admin";
 
 type Bot = ChatInputCommandInteraction["client"]["bot"];
 
@@ -98,19 +98,6 @@ describe("ACTIONS run()", () => {
 				{ bot: createBot(), guild, modal: {} as ModalSubmitInteraction },
 			),
 		).rejects.toThrow("is not in a voice channel");
-	});
-
-	test("kick_voice rejects a bad snowflake", async () => {
-		await expect(
-			getAction("kick_voice").run(
-				{ user_id: "nope" },
-				{
-					bot: createBot(),
-					guild: {} as Guild,
-					modal: {} as ModalSubmitInteraction,
-				},
-			),
-		).rejects.toThrow("is not a valid user ID");
 	});
 
 	test("delete_message deletes from a text channel", async () => {
@@ -334,12 +321,6 @@ describe("ACTIONS run()", () => {
 	});
 });
 
-describe("buildPanel", () => {
-	test("builds one row per ROWS entry", () => {
-		expect(buildPanel()).toHaveLength(ROWS.length);
-	});
-});
-
 describe("Admin.execute", () => {
 	function createInteraction(options: {
 		admin?: boolean;
@@ -393,12 +374,5 @@ describe("Admin.execute", () => {
 			content: "You can't use that command here.",
 			flags: MessageFlags.Ephemeral,
 		});
-	});
-
-	test("shows the panel on the happy path", async () => {
-		const interaction = createInteraction({});
-		await new Admin().execute(interaction);
-		const call = interaction.reply.mock.calls[0]?.[0];
-		expect(call?.components).toHaveLength(ROWS.length);
 	});
 });

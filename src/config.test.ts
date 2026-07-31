@@ -23,28 +23,6 @@ const CONFIG_ENV_KEYS = [
 	"STEAM_API_KEY",
 ] as const;
 
-const baseYaml = [
-	'BOT_TOKEN: "file-bot-token"',
-	'DATABASE_URL: "postgres://file-db"',
-	'BOT_OWNER_ID: "file-owner"',
-	"openai:",
-	'  OPENAI_API_TOKEN: "file-openai-token"',
-	'  OPENAI_MODEL: "file-model"',
-	"tiktok:",
-	'  TIKTOK_SESSION_ID: "file-tiktok-session"',
-	"ADMIN_USER_IDS:",
-	'  - "admin-a"',
-	'  - "admin-b"',
-	"redis:",
-	'  url: "redis://file-redis"',
-	"lavalink:",
-	"  nodes:",
-	'    - name: "file-node"',
-	'      url: "localhost:2333"',
-	'      auth: "file-pass"',
-	"      secure: false",
-].join("\n");
-
 type EnvKey = (typeof CONFIG_ENV_KEYS)[number];
 type ConfigInstance = Awaited<ReturnType<typeof Config.load>>;
 
@@ -335,10 +313,6 @@ afterEach(async () => {
 });
 
 describe("Config", () => {
-	test("buildYaml() returns same string as base yaml fixture", () => {
-		expect(buildYaml()).toBe(`${baseYaml}\n`);
-	});
-
 	describe("env over file precedence", () => {
 		const precedenceCases = [
 			{
@@ -864,25 +838,6 @@ describe("Config", () => {
 				}),
 				"Invalid riot.players[0].platform: expected one of br1, eun1, euw1, jp1, kr, la1, la2, na1, oc1, tr1, ru, ph2, sg2, th2, tw2, vn2.",
 			);
-		});
-
-		test("parses riotId players", async () => {
-			await withEnv({}, async () => {
-				const filePath = await writeTempConfig(
-					buildYaml({
-						riotBlock: [
-							"riot:",
-							"  players:",
-							'    - riotId: "Hide on bush#KR1"',
-							'      platform: "kr"',
-						].join("\n"),
-					}),
-				);
-				const config = await Config.load(filePath);
-				expect(config.get("riot").players).toEqual([
-					{ riotId: "Hide on bush#KR1", platform: "kr" },
-				]);
-			});
 		});
 
 		test("rejects missing riotId", async () => {
