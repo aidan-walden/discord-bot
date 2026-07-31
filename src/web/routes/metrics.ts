@@ -103,6 +103,7 @@ export function renderPrometheusMetrics(bot: Bot): string {
 		["tiktok", isConfigured(bot.config.get("tiktok").TIKTOK_SESSION_ID)],
 		["imgur", isConfigured(bot.config.get("imgur").IMGUR_CLIENT_ID)],
 		["riot", isConfigured(bot.config.get("riot").RIOT_API_KEY)],
+		["steam", isConfigured(bot.config.get("steam").STEAM_API_KEY)],
 	] as const;
 	addMetric(
 		lines,

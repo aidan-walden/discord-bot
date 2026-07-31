@@ -60,6 +60,10 @@ export interface RiotConfig {
 	players: RiotPlayerConfig[];
 }
 
+export interface SteamConfig {
+	STEAM_API_KEY?: string;
+}
+
 interface AppConfigFile {
 	BOT_TOKEN?: string;
 	BOT_OWNER_ID?: string;
@@ -89,6 +93,7 @@ interface AppConfigFile {
 			platform?: string;
 		}>;
 	};
+	steam?: SteamConfig;
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -110,6 +115,7 @@ export interface AppConfig {
 	tiktok: TikTokConfig;
 	imgur: ImgurConfig;
 	riot: RiotConfig;
+	steam: SteamConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -124,6 +130,7 @@ const NESTED_ENV_KEYS = {
 	tiktok: ["TIKTOK_SESSION_ID"],
 	imgur: ["IMGUR_CLIENT_ID"],
 	riot: ["RIOT_API_KEY"],
+	steam: ["STEAM_API_KEY"],
 } as const;
 
 export interface ConfigClock {
@@ -384,6 +391,11 @@ function validateImgur(value: unknown): ImgurConfig {
 	return withOptionalStringField({}, record, "IMGUR_CLIENT_ID");
 }
 
+function validateSteam(value: unknown): SteamConfig {
+	const record = validateApiCategory(value, "steam");
+	return withOptionalStringField({}, record, "STEAM_API_KEY");
+}
+
 function validateRiot(value: unknown): RiotConfig {
 	if (value === undefined) {
 		return {
@@ -547,6 +559,7 @@ function validateConfigFile(
 	const tiktok = validateTikTok(configFile.tiktok);
 	const imgur = validateImgur(configFile.imgur);
 	const riot = validateRiot(configFile.riot);
+	const steam = validateSteam(configFile.steam);
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
 	const baseProfilePicture = validateBaseProfilePicture(
@@ -574,6 +587,7 @@ function validateConfigFile(
 		tiktok,
 		imgur,
 		riot,
+		steam,
 		lavalink: {
 			nodes: lavalinkNodes,
 		},

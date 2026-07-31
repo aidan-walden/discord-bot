@@ -14,14 +14,18 @@
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
-- Runtime config comes from `config.yml`, with flat env vars able to override `BOT_TOKEN`, `DATABASE_URL`, `BOT_OWNER_ID`, and nested provider settings (`openai.*`, `anthropic.*`).
+- Runtime config comes from `config.yml`. Flat env vars override nested YAML paths: `BOT_TOKEN` / `DATABASE_URL` / `BOT_OWNER_ID` (top-level), `OPENAI_API_TOKEN` / `OPENAI_MODEL` → `openai.*`, `ANTHROPIC_API_TOKEN` / `ANTHROPIC_MODEL` → `anthropic.*`, `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` → `spotify.*`, `TIKTOK_SESSION_ID` → `tiktok.*`, `IMGUR_CLIENT_ID` → `imgur.*`, `RIOT_API_KEY` → `riot.RIOT_API_KEY`, `STEAM_API_KEY` → `steam.STEAM_API_KEY`.
 - Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
 - The AI assistant (`/chatgpt` command) is served by a generic LLM provider layer (`src/services/LlmProvider.ts`) supporting OpenAI and Anthropic. Provider preference is OpenAI then Anthropic — the first with a defined API key is primary, and `ChatSessionService.prompt` fails over to the next provider when the primary rejects credentials (bad key / no balance). OpenAI needs both `OPENAI_API_TOKEN` and `OPENAI_MODEL`; Anthropic needs `ANTHROPIC_API_TOKEN` and defaults to `claude-haiku-4-5` if `ANTHROPIC_MODEL` is unset. `llm.userRequestsPerHour` sets the rolling per-user limit and defaults to 5; admins are exempt, and admin-panel overrides persist in Postgres. Commands stay registered but report unavailable when no provider is configured.
+- `spotify.SPOTIFY_CLIENT_ID` and `spotify.SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
+- `riot.RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` drive the optional match poller. Solo rank history (max 5 per puuid) is in `riot_rank_history`. Discord ↔ Riot links (`riot_user_links`) power `/lol map` and `/lol view`. HTTP client lives under `src/services/riot/`.
+- `steam.STEAM_API_KEY` is optional; without it `/friendslop` reports unavailable. With it, `/friendslop` resolves Steam IDs from Discord connected accounts, intersects owned games, and picks a random multiplayer title via Steam Store categories.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.
 - Event handlers live under `src/events/*.ts` and are auto-registered on startup.
 - Keep new command/event modules side-effect free except for their exported class.
+- `/friendslop` takes 2-25 users, requires public Steam libraries and a connected Steam account on each Discord profile.
 
 ## Persistence
 - [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) creates tables on startup; there is no separate migration tool.

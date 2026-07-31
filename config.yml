@@ -33,6 +33,9 @@ riot:
   pollIntervalSeconds: 60
   players: []
 
+steam:
+  STEAM_API_KEY: ""
+
 lavalink:
   nodes:
     - name: "localhost"

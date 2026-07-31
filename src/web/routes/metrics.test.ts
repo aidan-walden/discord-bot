@@ -4,7 +4,9 @@ import type Bot from "../../models/Bot";
 import type { AppContext } from "../context";
 import metrics from "./metrics";
 
-function createMockBot(): Bot {
+function createMockBot(
+	overrides: { steamKey?: string | undefined; rejected?: string[] } = {},
+): Bot {
 	const config = {
 		openai: { OPENAI_API_TOKEN: "openai-secret" },
 		anthropic: { ANTHROPIC_API_TOKEN: "anthropic-secret" },
@@ -15,6 +17,12 @@ function createMockBot(): Bot {
 		tiktok: { TIKTOK_SESSION_ID: "tiktok-secret" },
 		imgur: { IMGUR_CLIENT_ID: undefined },
 		riot: { RIOT_API_KEY: undefined },
+		steam: {
+			STEAM_API_KEY:
+				overrides.steamKey === undefined && !("steamKey" in overrides)
+					? "steam-secret"
+					: overrides.steamKey,
+		},
 	};
 
 	return {
@@ -26,7 +34,7 @@ function createMockBot(): Bot {
 				["ping", 3],
 				["play", 1],
 			]),
-			credentialRejections: new Set(["spotify"]),
+			credentialRejections: new Set(overrides.rejected ?? ["spotify"]),
 		},
 		guilds: {
 			cache: new Map([
@@ -84,6 +92,9 @@ describe("prometheus metrics route", () => {
 			'discord_bot_external_api_credentials_configured{provider="riot"} 0',
 		);
 		expect(body).toContain(
+			'discord_bot_external_api_credentials_configured{provider="steam"} 1',
+		);
+		expect(body).toContain(
 			'discord_bot_external_api_credentials_rejected{provider="openai"} 0',
 		);
 		expect(body).toContain(
@@ -92,9 +103,27 @@ describe("prometheus metrics route", () => {
 		expect(body).toContain(
 			'discord_bot_external_api_credentials_rejected{provider="spotify"} 1',
 		);
+		expect(body).toContain(
+			'discord_bot_external_api_credentials_rejected{provider="steam"} 0',
+		);
 		expect(body).not.toContain("openai-secret");
 		expect(body).not.toContain("anthropic-secret");
 		expect(body).not.toContain("tiktok-secret");
+		expect(body).not.toContain("steam-secret");
 		expect(body.endsWith("\n")).toBe(true);
+	});
+
+	test("GET /metrics reports steam configured 0 and rejected 1", async () => {
+		const response = await createApp(
+			createMockBot({ steamKey: undefined, rejected: ["steam"] }),
+		).request("/metrics");
+		const body = await response.text();
+
+		expect(body).toContain(
+			'discord_bot_external_api_credentials_configured{provider="steam"} 0',
+		);
+		expect(body).toContain(
+			'discord_bot_external_api_credentials_rejected{provider="steam"} 1',
+		);
 	});
 });

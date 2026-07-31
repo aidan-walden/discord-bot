@@ -19,6 +19,7 @@ const CONFIG_ENV_KEYS = [
 	"SPOTIFY_CLIENT_SECRET",
 	"IMGUR_CLIENT_ID",
 	"RIOT_API_KEY",
+	"STEAM_API_KEY",
 ] as const;
 
 const baseYaml = [
@@ -118,6 +119,7 @@ type YamlOptions = {
 	openaiBlock?: string;
 	tiktokBlock?: string;
 	riotBlock?: string;
+	steamBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
 };
@@ -139,6 +141,7 @@ function buildYaml(options: YamlOptions = {}) {
 		openaiBlock,
 		tiktokBlock,
 		riotBlock,
+		steamBlock,
 		lavalinkBlock,
 		omitKeys = [],
 	} = options;
@@ -218,6 +221,10 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (riotBlock !== undefined && riotBlock.length > 0) {
 		lines.push(riotBlock);
+	}
+
+	if (steamBlock !== undefined && steamBlock.length > 0) {
+		lines.push(steamBlock);
 	}
 
 	if (lavalinkBlock === undefined) {
@@ -868,6 +875,51 @@ describe("Config", () => {
 				buildYaml({ riotBlock: 'riot: "nope"' }),
 				"Invalid config value for riot: expected object.",
 			);
+		});
+	});
+
+	describe("steam validation", () => {
+		test("defaults when block omitted", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("steam")).toEqual({});
+			});
+		});
+
+		test("parses STEAM_API_KEY from YAML", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						steamBlock: ["steam:", '  STEAM_API_KEY: "file-steam-key"'].join(
+							"\n",
+						),
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				expect(config.get("steam")).toEqual({
+					STEAM_API_KEY: "file-steam-key",
+				});
+			});
+		});
+
+		test("STEAM_API_KEY env overrides YAML and preserves siblings", async () => {
+			await withEnv({ STEAM_API_KEY: "env-steam-key" }, async () => {
+				const filePath = await writeTempConfig(
+					buildYaml({
+						steamBlock: [
+							"steam:",
+							'  STEAM_API_KEY: "file-steam-key"',
+							'  EXTRA_IGNORED: "kept-in-file-only"',
+						].join("\n"),
+					}),
+				);
+				const config = await Config.load(filePath);
+
+				expect(config.get("steam").STEAM_API_KEY).toBe("env-steam-key");
+			});
 		});
 	});
 

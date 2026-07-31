@@ -53,6 +53,7 @@ import PermissionService from "../services/PermissionService";
 import RiotGamesService from "../services/RiotGamesService";
 import SpotifyClientCredentialsStrategy from "../services/SpotifyClientCredentialsStrategy";
 import SpotifyService from "../services/SpotifyService";
+import SteamService from "../services/SteamService";
 import WolGgClient from "../services/wol/WolGgClient";
 import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
@@ -82,6 +83,7 @@ export default class Bot extends Client {
 	readonly metrics: MetricsCollector;
 	readonly holidays: HolidayProvider;
 	readonly riot: RiotGamesService;
+	readonly steam: SteamService;
 	readonly riotLinks: RiotUserLinkRepository;
 	readonly riotMatches: RiotMatchRepository;
 	readonly guildSettings: GuildSettingsRepository;
@@ -172,6 +174,8 @@ export default class Bot extends Client {
 			userLinks: this.riotLinks,
 			wol: new WolGgClient(),
 		});
+		const steamApiKey = config.get("steam").STEAM_API_KEY?.trim() || null;
+		this.steam = new SteamService(steamApiKey, this.metrics);
 
 		this.holidays = new HolidayProvider();
 
