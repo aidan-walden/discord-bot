@@ -10,6 +10,7 @@ const CONFIG_ENV_KEYS = [
 	"BOT_TOKEN",
 	"DATABASE_URL",
 	"BOT_OWNER_ID",
+	"REDIS_URL",
 	"OPENAI_API_TOKEN",
 	"OPENAI_MODEL",
 	"ANTHROPIC_API_TOKEN",
@@ -34,6 +35,8 @@ const baseYaml = [
 	"ADMIN_USER_IDS:",
 	'  - "admin-a"',
 	'  - "admin-b"',
+	"redis:",
+	'  url: "redis://file-redis"',
 	"lavalink:",
 	"  nodes:",
 	'    - name: "file-node"',
@@ -120,6 +123,7 @@ type YamlOptions = {
 	tiktokBlock?: string;
 	riotBlock?: string;
 	steamBlock?: string;
+	redisBlock?: string;
 	lavalinkBlock?: string;
 	omitKeys?: EnvKey[];
 };
@@ -142,6 +146,7 @@ function buildYaml(options: YamlOptions = {}) {
 		tiktokBlock,
 		riotBlock,
 		steamBlock,
+		redisBlock,
 		lavalinkBlock,
 		omitKeys = [],
 	} = options;
@@ -225,6 +230,12 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (steamBlock !== undefined && steamBlock.length > 0) {
 		lines.push(steamBlock);
+	}
+
+	if (redisBlock === undefined) {
+		lines.push("redis:", '  url: "redis://file-redis"');
+	} else if (redisBlock.length > 0) {
+		lines.push(redisBlock);
 	}
 
 	if (lavalinkBlock === undefined) {
@@ -352,6 +363,13 @@ describe("Config", () => {
 				},
 			},
 			{
+				name: "REDIS_URL",
+				env: { REDIS_URL: "redis://env-redis" },
+				assert: (config: ConfigInstance) => {
+					expect(config.get("redis").url).toBe("redis://env-redis");
+				},
+			},
+			{
 				name: "OPENAI_MODEL",
 				env: { OPENAI_MODEL: "env-model" },
 				assert: (config: ConfigInstance) => {
@@ -425,6 +443,12 @@ describe("Config", () => {
 				env: { BOT_OWNER_ID: "" },
 				expectedMessage:
 					"BOT_OWNER_ID is not set. Define BOT_OWNER_ID in environment or set BOT_OWNER_ID in config.yml.",
+			},
+			{
+				name: "REDIS_URL",
+				env: { REDIS_URL: "" },
+				expectedMessage:
+					"REDIS_URL is not set. Define REDIS_URL in environment or set redis.url in config.yml.",
 			},
 		] as const;
 
@@ -530,6 +554,18 @@ describe("Config", () => {
 				expectedMessage:
 					"BOT_OWNER_ID is not set. Define BOT_OWNER_ID in environment or set BOT_OWNER_ID in config.yml.",
 			},
+			{
+				name: "blank redis.url",
+				yaml: buildYaml({ redisBlock: 'redis:\n  url: ""' }),
+				expectedMessage:
+					"REDIS_URL is not set. Define REDIS_URL in environment or set redis.url in config.yml.",
+			},
+			{
+				name: "missing redis block",
+				yaml: buildYaml({ redisBlock: "" }),
+				expectedMessage:
+					"REDIS_URL is not set. Define REDIS_URL in environment or set redis.url in config.yml.",
+			},
 		] as const;
 
 		for (const testCase of requiredKeyCases) {
@@ -537,6 +573,24 @@ describe("Config", () => {
 				await expectLoadConfigError(testCase.yaml, testCase.expectedMessage);
 			});
 		}
+
+		test("redis.url loads from YAML", async () => {
+			await withEnv({}, async () => {
+				const filePath = await writeTempConfig(buildYaml());
+				const config = await Config.load(filePath);
+
+				expect(config.get("redis")).toEqual({ url: "redis://file-redis" });
+			});
+		});
+
+		test("REDIS_URL env supplies redis when YAML omits it", async () => {
+			await withEnv({ REDIS_URL: "redis://env-only" }, async () => {
+				const filePath = await writeTempConfig(buildYaml({ redisBlock: "" }));
+				const config = await Config.load(filePath);
+
+				expect(config.get("redis")).toEqual({ url: "redis://env-only" });
+			});
+		});
 	});
 
 	describe("invalid YAML root", () => {

@@ -3,13 +3,14 @@ import { TimestampStyles, time } from "discord.js";
 import OpenAI from "openai";
 import type { AnthropicConfig, OpenAIConfig } from "../config";
 import type LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
+import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
 import type { ExternalApiProvider } from "./ExternalApiCredentialStatus";
 
 export type LlmMessage = { role: "user" | "assistant"; content: string };
 
 export type LlmRequestContext = {
 	userId: string;
-	requestId: symbol;
+	requestId: string;
 };
 
 export interface LlmProvider {
@@ -29,9 +30,11 @@ const RATE_LIMIT_WINDOW_MS = 60 * 60 * 1000;
 export const MAX_POSTGRES_INTEGER = 2_147_483_647;
 
 type RequestRecord = {
-	requestId: symbol;
+	requestId: string;
 	timestamp: number;
 };
+
+type TemporaryState = Pick<TemporaryStateRepository, "get" | "set" | "delete">;
 
 export class LlmUserRateLimitError extends Error {
 	/** @param retryAt epoch ms when the oldest request leaves the rolling window */
@@ -49,16 +52,53 @@ export function llmRateLimitNotice(error: LlmUserRateLimitError): string {
 	return `You have consumed your usage limit for AI features. Please wait until ${resumesAt} to resume. You get ${error.limit} requests per hour.`;
 }
 
+function rateLimitKey(userId: string): string {
+	return `llm:rate-limit:${userId}`;
+}
+
+function oldestTimestamp(records: RequestRecord[], fallback: number): number {
+	let oldest = fallback;
+	for (const record of records) {
+		if (record.timestamp < oldest) {
+			oldest = record.timestamp;
+		}
+	}
+	return oldest;
+}
+
+function parseRecords(raw: unknown): RequestRecord[] {
+	if (!Array.isArray(raw)) {
+		return [];
+	}
+	const records: RequestRecord[] = [];
+	for (const entry of raw) {
+		if (typeof entry !== "object" || entry === null) {
+			continue;
+		}
+		const requestId = (entry as { requestId?: unknown }).requestId;
+		const timestamp = (entry as { timestamp?: unknown }).timestamp;
+		if (typeof requestId !== "string" || typeof timestamp !== "number") {
+			continue;
+		}
+		if (!Number.isFinite(timestamp)) {
+			continue;
+		}
+		records.push({ requestId, timestamp });
+	}
+	return records;
+}
+
 export class LlmUserRateLimiter {
-	// ponytail: stale user keys persist until restart; add periodic cleanup if unique-user growth matters.
-	private readonly requestsByUserId = new Map<string, RequestRecord[]>();
 	// ponytail: single-process cache; needs invalidation via pub/sub if the bot ever runs multi-instance.
 	private readonly overrideCache = new Map<string, number | null>();
+	/** Per-user promise chain so concurrent RMW on Redis cannot overshoot quota. */
+	private readonly userLocks = new Map<string, Promise<unknown>>();
 
 	constructor(
 		private readonly defaultLimit: number,
 		private readonly overrides: LlmUserRateLimitRepository,
 		private readonly isAdminUser: (userId: string) => boolean,
+		private readonly temporaryState: TemporaryState,
 		private readonly now: () => number = Date.now,
 	) {}
 
@@ -74,7 +114,7 @@ export class LlmUserRateLimiter {
 		try {
 			return await call();
 		} catch (error) {
-			this.release(request);
+			await this.release(request);
 			throw error;
 		}
 	}
@@ -89,39 +129,99 @@ export class LlmUserRateLimiter {
 			return;
 		}
 
-		// Read-modify-write must stay synchronous after this point, or concurrent
-		// requests overwrite each other's records and the limit never fires.
-		const previousRequests = this.requestsByUserId.get(request.userId) ?? [];
-		if (
-			previousRequests.some(({ requestId }) => requestId === request.requestId)
-		) {
-			return;
-		}
+		await this.withUserLock(request.userId, async () => {
+			const now = this.now();
+			const key = rateLimitKey(request.userId);
+			const previousRequests = parseRecords(
+				await this.temporaryState.get<unknown>(key),
+			);
+			if (
+				previousRequests.some(
+					({ requestId }) => requestId === request.requestId,
+				)
+			) {
+				return;
+			}
 
-		const now = this.now();
-		const activeRequests = previousRequests.filter(
-			({ timestamp }) => timestamp > now - RATE_LIMIT_WINDOW_MS,
-		);
-		const limit = override ?? this.defaultLimit;
-		if (activeRequests.length >= limit) {
-			this.requestsByUserId.set(request.userId, activeRequests);
-			const oldest = activeRequests[0]?.timestamp ?? now;
-			throw new LlmUserRateLimitError(limit, oldest + RATE_LIMIT_WINDOW_MS);
-		}
+			const activeRequests = previousRequests.filter(
+				({ timestamp }) => timestamp > now - RATE_LIMIT_WINDOW_MS,
+			);
+			const limit = override ?? this.defaultLimit;
+			if (activeRequests.length >= limit) {
+				await this.persistRecords(key, activeRequests, now);
+				const oldest = oldestTimestamp(activeRequests, now);
+				throw new LlmUserRateLimitError(limit, oldest + RATE_LIMIT_WINDOW_MS);
+			}
 
-		activeRequests.push({ requestId: request.requestId, timestamp: now });
-		this.requestsByUserId.set(request.userId, activeRequests);
+			activeRequests.push({ requestId: request.requestId, timestamp: now });
+			await this.persistRecords(key, activeRequests, now);
+		});
 	}
 
-	private release(request: LlmRequestContext): void {
-		const records = this.requestsByUserId.get(request.userId);
-		if (!records) {
+	private async release(request: LlmRequestContext): Promise<void> {
+		if (this.isAdminUser(request.userId)) {
 			return;
 		}
-		this.requestsByUserId.set(
-			request.userId,
-			records.filter(({ requestId }) => requestId !== request.requestId),
+
+		await this.withUserLock(request.userId, async () => {
+			const now = this.now();
+			const key = rateLimitKey(request.userId);
+			const previousRequests = parseRecords(
+				await this.temporaryState.get<unknown>(key),
+			);
+			const remaining = previousRequests.filter(
+				({ requestId, timestamp }) =>
+					requestId !== request.requestId &&
+					timestamp > now - RATE_LIMIT_WINDOW_MS,
+			);
+			await this.persistRecords(key, remaining, now);
+		});
+	}
+
+	private async persistRecords(
+		key: string,
+		records: RequestRecord[],
+		now: number,
+	): Promise<void> {
+		if (records.length === 0) {
+			await this.temporaryState.delete(key);
+			return;
+		}
+		const ttlSeconds = Math.max(
+			1,
+			Math.ceil(
+				(oldestTimestamp(records, now) + RATE_LIMIT_WINDOW_MS - now) / 1000,
+			),
 		);
+		await this.temporaryState.set(key, records, ttlSeconds);
+	}
+
+	private async withUserLock<T>(
+		userId: string,
+		fn: () => Promise<T>,
+	): Promise<T> {
+		const previous = this.userLocks.get(userId) ?? Promise.resolve();
+		let release!: () => void;
+		const gate = new Promise<void>((resolve) => {
+			release = resolve;
+		});
+		const tail = previous.then(
+			() => gate,
+			() => gate,
+		);
+		this.userLocks.set(userId, tail);
+		await previous.then(
+			() => undefined,
+			() => undefined,
+		);
+		try {
+			return await fn();
+		} finally {
+			release();
+			if (this.userLocks.get(userId) === tail) {
+				this.userLocks.delete(userId);
+			}
+		}
 	}
 
 	private async getOverride(userId: string): Promise<number | null> {

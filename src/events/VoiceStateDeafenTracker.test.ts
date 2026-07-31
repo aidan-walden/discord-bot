@@ -3,6 +3,7 @@ import type { VoiceState } from "discord.js";
 import type { DeafenTrackerConfig } from "../config";
 import type Bot from "../models/Bot";
 import type DeafenSessionRepository from "../repositories/DeafenSessionRepository";
+import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
 import DeafenTrackerService from "../services/DeafenTrackerService";
 import VoiceStateDeafenTracker from "./VoiceStateDeafenTracker";
 
@@ -47,6 +48,27 @@ function createRepository() {
 	};
 }
 
+function createTemporaryState(): Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+> {
+	const store = new Map<string, unknown>();
+	return {
+		get: async <T>(key: string) => {
+			if (!store.has(key)) {
+				return null;
+			}
+			return store.get(key) as T;
+		},
+		set: async (key: string, value: unknown) => {
+			store.set(key, value);
+		},
+		delete: async (key: string) => {
+			store.delete(key);
+		},
+	};
+}
+
 function createBot(
 	deafenTracker: DeafenTrackerService,
 	config: DeafenTrackerConfig = DEFAULT_CONFIG,
@@ -65,7 +87,7 @@ describe("VoiceStateDeafenTracker", () => {
 
 	beforeEach(() => {
 		repository = createRepository();
-		service = new DeafenTrackerService(repository);
+		service = new DeafenTrackerService(repository, createTemporaryState());
 	});
 
 	test("starts a session when a tracked user deafens", async () => {
@@ -113,7 +135,10 @@ describe("VoiceStateDeafenTracker", () => {
 		await event.execute(offBot, undeaf, muted);
 		expect(service.hasActiveSession("guild-123", "user-123")).toBe(false);
 
-		const onService = new DeafenTrackerService(repository);
+		const onService = new DeafenTrackerService(
+			repository,
+			createTemporaryState(),
+		);
 		const onBot = createBot(onService, {
 			...DEFAULT_CONFIG,
 			muted_is_deafened: true,

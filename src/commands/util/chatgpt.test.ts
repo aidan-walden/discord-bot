@@ -73,8 +73,8 @@ function createInteraction(options: {
 		),
 		getByThreadId: mock(() => sessions.byThreadId),
 		getByRootChannel: mock(() => sessions.byRootChannel),
-		createSession: mock((userId: string) => createSession({ userId })),
-		closeSession: mock(() => undefined),
+		createSession: mock(async (userId: string) => createSession({ userId })),
+		closeSession: mock(async () => undefined),
 		prompt: mock(sessions.prompt ?? (async () => "response")),
 	};
 	const interaction = {

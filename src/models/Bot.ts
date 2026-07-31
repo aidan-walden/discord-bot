@@ -6,6 +6,7 @@
 import fs from "node:fs/promises";
 import path from "node:path";
 import { SpotifyApi } from "@spotify/web-api-ts-sdk";
+import { RedisClient } from "bun";
 import {
 	Client,
 	type ClientEvents,
@@ -36,6 +37,10 @@ import RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
 import SecretSantaRepository from "../repositories/SecretSantaRepository";
+import {
+	type TemporaryStateRedisClient,
+	TemporaryStateRepository,
+} from "../repositories/TemporaryStateRepository";
 import UserBalanceRepository from "../repositories/UserBalanceRepository";
 import AppleMusicService from "../services/AppleMusicService";
 import ChatSessionService from "../services/ChatSessionService";
@@ -88,16 +93,20 @@ export default class Bot extends Client {
 	readonly riotMatches: RiotMatchRepository;
 	readonly guildSettings: GuildSettingsRepository;
 	readonly secretSanta: SecretSantaRepository;
+	readonly temporaryState: TemporaryStateRepository;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
 	private readonly deployGuildId: string | undefined;
+	private temporaryStateClosed = false;
 
 	constructor(
 		config: Config,
 		shouldDeployCommands: boolean = false,
 		shouldRemoveCommands: boolean = false,
 		guildId: string | undefined = undefined,
+		// Tests inject a structural fake; production defaults to Bun RedisClient.
+		redisClient?: TemporaryStateRedisClient,
 	) {
 		const intents = [
 			GatewayIntentBits.Guilds,
@@ -121,6 +130,9 @@ export default class Bot extends Client {
 			...config.get("ADMIN_USER_IDS"),
 		]);
 		this.db = createDatabase(config.get("DATABASE_URL"));
+		this.temporaryState = new TemporaryStateRepository(
+			redisClient ?? new RedisClient(config.get("redis").url),
+		);
 		this.metrics = new MetricsCollector();
 		this.permissions = new PermissionService(
 			this.adminUserIds,
@@ -130,7 +142,10 @@ export default class Bot extends Client {
 		);
 		this.balances = new UserBalanceRepository(this.db);
 		this.deafenSessions = new DeafenSessionRepository(this.db);
-		this.deafenTracker = new DeafenTrackerService(this.deafenSessions);
+		this.deafenTracker = new DeafenTrackerService(
+			this.deafenSessions,
+			this.temporaryState,
+		);
 		this.riotLinks = new RiotUserLinkRepository(this.db);
 		this.riotMatches = new RiotMatchRepository(this.db);
 		this.guildSettings = new GuildSettingsRepository(this.db);
@@ -139,6 +154,7 @@ export default class Bot extends Client {
 			config.get("llm").userRequestsPerHour,
 			new LlmUserRateLimitRepository(this.db),
 			(userId) => this.permissions.isAdminUser(userId),
+			this.temporaryState,
 		);
 		this.chatSessions = new ChatSessionService(
 			createLlmProviders(
@@ -146,6 +162,7 @@ export default class Bot extends Client {
 				config.get("anthropic"),
 				this.llmRateLimits,
 			),
+			this.temporaryState,
 			this.metrics,
 		);
 
@@ -157,6 +174,7 @@ export default class Bot extends Client {
 							spotifyConfig.SPOTIFY_CLIENT_ID,
 							spotifyConfig.SPOTIFY_CLIENT_SECRET,
 							this.metrics,
+							this.temporaryState,
 						),
 					)
 				: null;
@@ -172,7 +190,8 @@ export default class Bot extends Client {
 			matches: this.riotMatches,
 			matchSync: new RiotMatchSyncRepository(this.db),
 			userLinks: this.riotLinks,
-			wol: new WolGgClient(),
+			temporaryState: this.temporaryState,
+			wol: new WolGgClient({ temporaryState: this.temporaryState }),
 		});
 		const steamApiKey = config.get("steam").STEAM_API_KEY?.trim() || null;
 		this.steam = new SteamService(steamApiKey, this.metrics);
@@ -245,7 +264,12 @@ export default class Bot extends Client {
 	}
 
 	async initialize(): Promise<void> {
+		// Redis is required; startup fails if unavailable. Connect before events so
+		// ClientReady reconciliation sees restored temporary state.
+		await this.temporaryState.connect();
 		await migrateDatabase(this.db);
+		await this.deafenTracker.initialize();
+		await this.chatSessions.initialize();
 		await this.registerCommands(path.join(import.meta.dirname, "../commands"));
 		await this.registerEvents(path.join(import.meta.dirname, "../events"));
 
@@ -265,6 +289,14 @@ export default class Bot extends Client {
 			this.holidays.start();
 			this.riot.startPoller();
 		});
+	}
+
+	override async destroy(): Promise<void> {
+		if (!this.temporaryStateClosed) {
+			this.temporaryStateClosed = true;
+			this.temporaryState.close();
+		}
+		await super.destroy();
 	}
 
 	async setProfilePicture(

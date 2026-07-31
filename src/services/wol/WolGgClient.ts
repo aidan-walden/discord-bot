@@ -1,3 +1,4 @@
+import type { TemporaryStateRepository } from "../../repositories/TemporaryStateRepository";
 import type { RiotPlatform } from "../riot/constants";
 
 type Fetcher = (
@@ -5,7 +6,17 @@ type Fetcher = (
 	init?: RequestInit,
 ) => Promise<Response>;
 
+type TemporaryStateStore = Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+>;
+
 const CACHE_TTL_MS = 60 * 60_000;
+
+interface CacheEntry {
+	expiresAt: number;
+	value: number;
+}
 
 /** Riot platform routing value → wol.gg /stats/{region}/ slug. */
 export const PLATFORM_TO_WOL_REGION: Record<RiotPlatform, string> = {
@@ -43,20 +54,49 @@ export function parseWolMinutes(html: string): number | null {
 	return Number.isFinite(minutes) ? minutes : null;
 }
 
+function wolRedisKey(cacheKey: string): string {
+	return `wol:playtime:${cacheKey}`;
+}
+
+function remainingTtlSeconds(expiresAt: number, now: number): number {
+	return Math.max(1, Math.ceil((expiresAt - now) / 1000));
+}
+
+function isCacheEntry(value: unknown): value is CacheEntry {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as CacheEntry).expiresAt === "number" &&
+		typeof (value as CacheEntry).value === "number"
+	);
+}
+
 export default class WolGgClient {
-	private readonly cache = new Map<
-		string,
-		{ expiresAt: number; value: number }
-	>();
+	private readonly cache = new Map<string, CacheEntry>();
 	private readonly fetcher: Fetcher;
 	private readonly now: () => number;
+	private readonly temporaryState?: TemporaryStateStore;
 
-	constructor(options: { fetch?: Fetcher; now?: () => number } = {}) {
+	constructor(
+		options: {
+			fetch?: Fetcher;
+			now?: () => number;
+			temporaryState?: TemporaryStateStore;
+		} = {},
+	) {
 		this.fetcher = options.fetch ?? fetch;
 		this.now = options.now ?? Date.now;
+		this.temporaryState = options.temporaryState;
 	}
 
-	clearCache(): void {
+	async clearCache(): Promise<void> {
+		const deletes: Promise<void>[] = [];
+		if (this.temporaryState) {
+			for (const key of this.cache.keys()) {
+				deletes.push(this.temporaryState.delete(wolRedisKey(key)));
+			}
+		}
+		await Promise.all(deletes);
 		this.cache.clear();
 	}
 
@@ -71,9 +111,24 @@ export default class WolGgClient {
 	): Promise<number | null> {
 		const region = PLATFORM_TO_WOL_REGION[platform];
 		const cacheKey = `${region}:${gameName.toLowerCase()}:${tagLine.toLowerCase()}`;
-		const cached = this.cache.get(cacheKey);
-		if (cached && cached.expiresAt > this.now()) {
-			return cached.value;
+		const local = this.cache.get(cacheKey);
+		if (local && local.expiresAt > this.now()) {
+			return local.value;
+		}
+		if (local) {
+			this.cache.delete(cacheKey);
+		}
+
+		if (this.temporaryState) {
+			const redisKey = wolRedisKey(cacheKey);
+			const remote = await this.temporaryState.get<unknown>(redisKey);
+			if (remote !== null) {
+				if (isCacheEntry(remote) && remote.expiresAt > this.now()) {
+					this.cache.set(cacheKey, remote);
+					return remote.value;
+				}
+				await this.temporaryState.delete(redisKey);
+			}
 		}
 
 		const slug = wolSlug(gameName, tagLine);
@@ -95,10 +150,18 @@ export default class WolGgClient {
 				return null;
 			}
 			const seconds = minutes * 60;
-			this.cache.set(cacheKey, {
+			const entry: CacheEntry = {
 				expiresAt: this.now() + CACHE_TTL_MS,
 				value: seconds,
-			});
+			};
+			this.cache.set(cacheKey, entry);
+			if (this.temporaryState) {
+				await this.temporaryState.set(
+					wolRedisKey(cacheKey),
+					entry,
+					remainingTtlSeconds(entry.expiresAt, this.now()),
+				);
+			}
 			return seconds;
 		} catch {
 			return null;

@@ -13,7 +13,7 @@ import {
 	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
 } from "./riot/constants";
-import RiotApiClient from "./riot/RiotApiClient";
+import RiotApiClient, { type TemporaryStateStore } from "./riot/RiotApiClient";
 import type {
 	Fetcher,
 	RiotAccount,
@@ -79,6 +79,18 @@ export interface RiotGamesServiceOptions {
 	matchSync?: RiotMatchSyncRepository;
 	userLinks?: RiotUserLinkRepository;
 	wol?: WolGgClient;
+	temporaryState?: TemporaryStateStore;
+}
+
+interface PersistedPollMemory {
+	lastMatchId: string | null;
+	mostRecentEnded: RiotEndedGameStats | null;
+	currentRank: RiotRank | null;
+}
+
+interface LolViewCacheEntry {
+	expiresAt: number;
+	value: RiotLolView;
 }
 
 type RiotGamesServiceEvents = {
@@ -124,12 +136,10 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 	private readonly userLinks?: RiotUserLinkRepository;
 	private readonly wol?: WolGgClient;
 	private readonly now: () => number;
+	private readonly temporaryState?: TemporaryStateStore;
 	private readonly pollMemory = new Map<string, PlayerPollMemory>();
 	private readonly snapshots = new Map<string, RiotPlayerPollState>();
-	private readonly lolViewCache = new Map<
-		string,
-		{ expiresAt: number; value: RiotLolView }
-	>();
+	private readonly lolViewCache = new Map<string, LolViewCacheEntry>();
 	private pollTimer: ReturnType<typeof setInterval> | null = null;
 	private polling = false;
 
@@ -139,10 +149,12 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		options: RiotGamesServiceOptions = {},
 	) {
 		super();
+		this.temporaryState = options.temporaryState;
 		this.client = new RiotApiClient(apiKey, credentialReporter, {
 			fetch: options.fetch,
 			sleep: options.sleep,
 			now: options.now,
+			temporaryState: options.temporaryState,
 		});
 		this.now = options.now ?? Date.now;
 		this.pollIntervalSeconds =
@@ -161,8 +173,15 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return this.client.isAvailable();
 	}
 
-	clearCache(): void {
-		this.client.clearCache();
+	async clearCache(): Promise<void> {
+		await this.client.clearCache();
+		const deletes: Promise<void>[] = [];
+		if (this.temporaryState) {
+			for (const puuid of this.lolViewCache.keys()) {
+				deletes.push(this.temporaryState.delete(lolViewRedisKey(puuid)));
+			}
+		}
+		await Promise.all(deletes);
 		this.lolViewCache.clear();
 	}
 
@@ -171,9 +190,9 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		puuid: string,
 		fallbackNames?: { gameName: string; tagLine: string },
 	): Promise<RiotLolView> {
-		const cached = this.lolViewCache.get(puuid);
-		if (cached && cached.expiresAt > this.now()) {
-			return cached.value;
+		const cached = await this.readLolViewCache(puuid);
+		if (cached) {
+			return cached;
 		}
 
 		const region = platformToRegion(platform);
@@ -204,15 +223,41 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			summoner,
 			history,
 		};
-		this.lolViewCache.set(puuid, {
+		const entry: LolViewCacheEntry = {
 			expiresAt: this.now() + LOL_VIEW_CACHE_TTL_MS,
 			value: view,
-		});
+		};
+		this.lolViewCache.set(puuid, entry);
+		if (this.temporaryState) {
+			await this.temporaryState.set(
+				lolViewRedisKey(puuid),
+				entry,
+				Math.max(1, Math.ceil((entry.expiresAt - this.now()) / 1000)),
+			);
+		}
 		return view;
 	}
 
-	getPollState(puuid: string): RiotPlayerPollState | null {
-		return this.snapshots.get(puuid) ?? null;
+	async getPollState(puuid: string): Promise<RiotPlayerPollState | null> {
+		const local = this.snapshots.get(puuid);
+		if (local) {
+			return local;
+		}
+		if (!this.temporaryState) {
+			return null;
+		}
+		const remote = await this.temporaryState.get<unknown>(
+			snapshotRedisKey(puuid),
+		);
+		if (remote === null) {
+			return null;
+		}
+		if (!isPlayerPollState(remote)) {
+			await this.temporaryState.delete(snapshotRedisKey(puuid));
+			return null;
+		}
+		this.snapshots.set(puuid, remote);
+		return remote;
 	}
 
 	getAllPollStates(): RiotPlayerPollState[] {
@@ -267,6 +312,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 				try {
 					const state = await this.pollPlayer(player);
 					this.snapshots.set(state.puuid, state);
+					await this.persistSnapshot(state);
 					this.emit("update", state);
 					syncPlayers.set(state.puuid, {
 						puuid: state.puuid,
@@ -397,15 +443,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		}
 		const puuid = account.puuid;
 
-		let memory = this.pollMemory.get(puuid);
-		if (!memory) {
-			memory = {
-				lastMatchId: null,
-				mostRecentEnded: null,
-				currentRank: null,
-				seededFromDb: false,
-			};
-		}
+		const memory = await this.loadPollMemory(puuid);
 
 		if (!memory.seededFromDb && this.rankHistory) {
 			const history = await this.rankHistory.listByPuuid(puuid);
@@ -486,6 +524,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		}
 
 		this.pollMemory.set(puuid, memory);
+		await this.persistPollMemory(puuid, memory);
 
 		return {
 			puuid,
@@ -497,6 +536,91 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			inProgress,
 			mostRecentEnded: memory.mostRecentEnded,
 		};
+	}
+
+	private async loadPollMemory(puuid: string): Promise<PlayerPollMemory> {
+		const local = this.pollMemory.get(puuid);
+		if (local) {
+			return local;
+		}
+		if (this.temporaryState) {
+			const remote = await this.temporaryState.get<unknown>(
+				pollMemoryRedisKey(puuid),
+			);
+			if (remote !== null) {
+				if (isPersistedPollMemory(remote)) {
+					const memory: PlayerPollMemory = {
+						lastMatchId: remote.lastMatchId,
+						mostRecentEnded: remote.mostRecentEnded,
+						currentRank: remote.currentRank,
+						seededFromDb: false,
+					};
+					this.pollMemory.set(puuid, memory);
+					return memory;
+				}
+				await this.temporaryState.delete(pollMemoryRedisKey(puuid));
+			}
+		}
+		const memory: PlayerPollMemory = {
+			lastMatchId: null,
+			mostRecentEnded: null,
+			currentRank: null,
+			seededFromDb: false,
+		};
+		return memory;
+	}
+
+	private async persistPollMemory(
+		puuid: string,
+		memory: PlayerPollMemory,
+	): Promise<void> {
+		if (!this.temporaryState) {
+			return;
+		}
+		const payload: PersistedPollMemory = {
+			lastMatchId: memory.lastMatchId,
+			mostRecentEnded: memory.mostRecentEnded,
+			currentRank: memory.currentRank,
+		};
+		await this.temporaryState.set(pollMemoryRedisKey(puuid), payload);
+	}
+
+	private async persistSnapshot(state: RiotPlayerPollState): Promise<void> {
+		if (!this.temporaryState) {
+			return;
+		}
+		await this.temporaryState.set(snapshotRedisKey(state.puuid), state);
+	}
+
+	private async readLolViewCache(puuid: string): Promise<RiotLolView | null> {
+		const local = this.lolViewCache.get(puuid);
+		if (local) {
+			if (local.expiresAt > this.now()) {
+				return local.value;
+			}
+			this.lolViewCache.delete(puuid);
+		}
+		if (!this.temporaryState) {
+			return null;
+		}
+		const redisKey = lolViewRedisKey(puuid);
+		const remote = await this.temporaryState.get<unknown>(redisKey);
+		if (remote === null) {
+			return null;
+		}
+		if (
+			typeof remote !== "object" ||
+			remote === null ||
+			typeof (remote as LolViewCacheEntry).expiresAt !== "number" ||
+			!("value" in remote) ||
+			(remote as LolViewCacheEntry).expiresAt <= this.now()
+		) {
+			await this.temporaryState.delete(redisKey);
+			return null;
+		}
+		const entry = remote as LolViewCacheEntry;
+		this.lolViewCache.set(puuid, entry);
+		return entry.value;
 	}
 
 	private async listAllMatchIds(
@@ -626,4 +750,42 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 
 function playerLabel(player: RiotPlayerConfig): string {
 	return player.riotId;
+}
+
+function pollMemoryRedisKey(puuid: string): string {
+	return `riot:pollMemory:${puuid}`;
+}
+
+function snapshotRedisKey(puuid: string): string {
+	return `riot:snapshot:${puuid}`;
+}
+
+function lolViewRedisKey(puuid: string): string {
+	return `riot:lolView:${puuid}`;
+}
+
+function isPersistedPollMemory(value: unknown): value is PersistedPollMemory {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	const memory = value as PersistedPollMemory;
+	return (
+		(memory.lastMatchId === null || typeof memory.lastMatchId === "string") &&
+		"mostRecentEnded" in memory &&
+		"currentRank" in memory
+	);
+}
+
+function isPlayerPollState(value: unknown): value is RiotPlayerPollState {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	const state = value as RiotPlayerPollState;
+	return (
+		typeof state.puuid === "string" &&
+		typeof state.username === "string" &&
+		typeof state.gameName === "string" &&
+		typeof state.tagLine === "string" &&
+		typeof state.platform === "string"
+	);
 }

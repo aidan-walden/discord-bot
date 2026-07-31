@@ -1,5 +1,6 @@
 import { describe, expect, mock, test } from "bun:test";
 import type LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
+import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
 import {
 	createLlmProviders,
 	isCredentialFailure,
@@ -8,12 +9,40 @@ import {
 	llmRateLimitNotice,
 } from "./LlmProvider";
 
+function createMemoryStore(): Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+> & {
+	data: Map<string, unknown>;
+} {
+	const data = new Map<string, unknown>();
+	return {
+		data,
+		async get<T>(key: string): Promise<T | null> {
+			if (!data.has(key)) {
+				return null;
+			}
+			return data.get(key) as T;
+		},
+		async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+			if (ttlSeconds !== undefined && ttlSeconds <= 0) {
+				return;
+			}
+			data.set(key, value);
+		},
+		async delete(key: string): Promise<void> {
+			data.delete(key);
+		},
+	};
+}
+
 function createLimiter(
 	options: {
 		defaultLimit?: number;
 		override?: number | null;
 		admins?: string[];
 		now?: () => number;
+		store?: Pick<TemporaryStateRepository, "get" | "set" | "delete">;
 	} = {},
 ) {
 	const get = mock(async () => options.override ?? null);
@@ -24,13 +53,19 @@ function createLimiter(
 		set,
 		remove,
 	} as unknown as LlmUserRateLimitRepository;
+	const store = options.store ?? createMemoryStore();
 	const limiter = new LlmUserRateLimiter(
 		options.defaultLimit ?? 5,
 		repository,
 		(userId) => options.admins?.includes(userId) ?? false,
+		store,
 		options.now,
 	);
-	return { get, limiter, remove, set };
+	return { get, limiter, remove, set, store };
+}
+
+function req(userId = "user-1"): { userId: string; requestId: string } {
+	return { userId, requestId: crypto.randomUUID() };
 }
 
 describe("isCredentialFailure", () => {
@@ -97,21 +132,21 @@ describe("LlmUserRateLimiter", () => {
 	test("limits each user separately", async () => {
 		const { limiter } = createLimiter({ defaultLimit: 1 });
 
-		await limiter.assertAllowed({ userId: "user-1", requestId: Symbol() });
-		await limiter.assertAllowed({ userId: "user-2", requestId: Symbol() });
-		await expect(
-			limiter.assertAllowed({ userId: "user-1", requestId: Symbol() }),
-		).rejects.toBeInstanceOf(LlmUserRateLimitError);
+		await limiter.assertAllowed(req("user-1"));
+		await limiter.assertAllowed(req("user-2"));
+		await expect(limiter.assertAllowed(req("user-1"))).rejects.toBeInstanceOf(
+			LlmUserRateLimitError,
+		);
 	});
 
 	test("reports when the oldest request leaves the window", async () => {
 		let now = 1_000;
 		const { limiter } = createLimiter({ defaultLimit: 1, now: () => now });
 
-		await limiter.assertAllowed({ userId: "user-1", requestId: Symbol() });
+		await limiter.assertAllowed(req("user-1"));
 		now += 5_000;
 		const error = await limiter
-			.assertAllowed({ userId: "user-1", requestId: Symbol() })
+			.assertAllowed(req("user-1"))
 			.catch((e: unknown) => e as LlmUserRateLimitError);
 
 		expect(error).toBeInstanceOf(LlmUserRateLimitError);
@@ -130,27 +165,27 @@ describe("LlmUserRateLimiter", () => {
 			now: () => now,
 		});
 
-		await limiter.assertAllowed({ userId: "user-1", requestId: Symbol() });
+		await limiter.assertAllowed(req("user-1"));
 		now = 60 * 60 * 1000;
-		await limiter.assertAllowed({ userId: "user-1", requestId: Symbol() });
+		await limiter.assertAllowed(req("user-1"));
 	});
 
 	test("counts one request context once across provider failover", async () => {
 		const { limiter } = createLimiter({ defaultLimit: 1 });
-		const request = { userId: "user-1", requestId: Symbol() };
+		const request = req("user-1");
 
 		await limiter.assertAllowed(request);
 		await limiter.assertAllowed(request);
-		await expect(
-			limiter.assertAllowed({ userId: "user-1", requestId: Symbol() }),
-		).rejects.toBeInstanceOf(LlmUserRateLimitError);
+		await expect(limiter.assertAllowed(req("user-1"))).rejects.toBeInstanceOf(
+			LlmUserRateLimitError,
+		);
 	});
 
 	test("counts concurrent requests from one user", async () => {
 		const { limiter } = createLimiter({ defaultLimit: 2 });
 		const attempts = Array.from({ length: 4 }, () =>
 			limiter
-				.assertAllowed({ userId: "user-1", requestId: Symbol() })
+				.assertAllowed(req("user-1"))
 				.then(() => "allowed" as const)
 				.catch(() => "rejected" as const),
 		);
@@ -161,15 +196,12 @@ describe("LlmUserRateLimiter", () => {
 
 	test("uses positive and unlimited overrides", async () => {
 		const limited = createLimiter({ defaultLimit: 1, override: 2 }).limiter;
-		await limited.assertAllowed({ userId: "user-1", requestId: Symbol() });
-		await limited.assertAllowed({ userId: "user-1", requestId: Symbol() });
+		await limited.assertAllowed(req("user-1"));
+		await limited.assertAllowed(req("user-1"));
 
 		const unlimited = createLimiter({ override: -1 }).limiter;
 		for (let index = 0; index < 10; index += 1) {
-			await unlimited.assertAllowed({
-				userId: "user-1",
-				requestId: Symbol(),
-			});
+			await unlimited.assertAllowed(req("user-1"));
 		}
 	});
 
@@ -179,8 +211,8 @@ describe("LlmUserRateLimiter", () => {
 			admins: ["admin-1"],
 		});
 
-		await limiter.assertAllowed({ userId: "admin-1", requestId: Symbol() });
-		await limiter.assertAllowed({ userId: "admin-1", requestId: Symbol() });
+		await limiter.assertAllowed(req("admin-1"));
+		await limiter.assertAllowed(req("admin-1"));
 
 		expect(get).not.toHaveBeenCalled();
 	});
@@ -210,8 +242,7 @@ describe("LlmUserRateLimiter", () => {
 
 	test("caches the override and re-reads it after setOverride", async () => {
 		const { get, limiter } = createLimiter({ defaultLimit: 5 });
-		const allow = () =>
-			limiter.assertAllowed({ userId: "user-1", requestId: Symbol() });
+		const allow = () => limiter.assertAllowed(req("user-1"));
 
 		await allow();
 		await allow();
@@ -239,18 +270,10 @@ describe("LlmUserRateLimiter", () => {
 		).client = { chat: { completions: { create } } };
 
 		await expect(
-			providers[0]?.complete(
-				{ userId: "user-1", requestId: Symbol() },
-				"s",
-				[],
-			),
+			providers[0]?.complete(req("user-1"), "s", []),
 		).rejects.toThrow("provider down");
 		await expect(
-			providers[0]?.complete(
-				{ userId: "user-1", requestId: Symbol() },
-				"s",
-				[],
-			),
+			providers[0]?.complete(req("user-1"), "s", []),
 		).rejects.toThrow("provider down");
 		expect(create).toHaveBeenCalledTimes(2);
 	});
@@ -271,18 +294,53 @@ describe("LlmUserRateLimiter", () => {
 			}
 		).client = { chat: { completions: { create } } };
 
-		await providers[0]?.complete(
-			{ userId: "user-1", requestId: Symbol() },
-			"system",
-			[],
-		);
+		await providers[0]?.complete(req("user-1"), "system", []);
 		await expect(
-			providers[0]?.complete(
-				{ userId: "user-1", requestId: Symbol() },
-				"system",
-				[],
-			),
+			providers[0]?.complete(req("user-1"), "system", []),
 		).rejects.toBeInstanceOf(LlmUserRateLimitError);
 		expect(create).toHaveBeenCalledTimes(1);
+	});
+
+	test("restores rolling quota from shared temporary state after restart", async () => {
+		const store = createMemoryStore();
+		const first = createLimiter({ defaultLimit: 1, store }).limiter;
+		await first.assertAllowed(req("user-1"));
+
+		const second = createLimiter({ defaultLimit: 1, store }).limiter;
+		await expect(second.assertAllowed(req("user-1"))).rejects.toBeInstanceOf(
+			LlmUserRateLimitError,
+		);
+	});
+
+	test("refund after failure is visible to a restarted limiter on the same store", async () => {
+		const store = createMemoryStore();
+		const first = createLimiter({ defaultLimit: 1, store }).limiter;
+		const providers = createLlmProviders(
+			{ OPENAI_API_TOKEN: "sk-openai", OPENAI_MODEL: "gpt-test" },
+			{},
+			first,
+		);
+		const create = mock(async () => {
+			throw new Error("provider down");
+		});
+		(
+			providers[0] as unknown as {
+				client: { chat: { completions: { create: typeof create } } };
+			}
+		).client = { chat: { completions: { create } } };
+
+		await expect(
+			providers[0]?.complete(req("user-1"), "s", []),
+		).rejects.toThrow("provider down");
+
+		const second = createLimiter({ defaultLimit: 1, store }).limiter;
+		await second.assertAllowed(req("user-1"));
+	});
+
+	test("discards malformed temporary state entries", async () => {
+		const store = createMemoryStore();
+		store.data.set("llm:rate-limit:user-1", "not-an-array");
+		const { limiter } = createLimiter({ defaultLimit: 1, store });
+		await limiter.assertAllowed(req("user-1"));
 	});
 });

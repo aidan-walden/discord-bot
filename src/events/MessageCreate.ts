@@ -31,7 +31,7 @@ export default class MessageCreate implements BotEvent {
 		}
 
 		if (message.channel.archived || message.channel.locked) {
-			bot.chatSessions.closeSession(session);
+			await bot.chatSessions.closeSession(session);
 			return;
 		}
 
@@ -45,7 +45,7 @@ export default class MessageCreate implements BotEvent {
 		}
 
 		if (await bot.permissions.isGptUserBanned(message.author.id)) {
-			bot.chatSessions.closeSession(session);
+			await bot.chatSessions.closeSession(session);
 			await message.reply("You're banned from using the AI assistant.");
 			return;
 		}

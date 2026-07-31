@@ -1,3 +1,4 @@
+import type { TemporaryStateRepository } from "../../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "../ExternalApiCredentialStatus";
 import {
 	ACCOUNT_CACHE_TTL_MS,
@@ -19,6 +20,11 @@ import type {
 	RiotSummoner,
 } from "./types";
 import { RiotGamesError } from "./types";
+
+export type TemporaryStateStore = Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+>;
 
 interface CacheEntry<T> {
 	expiresAt: number;
@@ -78,11 +84,49 @@ function defaultSleep(ms: number): Promise<void> {
 	return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function remainingTtlSeconds(expiresAt: number, now: number): number {
+	return Math.max(1, Math.ceil((expiresAt - now) / 1000));
+}
+
+function isCacheEntry(value: unknown): value is CacheEntry<unknown> {
+	return (
+		typeof value === "object" &&
+		value !== null &&
+		typeof (value as CacheEntry<unknown>).expiresAt === "number" &&
+		"value" in value
+	);
+}
+
+function isRateBucket(value: unknown, now: number): value is RateBucket {
+	if (typeof value !== "object" || value === null) {
+		return false;
+	}
+	const bucket = value as Record<string, unknown>;
+	const { limit, windowMs, count, windowStartMs } = bucket;
+	return (
+		typeof limit === "number" &&
+		Number.isFinite(limit) &&
+		limit > 0 &&
+		typeof windowMs === "number" &&
+		Number.isFinite(windowMs) &&
+		windowMs > 0 &&
+		typeof count === "number" &&
+		Number.isFinite(count) &&
+		Number.isInteger(count) &&
+		count >= 0 &&
+		typeof windowStartMs === "number" &&
+		Number.isFinite(windowStartMs) &&
+		windowStartMs >= 0 &&
+		windowStartMs <= now
+	);
+}
+
 export default class RiotApiClient {
 	private readonly apiKey: string | null;
 	private readonly fetcher: Fetcher;
 	private readonly sleep: (ms: number) => Promise<void>;
 	private readonly now: () => number;
+	private readonly temporaryState?: TemporaryStateStore;
 	private readonly accountCache = new Map<string, CacheEntry<RiotAccount>>();
 	private readonly matchCache = new Map<string, CacheEntry<RiotMatch>>();
 	private readonly summonerCache = new Map<string, CacheEntry<RiotSummoner>>();
@@ -92,6 +136,9 @@ export default class RiotApiClient {
 	>();
 	/** host → bucketKey → state */
 	private readonly rateBuckets = new Map<string, Map<string, RateBucket>>();
+	private readonly rateBucketsLoaded = new Set<string>();
+	// ponytail: one process; chain serializes bucket mutate+persist
+	private rateLock: Promise<void> = Promise.resolve();
 
 	constructor(
 		apiKey: string | null,
@@ -102,13 +149,30 @@ export default class RiotApiClient {
 		this.fetcher = options.fetch ?? fetch;
 		this.sleep = options.sleep ?? defaultSleep;
 		this.now = options.now ?? Date.now;
+		this.temporaryState = options.temporaryState;
 	}
 
 	isAvailable(): boolean {
 		return this.apiKey !== null;
 	}
 
-	clearCache(): void {
+	async clearCache(): Promise<void> {
+		const deletes: Promise<void>[] = [];
+		if (this.temporaryState) {
+			for (const key of this.accountCache.keys()) {
+				deletes.push(this.temporaryState.delete(accountRedisKey(key)));
+			}
+			for (const key of this.matchCache.keys()) {
+				deletes.push(this.temporaryState.delete(matchRedisKey(key)));
+			}
+			for (const key of this.summonerCache.keys()) {
+				deletes.push(this.temporaryState.delete(summonerRedisKey(key)));
+			}
+			for (const key of this.leagueCache.keys()) {
+				deletes.push(this.temporaryState.delete(leagueRedisKey(key)));
+			}
+		}
+		await Promise.all(deletes);
 		this.accountCache.clear();
 		this.matchCache.clear();
 		this.summonerCache.clear();
@@ -124,7 +188,11 @@ export default class RiotApiClient {
 			return null;
 		}
 		const cacheKey = `${region}:id:${gameName.toLowerCase()}:${tagLine.toLowerCase()}`;
-		const cached = this.getCached(this.accountCache, cacheKey);
+		const cached = await this.getCached(
+			this.accountCache,
+			cacheKey,
+			accountRedisKey(cacheKey),
+		);
 		if (cached) {
 			return cached;
 		}
@@ -132,7 +200,7 @@ export default class RiotApiClient {
 		const path = `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
 		try {
 			const account = await this.request<RiotAccount>(region, path);
-			this.cacheAccount(region, account, cacheKey);
+			await this.cacheAccount(region, account, cacheKey);
 			return account;
 		} catch (error) {
 			if (error instanceof RiotGamesError && error.status === 404) {
@@ -150,7 +218,11 @@ export default class RiotApiClient {
 			return null;
 		}
 		const cacheKey = `${region}:puuid:${puuid}`;
-		const cached = this.getCached(this.accountCache, cacheKey);
+		const cached = await this.getCached(
+			this.accountCache,
+			cacheKey,
+			accountRedisKey(cacheKey),
+		);
 		if (cached) {
 			return cached;
 		}
@@ -158,7 +230,7 @@ export default class RiotApiClient {
 		const path = `/riot/account/v1/accounts/by-puuid/${encodeURIComponent(puuid)}`;
 		try {
 			const account = await this.request<RiotAccount>(region, path);
-			this.cacheAccount(region, account, cacheKey);
+			await this.cacheAccount(region, account, cacheKey);
 			return account;
 		} catch (error) {
 			if (error instanceof RiotGamesError && error.status === 404) {
@@ -201,7 +273,11 @@ export default class RiotApiClient {
 			return null;
 		}
 		const cacheKey = `${region}:${matchId}`;
-		const cached = this.getCached(this.matchCache, cacheKey);
+		const cached = await this.getCached(
+			this.matchCache,
+			cacheKey,
+			matchRedisKey(cacheKey),
+		);
 		if (cached) {
 			return cached;
 		}
@@ -209,10 +285,12 @@ export default class RiotApiClient {
 		const path = `/lol/match/v5/matches/${encodeURIComponent(matchId)}`;
 		try {
 			const match = await this.request<RiotMatch>(region, path);
-			this.matchCache.set(cacheKey, {
+			const entry = {
 				expiresAt: this.now() + MATCH_CACHE_TTL_MS,
 				value: match,
-			});
+			};
+			this.matchCache.set(cacheKey, entry);
+			await this.writeCacheEntry(matchRedisKey(cacheKey), entry);
 			return match;
 		} catch (error) {
 			if (error instanceof RiotGamesError && error.status === 404) {
@@ -230,17 +308,23 @@ export default class RiotApiClient {
 			return [];
 		}
 		const cacheKey = `${platform}:${puuid}`;
-		const cached = this.getCached(this.leagueCache, cacheKey);
+		const cached = await this.getCached(
+			this.leagueCache,
+			cacheKey,
+			leagueRedisKey(cacheKey),
+		);
 		if (cached) {
 			return cached;
 		}
 
 		const path = `/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`;
 		const entries = await this.request<RiotLeagueEntry[]>(platform, path);
-		this.leagueCache.set(cacheKey, {
+		const entry = {
 			expiresAt: this.now() + LEAGUE_CACHE_TTL_MS,
 			value: entries,
-		});
+		};
+		this.leagueCache.set(cacheKey, entry);
+		await this.writeCacheEntry(leagueRedisKey(cacheKey), entry);
 		return entries;
 	}
 
@@ -270,7 +354,11 @@ export default class RiotApiClient {
 			return null;
 		}
 		const cacheKey = `${platform}:${puuid}`;
-		const cached = this.getCached(this.summonerCache, cacheKey);
+		const cached = await this.getCached(
+			this.summonerCache,
+			cacheKey,
+			summonerRedisKey(cacheKey),
+		);
 		if (cached) {
 			return cached;
 		}
@@ -287,10 +375,12 @@ export default class RiotApiClient {
 				profileIconId: raw.profileIconId,
 				summonerLevel: raw.summonerLevel,
 			};
-			this.summonerCache.set(cacheKey, {
+			const entry = {
 				expiresAt: this.now() + SUMMONER_CACHE_TTL_MS,
 				value: summoner,
-			});
+			};
+			this.summonerCache.set(cacheKey, entry);
+			await this.writeCacheEntry(summonerRedisKey(cacheKey), entry);
 			return summoner;
 		} catch (error) {
 			if (error instanceof RiotGamesError && error.status === 404) {
@@ -325,36 +415,70 @@ export default class RiotApiClient {
 		return this.fetchWithRateLimit<T>(host, url.toString());
 	}
 
-	private cacheAccount(
+	private async cacheAccount(
 		region: RiotRegion,
 		account: RiotAccount,
 		primaryKey: string,
-	): void {
+	): Promise<void> {
 		const entry = {
 			expiresAt: this.now() + ACCOUNT_CACHE_TTL_MS,
 			value: account,
 		};
-		this.accountCache.set(primaryKey, entry);
-		this.accountCache.set(`${region}:puuid:${account.puuid}`, entry);
-		this.accountCache.set(
+		const keys = [
+			primaryKey,
+			`${region}:puuid:${account.puuid}`,
 			`${region}:id:${account.gameName.toLowerCase()}:${account.tagLine.toLowerCase()}`,
-			entry,
+		];
+		for (const key of keys) {
+			this.accountCache.set(key, entry);
+		}
+		await Promise.all(
+			keys.map((key) => this.writeCacheEntry(accountRedisKey(key), entry)),
 		);
 	}
 
-	private getCached<T>(
+	private async getCached<T>(
 		cache: Map<string, CacheEntry<T>>,
 		key: string,
-	): T | undefined {
+		redisKey: string,
+	): Promise<T | undefined> {
 		const entry = cache.get(key);
-		if (!entry) {
+		if (entry) {
+			if (entry.expiresAt <= this.now()) {
+				cache.delete(key);
+				await this.temporaryState?.delete(redisKey);
+				return undefined;
+			}
+			return entry.value;
+		}
+		if (!this.temporaryState) {
 			return undefined;
 		}
-		if (entry.expiresAt <= this.now()) {
-			cache.delete(key);
+		const remote = await this.temporaryState.get<unknown>(redisKey);
+		if (remote === null) {
 			return undefined;
 		}
-		return entry.value;
+		if (!isCacheEntry(remote) || remote.expiresAt <= this.now()) {
+			await this.temporaryState.delete(redisKey);
+			return undefined;
+		}
+		const hydrated = remote as CacheEntry<T>;
+		cache.set(key, hydrated);
+		return hydrated.value;
+	}
+
+	private async writeCacheEntry<T>(
+		redisKey: string,
+		entry: CacheEntry<T>,
+	): Promise<void> {
+		if (!this.temporaryState) {
+			return;
+		}
+		await this.temporaryState.set(
+			redisKey,
+			entry,
+			remainingTtlSeconds(entry.expiresAt, this.now()),
+		);
 	}
 
 	private async fetchWithRateLimit<T>(
@@ -368,7 +492,7 @@ export default class RiotApiClient {
 			headers: { "X-Riot-Token": this.apiKey as string },
 		});
 
-		this.recordRateLimitHeaders(host, response.headers);
+		await this.recordRateLimitHeaders(host, response.headers);
 
 		if (response.status === 401 || response.status === 403) {
 			this.credentialReporter?.recordCredentialRejection("riot");
@@ -402,11 +526,60 @@ export default class RiotApiClient {
 		return (await response.json()) as T;
 	}
 
-	private ensureDefaultBuckets(host: string): Map<string, RateBucket> {
+	private withRateLock<T>(fn: () => Promise<T>): Promise<T> {
+		const run = this.rateLock.then(fn, fn);
+		this.rateLock = run.then(
+			() => undefined,
+			() => undefined,
+		);
+		return run;
+	}
+
+	private async loadRateBuckets(
+		host: string,
+	): Promise<Map<string, RateBucket>> {
 		let buckets = this.rateBuckets.get(host);
 		if (!buckets) {
 			buckets = new Map();
 			this.rateBuckets.set(host, buckets);
+		}
+		if (!this.rateBucketsLoaded.has(host)) {
+			this.rateBucketsLoaded.add(host);
+			if (this.temporaryState) {
+				const stored = await this.temporaryState.get<unknown>(
+					rateRedisKey(host),
+				);
+				if (
+					stored !== null &&
+					typeof stored === "object" &&
+					!Array.isArray(stored)
+				) {
+					const now = this.now();
+					const entries = Object.entries(stored as Record<string, unknown>);
+					let valid = true;
+					const hydrated: Array<[string, RateBucket]> = [];
+					for (const [key, value] of entries) {
+						if (key.length === 0 || !isRateBucket(value, now)) {
+							valid = false;
+							break;
+						}
+						if (now - value.windowStartMs >= value.windowMs) {
+							value.count = 0;
+							value.windowStartMs = now;
+						}
+						hydrated.push([key, value]);
+					}
+					if (!valid) {
+						await this.temporaryState.delete(rateRedisKey(host));
+					} else {
+						for (const [key, value] of hydrated) {
+							buckets.set(key, value);
+						}
+					}
+				} else if (stored !== null) {
+					await this.temporaryState.delete(rateRedisKey(host));
+				}
+			}
 		}
 		const now = this.now();
 		for (const def of DEFAULT_APP_RATE_LIMITS) {
@@ -423,34 +596,57 @@ export default class RiotApiClient {
 		return buckets;
 	}
 
-	private async acquireRateLimit(host: string): Promise<void> {
-		const buckets = this.ensureDefaultBuckets(host);
+	private async persistRateBuckets(host: string): Promise<void> {
+		if (!this.temporaryState) {
+			return;
+		}
+		const buckets = this.rateBuckets.get(host);
+		if (!buckets) {
+			return;
+		}
+		const payload: Record<string, RateBucket> = {};
+		for (const [key, bucket] of buckets) {
+			payload[key] = bucket;
+		}
+		await this.temporaryState.set(rateRedisKey(host), payload);
+	}
 
-		for (;;) {
-			const now = this.now();
-			let waitMs = 0;
-			for (const bucket of buckets.values()) {
-				const elapsed = now - bucket.windowStartMs;
-				if (elapsed >= bucket.windowMs) {
-					bucket.count = 0;
-					bucket.windowStartMs = now;
-					continue;
-				}
-				if (bucket.count >= bucket.limit) {
-					waitMs = Math.max(waitMs, bucket.windowMs - elapsed);
-				}
-			}
-			if (waitMs <= 0) {
+	private async acquireRateLimit(host: string): Promise<void> {
+		while (true) {
+			const waitMs = await this.withRateLock(async () => {
+				const buckets = await this.loadRateBuckets(host);
+				const now = this.now();
+				let wait = 0;
 				for (const bucket of buckets.values()) {
-					bucket.count += 1;
+					const elapsed = now - bucket.windowStartMs;
+					if (elapsed >= bucket.windowMs) {
+						bucket.count = 0;
+						bucket.windowStartMs = now;
+						continue;
+					}
+					if (bucket.count >= bucket.limit) {
+						wait = Math.max(wait, bucket.windowMs - elapsed);
+					}
 				}
+				if (wait <= 0) {
+					for (const bucket of buckets.values()) {
+						bucket.count += 1;
+					}
+					await this.persistRateBuckets(host);
+				}
+				return wait;
+			});
+			if (waitMs <= 0) {
 				return;
 			}
 			await this.sleep(waitMs);
 		}
 	}
 
-	private recordRateLimitHeaders(host: string, headers: Headers): void {
+	private async recordRateLimitHeaders(
+		host: string,
+		headers: Headers,
+	): Promise<void> {
 		const limits = [
 			...parseRateLimitPairs(headers.get("X-App-Rate-Limit")).map(
 				(pair, index) => ({
@@ -478,30 +674,53 @@ export default class RiotApiClient {
 			return;
 		}
 
-		const buckets = this.ensureDefaultBuckets(host);
-		const now = this.now();
-		for (const entry of limits) {
-			if (entry.count === undefined) {
-				continue;
+		await this.withRateLock(async () => {
+			const buckets = await this.loadRateBuckets(host);
+			const now = this.now();
+			for (const entry of limits) {
+				if (entry.count === undefined) {
+					continue;
+				}
+				const existing = buckets.get(entry.key);
+				if (
+					!existing ||
+					existing.limit !== entry.limit ||
+					existing.windowMs !== entry.windowMs ||
+					now - existing.windowStartMs >= entry.windowMs
+				) {
+					buckets.set(entry.key, {
+						limit: entry.limit,
+						windowMs: entry.windowMs,
+						count: entry.count,
+						windowStartMs: now,
+					});
+				} else {
+					// Prefer the higher count so local reserves are not wiped by a lagging header.
+					existing.count = Math.max(existing.count, entry.count);
+					existing.limit = entry.limit;
+				}
 			}
-			const existing = buckets.get(entry.key);
-			if (
-				!existing ||
-				existing.limit !== entry.limit ||
-				existing.windowMs !== entry.windowMs ||
-				now - existing.windowStartMs >= entry.windowMs
-			) {
-				buckets.set(entry.key, {
-					limit: entry.limit,
-					windowMs: entry.windowMs,
-					count: entry.count,
-					windowStartMs: now,
-				});
-			} else {
-				// Prefer the higher count so local reserves are not wiped by a lagging header.
-				existing.count = Math.max(existing.count, entry.count);
-				existing.limit = entry.limit;
-			}
-		}
+			await this.persistRateBuckets(host);
+		});
 	}
+}
+
+function accountRedisKey(cacheKey: string): string {
+	return `riot:account:${cacheKey}`;
+}
+
+function matchRedisKey(cacheKey: string): string {
+	return `riot:match:${cacheKey}`;
+}
+
+function summonerRedisKey(cacheKey: string): string {
+	return `riot:summoner:${cacheKey}`;
+}
+
+function leagueRedisKey(cacheKey: string): string {
+	return `riot:league:${cacheKey}`;
+}
+
+function rateRedisKey(host: string): string {
+	return `riot:rate:${host}`;
 }

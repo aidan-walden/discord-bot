@@ -1,4 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
+import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
 import RiotGamesService, {
 	platformToRegion,
 	RiotGamesError,
@@ -19,6 +20,37 @@ function jsonResponse(
 			...init.headers,
 		},
 	});
+}
+
+/** In-memory TemporaryStateRepository surface for restart tests. */
+function fakeTemporaryStore(): Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+> {
+	const data = new Map<string, string>();
+	return {
+		async get<T>(key: string): Promise<T | null> {
+			const raw = data.get(key);
+			if (raw === undefined) {
+				return null;
+			}
+			try {
+				return JSON.parse(raw) as T;
+			} catch {
+				data.delete(key);
+				return null;
+			}
+		},
+		async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+			if (ttlSeconds !== undefined && ttlSeconds <= 0) {
+				return;
+			}
+			data.set(key, JSON.stringify(value));
+		},
+		async delete(key: string): Promise<void> {
+			data.delete(key);
+		},
+	};
 }
 
 const PLAYER = { riotId: "Hide#NA1", platform: "na1" as const };
@@ -294,12 +326,12 @@ describe("RiotGamesService", () => {
 		});
 
 		for (let i = 0; i < 20; i++) {
-			service.clearCache();
+			await service.clearCache();
 			await service.getAccountByRiotId("americas", `a${i}`, "b");
 		}
 		expect(sleeps).toEqual([]);
 
-		service.clearCache();
+		await service.clearCache();
 		await service.getAccountByRiotId("americas", "a20", "b");
 		expect(sleeps.length).toBe(1);
 		expect(sleeps[0]).toBeGreaterThan(0);
@@ -481,7 +513,7 @@ describe("RiotGamesService", () => {
 			console.error = originalError;
 		}
 		expect(errorSpy).toHaveBeenCalled();
-		expect(service.getPollState("p1")).toBeNull();
+		expect(await service.getPollState("p1")).toBeNull();
 	});
 
 	test("pollOnce resolves riotId via by-riot-id then uses returned puuid", async () => {
@@ -515,7 +547,7 @@ describe("RiotGamesService", () => {
 		expect(urls.some((u) => u.includes("/active-games/by-summoner/p1"))).toBe(
 			true,
 		);
-		expect(service.getPollState("p1")?.gameName).toBe("Hide");
+		expect((await service.getPollState("p1"))?.gameName).toBe("Hide");
 	});
 
 	test("startPoller needs a key and an account source", () => {
@@ -604,7 +636,7 @@ describe("RiotGamesService", () => {
 		await service.pollOnce();
 
 		expect(updates).toHaveLength(1);
-		expect(service.getPollState("p1")).toEqual(updates[0] ?? null);
+		expect(await service.getPollState("p1")).toEqual(updates[0] ?? null);
 		expect(service.getAllPollStates()).toEqual(updates);
 		expect(recordIfChanged).toHaveBeenCalledWith(
 			"p1",
@@ -1063,5 +1095,351 @@ describe("RiotGamesService", () => {
 			7200,
 			new Date(1_700_100_000_000),
 		);
+	});
+
+	test("restart shares API cache via temporary state", async () => {
+		const store = fakeTemporaryStore();
+		let now = 1_000;
+		const match = {
+			metadata: { matchId: "NA1_1", participants: ["p"] },
+			info: {
+				gameCreation: 1,
+				gameDuration: 2,
+				queueId: 420,
+				participants: [],
+			},
+		};
+		const fetcher = mock(async () => jsonResponse(match));
+		const a = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+			temporaryState: store,
+		});
+		const b = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+			temporaryState: store,
+		});
+
+		expect(await a.getMatch("americas", "NA1_1")).toEqual(match);
+		expect(await b.getMatch("americas", "NA1_1")).toEqual(match);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+
+		now += 60 * 60_000 + 1;
+		expect(await b.getMatch("americas", "NA1_1")).toEqual(match);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	test("restart restores rate buckets and does not burst", async () => {
+		const store = fakeTemporaryStore();
+		const sleepsA: number[] = [];
+		const sleepsB: number[] = [];
+		let now = 10_000;
+		const fetcher = mock(async () => {
+			if (fetcher.mock.calls.length === 1) {
+				return jsonResponse(
+					{ puuid: "p", gameName: "a", tagLine: "b" },
+					{
+						headers: {
+							"X-App-Rate-Limit": "1:10",
+							"X-App-Rate-Limit-Count": "1:10",
+						},
+					},
+				);
+			}
+			return jsonResponse({
+				metadata: { matchId: "NA1_1", participants: [] },
+				info: {
+					gameCreation: 1,
+					gameDuration: 1,
+					queueId: 420,
+					participants: [],
+				},
+			});
+		});
+		const a = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+			temporaryState: store,
+			sleep: async (ms) => {
+				sleepsA.push(ms);
+				now += ms;
+			},
+		});
+		await a.getAccountByRiotId("americas", "a", "b");
+
+		const b = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			now: () => now,
+			temporaryState: store,
+			sleep: async (ms) => {
+				sleepsB.push(ms);
+				now += ms;
+			},
+		});
+		await b.getMatch("americas", "NA1_1");
+
+		expect(sleepsA).toEqual([]);
+		expect(sleepsB.length).toBe(1);
+		expect(sleepsB[0]).toBeGreaterThan(0);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	test("discards malformed rate-bucket Redis state and still rate-limits", async () => {
+		const cases: Array<{ label: string; bucket: Record<string, unknown> }> = [
+			{
+				label: "negative limit",
+				bucket: {
+					limit: -1,
+					windowMs: 1000,
+					count: 0,
+					windowStartMs: 10_000,
+				},
+			},
+			{
+				label: "zero windowMs",
+				bucket: {
+					limit: 20,
+					windowMs: 0,
+					count: 0,
+					windowStartMs: 10_000,
+				},
+			},
+			{
+				label: "negative count",
+				bucket: {
+					limit: 20,
+					windowMs: 1000,
+					count: -5,
+					windowStartMs: 10_000,
+				},
+			},
+			{
+				label: "non-integer count",
+				bucket: {
+					limit: 20,
+					windowMs: 1000,
+					count: 1.5,
+					windowStartMs: 10_000,
+				},
+			},
+			{
+				label: "future windowStartMs",
+				bucket: {
+					limit: 20,
+					windowMs: 1000,
+					count: 0,
+					windowStartMs: 99_999,
+				},
+			},
+			{
+				label: "NaN limit",
+				bucket: {
+					limit: Number.NaN,
+					windowMs: 1000,
+					count: 0,
+					windowStartMs: 10_000,
+				},
+			},
+		];
+
+		for (const { bucket } of cases) {
+			const data = new Map<string, string>();
+			const rateKey = "riot:rate:americas.api.riotgames.com";
+			data.set(
+				rateKey,
+				JSON.stringify({
+					"app:1000": bucket,
+				}),
+			);
+			const store: Pick<TemporaryStateRepository, "get" | "set" | "delete"> = {
+				async get<T>(key: string): Promise<T | null> {
+					const raw = data.get(key);
+					if (raw === undefined) {
+						return null;
+					}
+					try {
+						return JSON.parse(raw) as T;
+					} catch {
+						data.delete(key);
+						return null;
+					}
+				},
+				async set(
+					key: string,
+					value: unknown,
+					ttlSeconds?: number,
+				): Promise<void> {
+					if (ttlSeconds !== undefined && ttlSeconds <= 0) {
+						return;
+					}
+					data.set(key, JSON.stringify(value));
+				},
+				async delete(key: string): Promise<void> {
+					data.delete(key);
+				},
+			};
+
+			let now = 10_000;
+			const sleeps: number[] = [];
+			const fetcher = mock(async () =>
+				jsonResponse({ puuid: "p", gameName: "a", tagLine: "b" }),
+			);
+			const service = new RiotGamesService("key", undefined, {
+				fetch: fetcher,
+				now: () => now,
+				temporaryState: store,
+				sleep: async (ms) => {
+					sleeps.push(ms);
+					now += ms;
+				},
+			});
+
+			// Default app limit is 20/1s; 21st call must wait once bad state is dropped.
+			for (let i = 0; i < 21; i++) {
+				await service.getAccountByRiotId("americas", `a${i}`, "b");
+			}
+
+			expect(data.has(rateKey)).toBe(true);
+			expect(sleeps.length).toBeGreaterThanOrEqual(1);
+			expect(sleeps[0]).toBeGreaterThan(0);
+			// First hydrate deleted the bad key; subsequent persists rewrite clean state.
+			const restored = JSON.parse(data.get(rateKey) as string) as Record<
+				string,
+				{ limit: number; count: number }
+			>;
+			expect(restored["app:1000"]?.limit).toBe(20);
+			expect(restored["app:1000"]?.count).toBeGreaterThan(0);
+		}
+	});
+
+	test("restart restores pollMemory so latest match is not replayed", async () => {
+		const store = fakeTemporaryStore();
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		const match = {
+			metadata: { matchId: "NA1_1", participants: ["p1"] },
+			info: {
+				gameCreation: 1000,
+				gameDuration: 1800,
+				queueId: 420,
+				participants: [participant()],
+			},
+		};
+		const league = [
+			{
+				queueType: "RANKED_SOLO_5x5",
+				tier: "GOLD",
+				rank: "II",
+				leaguePoints: 50,
+				wins: 10,
+				losses: 8,
+			},
+		];
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			if (href.includes("/accounts/by-riot-id/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				return jsonResponse(["NA1_1"]);
+			}
+			if (href.includes("/matches/NA1_1")) {
+				return jsonResponse(match);
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse(league);
+			}
+			return new Response(null, { status: 500 });
+		});
+
+		const a = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [PLAYER],
+			temporaryState: store,
+		});
+		const updatesA: Array<{ mostRecentEnded: { matchId: string } | null }> = [];
+		a.on("update", (state) => {
+			updatesA.push(state);
+		});
+		await a.pollOnce();
+		expect(updatesA[0]?.mostRecentEnded?.matchId).toBe("NA1_1");
+
+		const b = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [PLAYER],
+			temporaryState: store,
+		});
+		const updatesB: Array<{ mostRecentEnded: { matchId: string } | null }> = [];
+		b.on("update", (state) => {
+			updatesB.push(state);
+		});
+		await b.pollOnce();
+		expect(updatesB).toHaveLength(1);
+		expect(updatesB[0]?.mostRecentEnded?.matchId).toBe("NA1_1");
+		// second instance should not re-fetch match detail for the same lastMatchId
+		expect(
+			fetcher.mock.calls.filter((call) =>
+				String(call[0]).includes("/matches/NA1_1"),
+			),
+		).toHaveLength(1);
+	});
+
+	test("restart restores snapshots and lolView cache", async () => {
+		const store = fakeTemporaryStore();
+		const now = 1_000;
+		const account = { puuid: "p1", gameName: "Hide", tagLine: "NA1" };
+		const fetcher = mock(async (url: string | URL | Request) => {
+			const href = String(url);
+			if (href.includes("/accounts/by-riot-id/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/accounts/by-puuid/")) {
+				return jsonResponse(account);
+			}
+			if (href.includes("/active-games/")) {
+				return new Response(null, { status: 404 });
+			}
+			if (href.includes("/ids")) {
+				return jsonResponse([]);
+			}
+			if (href.includes("/league/")) {
+				return jsonResponse([]);
+			}
+			if (href.includes("/summoner/")) {
+				return jsonResponse({
+					puuid: "p1",
+					profileIconId: 1,
+					summonerLevel: 1,
+				});
+			}
+			return new Response(null, { status: 500 });
+		});
+
+		const a = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [PLAYER],
+			now: () => now,
+			temporaryState: store,
+		});
+		await a.pollOnce();
+		const viewA = await a.getLolView("na1", "p1");
+		const callsAfterA = fetcher.mock.calls.length;
+
+		const b = new RiotGamesService("key", undefined, {
+			fetch: fetcher,
+			players: [PLAYER],
+			now: () => now,
+			temporaryState: store,
+		});
+		expect(await b.getPollState("p1")).toMatchObject({
+			puuid: "p1",
+			gameName: "Hide",
+		});
+		const viewB = await b.getLolView("na1", "p1");
+		expect(viewB).toEqual(viewA);
+		expect(fetcher.mock.calls.length).toBe(callsAfterA);
 	});
 });

@@ -64,6 +64,10 @@ export interface SteamConfig {
 	STEAM_API_KEY?: string;
 }
 
+export interface RedisConfig {
+	url: string;
+}
+
 interface AppConfigFile {
 	BOT_TOKEN?: string;
 	BOT_OWNER_ID?: string;
@@ -94,6 +98,9 @@ interface AppConfigFile {
 		}>;
 	};
 	steam?: SteamConfig;
+	redis?: {
+		url?: string;
+	};
 	lavalink?: {
 		nodes?: LavalinkNodeConfig[];
 	};
@@ -116,6 +123,7 @@ export interface AppConfig {
 	imgur: ImgurConfig;
 	riot: RiotConfig;
 	steam: SteamConfig;
+	redis: RedisConfig;
 	lavalink: {
 		nodes: LavalinkNodeConfig[];
 	};
@@ -550,6 +558,13 @@ function validateConfigFile(
 		);
 	}
 
+	const redisUrl = configFile.redis?.url;
+	if (typeof redisUrl !== "string" || redisUrl.trim().length === 0) {
+		throw new Error(
+			"REDIS_URL is not set. Define REDIS_URL in environment or set redis.url in config.yml.",
+		);
+	}
+
 	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
 	const openai = validateOpenAI(configFile.openai);
@@ -588,6 +603,7 @@ function validateConfigFile(
 		imgur,
 		riot,
 		steam,
+		redis: { url: redisUrl },
 		lavalink: {
 			nodes: lavalinkNodes,
 		},
@@ -602,6 +618,11 @@ function getEnvironmentOverrides(): AppConfigFile {
 		if (value !== undefined) {
 			overrides[key] = value;
 		}
+	}
+
+	const redisUrl = process.env.REDIS_URL;
+	if (redisUrl !== undefined) {
+		overrides.redis = { url: redisUrl };
 	}
 
 	for (const [category, keys] of Object.entries(NESTED_ENV_KEYS) as Array<
@@ -657,6 +678,13 @@ function applyEnvironmentOverrides(
 		if (env[key] !== undefined) {
 			next[key] = env[key];
 		}
+	}
+
+	if (env.redis !== undefined) {
+		next.redis = {
+			...next.redis,
+			...env.redis,
+		};
 	}
 
 	for (const category of Object.keys(NESTED_ENV_KEYS) as Array<

@@ -5,7 +5,8 @@
 - Bot framework: `discord.js`.
 - Music: direct `kazagumo` dependency on top of pinned GitHub `shoukaku` plus external Lavalink nodes from `config.yml`.
 - Web/admin surface: Hono served with `Bun.serve`.
-- Persistence: Postgres through `Bun.sql`. Do not add `pg`, `postgres`, or `postgres.js`.
+- Durable persistence: Postgres through Drizzle ORM over `Bun.sql`. Do not add `pg`, `postgres`, or `postgres.js`. Drizzle has no Redis dialect; keep Redis out of Drizzle.
+- Temporary state: Bun-native `RedisClient` via `TemporaryStateRepository` (JSON values, key prefix `discord-bot:v1:`). Non-durable by design: survives bot process crashes/restarts only while Redis stays up; Redis or machine restart loss is accepted. No Redis npm package.
 - Prefer Bun-native file APIs such as `Bun.file(...).text()` / `.json()` for file reads and writes; keep `node:fs` only where Bun does not cover the need well, such as directory traversal.
 
 ## Entry Points
@@ -14,8 +15,8 @@
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
-- Runtime config comes from `config.yml`. Flat env vars override nested YAML paths: `BOT_TOKEN` / `DATABASE_URL` / `BOT_OWNER_ID` (top-level), `OPENAI_API_TOKEN` / `OPENAI_MODEL` → `openai.*`, `ANTHROPIC_API_TOKEN` / `ANTHROPIC_MODEL` → `anthropic.*`, `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` → `spotify.*`, `TIKTOK_SESSION_ID` → `tiktok.*`, `IMGUR_CLIENT_ID` → `imgur.*`, `RIOT_API_KEY` → `riot.RIOT_API_KEY`, `STEAM_API_KEY` → `steam.STEAM_API_KEY`.
-- Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, and at least one Lavalink node.
+- Runtime config comes from `config.yml`. Flat env vars override nested YAML paths: `BOT_TOKEN` / `DATABASE_URL` / `BOT_OWNER_ID` (top-level), `REDIS_URL` → `redis.url`, `OPENAI_API_TOKEN` / `OPENAI_MODEL` → `openai.*`, `ANTHROPIC_API_TOKEN` / `ANTHROPIC_MODEL` → `anthropic.*`, `SPOTIFY_CLIENT_ID` / `SPOTIFY_CLIENT_SECRET` → `spotify.*`, `TIKTOK_SESSION_ID` → `tiktok.*`, `IMGUR_CLIENT_ID` → `imgur.*`, `RIOT_API_KEY` → `riot.RIOT_API_KEY`, `STEAM_API_KEY` → `steam.STEAM_API_KEY`.
+- Required config for normal startup: `BOT_TOKEN`, `BOT_OWNER_ID`, `DATABASE_URL`, `redis.url` (or `REDIS_URL`), and at least one Lavalink node.
 - The AI assistant (`/chatgpt` command) is served by a generic LLM provider layer (`src/services/LlmProvider.ts`) supporting OpenAI and Anthropic. Provider preference is OpenAI then Anthropic — the first with a defined API key is primary, and `ChatSessionService.prompt` fails over to the next provider when the primary rejects credentials (bad key / no balance). OpenAI needs both `OPENAI_API_TOKEN` and `OPENAI_MODEL`; Anthropic needs `ANTHROPIC_API_TOKEN` and defaults to `claude-haiku-4-5` if `ANTHROPIC_MODEL` is unset. `llm.userRequestsPerHour` sets the rolling per-user limit and defaults to 5; admins are exempt, and admin-panel overrides persist in Postgres. Commands stay registered but report unavailable when no provider is configured.
 - `spotify.SPOTIFY_CLIENT_ID` and `spotify.SPOTIFY_CLIENT_SECRET` are optional together; without them the Spotify ↔ Apple Music link converter (`src/events/MusicLinkConvert.ts`) silently stays idle. Apple Music uses the anonymous `node-apple-music` client and needs no credentials.
 - `riot.RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` drive the optional match poller. Solo rank history (max 5 per puuid) is in `riot_rank_history`. Discord ↔ Riot links (`riot_user_links`) power `/lol map` and `/lol view`. HTTP client lives under `src/services/riot/`.
@@ -29,8 +30,8 @@
 
 ## Persistence
 - [`src/database/migrate.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/database/migrate.ts) creates tables on startup; there is no separate migration tool.
-- Current persisted data includes GPT and music bans, LLM user rate-limit overrides, user unboxing balances, deafen sessions, Riot data, guild settings, and Secret Santa draws.
-- Repositories in `src/repositories` accept the shared Drizzle `Database` type and use typed query-builder operations.
+- Durable (Postgres) data includes GPT and music bans, LLM user rate-limit overrides, user unboxing balances, deafen sessions, Riot data, guild settings, and Secret Santa draws.
+- Postgres repositories in `src/repositories` accept the shared Drizzle `Database` type and use typed query-builder operations. Temporary/ephemeral JSON state uses `TemporaryStateRepository` over Bun Redis, not Drizzle.
 
 ## Workflow
 - Run `bun install` after dependency changes to refresh `bun.lock` and `node_modules`.

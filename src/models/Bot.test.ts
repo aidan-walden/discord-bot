@@ -4,6 +4,7 @@ import os from "node:os";
 import path from "node:path";
 import { Config } from "../config";
 import { ProfilePictureValidationError } from "../helpers/profilePicture";
+import type { TemporaryStateRedisClient } from "../repositories/TemporaryStateRepository";
 import Bot from "./Bot";
 import { BotEvents } from "./BotEvents";
 import Holiday from "./Holiday";
@@ -13,12 +14,36 @@ const originalFetch = globalThis.fetch;
 const originalWarn = console.warn;
 const originalError = console.error;
 
+function createFakeRedisClient(): TemporaryStateRedisClient {
+	const store = new Map<string, string>();
+	return {
+		connect: async () => undefined,
+		get: async (key) => store.get(key) ?? null,
+		set: async (key, value) => {
+			store.set(key, value);
+		},
+		send: async (command, args) => {
+			if (command === "SET" && args[0] !== undefined && args[1] !== undefined) {
+				store.set(args[0], args[1]);
+			}
+		},
+		del: async (...keys) => {
+			for (const key of keys) {
+				store.delete(key);
+			}
+		},
+		close: () => undefined,
+	};
+}
+
 function buildYaml(profilePictureBlock: string = "") {
 	const lines = [
 		'BOT_TOKEN: "file-bot-token"',
 		'DATABASE_URL: "postgres://file-db"',
 		'BOT_OWNER_ID: "file-owner"',
 		"ADMIN_USER_IDS: []",
+		"redis:",
+		'  url: "redis://file-redis"',
 		"lavalink:",
 		"  nodes:",
 		'    - name: "file-node"',
@@ -337,7 +362,13 @@ describe("Bot admin permissions", () => {
 	test("treats BOT_OWNER_ID as admin even when ADMIN_USER_IDS is empty", async () => {
 		const filePath = await writeTempConfig(buildYaml());
 		const config = await Config.load(filePath);
-		const bot = new Bot(config);
+		const bot = new Bot(
+			config,
+			false,
+			false,
+			undefined,
+			createFakeRedisClient(),
+		);
 
 		try {
 			expect(bot.permissions.isAdminUser("file-owner")).toBe(true);
@@ -351,7 +382,13 @@ describe("Bot holiday events", () => {
 	test("forwards HolidayProvider changes to the bot event emitter", async () => {
 		const filePath = await writeTempConfig(buildYaml());
 		const config = await Config.load(filePath);
-		const bot = new Bot(config);
+		const bot = new Bot(
+			config,
+			false,
+			false,
+			undefined,
+			createFakeRedisClient(),
+		);
 		const events: Array<Holiday | null> = [];
 
 		try {
@@ -370,7 +407,13 @@ describe("Bot holiday events", () => {
 	test("forwards the initial HolidayProvider start event to registered bot listeners", async () => {
 		const filePath = await writeTempConfig(buildYaml());
 		const config = await Config.load(filePath);
-		const bot = new Bot(config);
+		const bot = new Bot(
+			config,
+			false,
+			false,
+			undefined,
+			createFakeRedisClient(),
+		);
 		const events: Array<Holiday | null> = [];
 
 		try {

@@ -60,7 +60,7 @@ function createBot(options: {
 	return {
 		chatSessions: {
 			getByThreadId: mock(() => options.session),
-			closeSession: mock(() => undefined),
+			closeSession: mock(async () => undefined),
 			isAvailable: mock(() => options.available ?? true),
 			getUnavailableReason: mock(() => "unavailable"),
 			prompt: mock(options.prompt ?? (async () => "response")),

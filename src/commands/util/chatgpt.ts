@@ -124,7 +124,7 @@ export default class ChatGpt implements Command {
 
 			thread = activeChannel;
 			if (!session) {
-				session = interaction.client.bot.chatSessions.createSession(
+				session = await interaction.client.bot.chatSessions.createSession(
 					interaction.user.id,
 					activeChannel.parentId ?? activeChannel.id,
 					activeChannel.id,
@@ -134,7 +134,7 @@ export default class ChatGpt implements Command {
 			if (session) {
 				thread = await fetchManagedThread(interaction, session.threadChannelId);
 				if (!thread) {
-					interaction.client.bot.chatSessions.closeSession(session);
+					await interaction.client.bot.chatSessions.closeSession(session);
 					session = undefined;
 				}
 			}
@@ -148,7 +148,7 @@ export default class ChatGpt implements Command {
 					autoArchiveDuration: ThreadAutoArchiveDuration.OneHour,
 					reason: `AI assistant session for ${interaction.user.tag}`,
 				});
-				session = interaction.client.bot.chatSessions.createSession(
+				session = await interaction.client.bot.chatSessions.createSession(
 					interaction.user.id,
 					activeChannel.id,
 					thread.id,
@@ -244,7 +244,7 @@ export default class ChatGpt implements Command {
 			return;
 		}
 
-		interaction.client.bot.chatSessions.closeSession(session);
+		await interaction.client.bot.chatSessions.closeSession(session);
 		const thread = await fetchManagedThread(
 			interaction,
 			session.threadChannelId,

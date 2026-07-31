@@ -1,9 +1,40 @@
 import { describe, expect, mock, test } from "bun:test";
+import type { TemporaryStateRepository } from "../../repositories/TemporaryStateRepository";
 import WolGgClient, {
 	PLATFORM_TO_WOL_REGION,
 	parseWolMinutes,
 	wolSlug,
 } from "./WolGgClient";
+
+function fakeTemporaryStore(): Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+> {
+	const data = new Map<string, string>();
+	return {
+		async get<T>(key: string): Promise<T | null> {
+			const raw = data.get(key);
+			if (raw === undefined) {
+				return null;
+			}
+			try {
+				return JSON.parse(raw) as T;
+			} catch {
+				data.delete(key);
+				return null;
+			}
+		},
+		async set(key: string, value: unknown, ttlSeconds?: number): Promise<void> {
+			if (ttlSeconds !== undefined && ttlSeconds <= 0) {
+				return;
+			}
+			data.set(key, JSON.stringify(value));
+		},
+		async delete(key: string): Promise<void> {
+			data.delete(key);
+		},
+	};
+}
 
 const SAMPLE_HTML = `
 <div id="card-stats">
@@ -71,5 +102,42 @@ describe("WolGgClient.fetchPlaytimeSeconds", () => {
 		now += 1_000;
 		await client.fetchPlaytimeSeconds("na1", "A", "B");
 		expect(fetcher).toHaveBeenCalledTimes(1);
+	});
+
+	test("restart shares successful cache via temporary state", async () => {
+		const store = fakeTemporaryStore();
+		const fetcher = mock(
+			async () => new Response(SAMPLE_HTML, { status: 200 }),
+		);
+		let now = 1_000;
+		const a = new WolGgClient({
+			fetch: fetcher,
+			now: () => now,
+			temporaryState: store,
+		});
+		const b = new WolGgClient({
+			fetch: fetcher,
+			now: () => now,
+			temporaryState: store,
+		});
+
+		expect(await a.fetchPlaytimeSeconds("na1", "A", "B")).toBe(63_266 * 60);
+		expect(await b.fetchPlaytimeSeconds("na1", "A", "B")).toBe(63_266 * 60);
+		expect(fetcher).toHaveBeenCalledTimes(1);
+
+		now += 60 * 60_000 + 1;
+		expect(await b.fetchPlaytimeSeconds("na1", "A", "B")).toBe(63_266 * 60);
+		expect(fetcher).toHaveBeenCalledTimes(2);
+	});
+
+	test("does not cache misses across restart", async () => {
+		const store = fakeTemporaryStore();
+		const fetcher = mock(async () => new Response(ERROR_HTML, { status: 200 }));
+		const a = new WolGgClient({ fetch: fetcher, temporaryState: store });
+		const b = new WolGgClient({ fetch: fetcher, temporaryState: store });
+
+		expect(await a.fetchPlaytimeSeconds("na1", "Nope", "TAG")).toBeNull();
+		expect(await b.fetchPlaytimeSeconds("na1", "Nope", "TAG")).toBeNull();
+		expect(fetcher).toHaveBeenCalledTimes(2);
 	});
 });
