@@ -41,7 +41,7 @@ function storeDetails(
 			success: true,
 			data: {
 				type: options.type ?? "game",
-				categories: options.categories ?? [{ id: 1 }],
+				categories: options.categories ?? [{ id: 38 }],
 			},
 		},
 	};
@@ -73,9 +73,9 @@ describe("SteamService", () => {
 
 		expect(service.isAvailable()).toBe(false);
 		expect(blank.isAvailable()).toBe(false);
-		await expect(
-			service.findRandomCommonMultiplayerGame(["1"]),
-		).rejects.toThrow("Steam API is not configured");
+		await expect(service.findRandomCommonOnlineCoopGame(["1"])).rejects.toThrow(
+			"Steam API is not configured",
+		);
 		expect(fetcher).not.toHaveBeenCalled();
 	});
 
@@ -111,7 +111,7 @@ describe("SteamService", () => {
 			randomInt: () => 0,
 		});
 
-		const game = await service.findRandomCommonMultiplayerGame([
+		const game = await service.findRandomCommonOnlineCoopGame([
 			"s1",
 			"s2",
 			"s1",
@@ -125,7 +125,7 @@ describe("SteamService", () => {
 		expect(ownedUrls).toEqual([ownedUrl("s1"), ownedUrl("s2")].sort());
 	});
 
-	test("shuffles with injected randomInt and returns first multiplayer game", async () => {
+	test("shuffles with injected randomInt and returns first online co-op game", async () => {
 		const storeCalls: number[] = [];
 		const fetcher = mock(async (input: string | URL | Request) => {
 			const url = String(input);
@@ -141,7 +141,7 @@ describe("SteamService", () => {
 			const appid = Number(new URL(url).searchParams.get("appids"));
 			storeCalls.push(appid);
 			if (appid === 3) {
-				return jsonResponse(storeDetails(3, { categories: [{ id: 36 }] }));
+				return jsonResponse(storeDetails(3, { categories: [{ id: 38 }] }));
 			}
 			return jsonResponse(storeDetails(appid, { categories: [{ id: 2 }] }));
 		});
@@ -159,13 +159,13 @@ describe("SteamService", () => {
 			randomInt,
 		});
 
-		const game = await service.findRandomCommonMultiplayerGame(["s1", "s2"]);
+		const game = await service.findRandomCommonOnlineCoopGame(["s1", "s2"]);
 		expect(game).toEqual({ appid: 3, name: "Three" });
 		expect(storeCalls[0]).toBe(3);
 		expect(randomInt).toHaveBeenCalled();
 	});
 
-	test("skips multiplayer-tagged non-game and success-false candidates", async () => {
+	test("skips online-co-op-tagged non-game and success-false candidates", async () => {
 		const fetcher = mock(async (input: string | URL | Request) => {
 			const url = String(input);
 			if (url.includes("GetOwnedGames")) {
@@ -193,7 +193,7 @@ describe("SteamService", () => {
 			fetch: fetcher,
 			randomInt: () => 0,
 		});
-		expect(await service.findRandomCommonMultiplayerGame(["a", "b"])).toEqual({
+		expect(await service.findRandomCommonOnlineCoopGame(["a", "b"])).toEqual({
 			appid: 3,
 			name: "Good",
 		});
@@ -221,7 +221,7 @@ describe("SteamService", () => {
 			fetch: fetcher,
 			randomInt: () => 0,
 		});
-		expect(await service.findRandomCommonMultiplayerGame(["a", "b"])).toEqual({
+		expect(await service.findRandomCommonOnlineCoopGame(["a", "b"])).toEqual({
 			appid: 2,
 			name: "Good",
 		});
@@ -243,9 +243,7 @@ describe("SteamService", () => {
 		const service = new SteamService("steam-key", undefined, {
 			fetch: fetcher,
 		});
-		expect(
-			await service.findRandomCommonMultiplayerGame(["a", "b"]),
-		).toBeNull();
+		expect(await service.findRandomCommonOnlineCoopGame(["a", "b"])).toBeNull();
 		expect(
 			fetcher.mock.calls.some((call) =>
 				String(call[0]).includes("store.steampowered.com"),
@@ -260,9 +258,7 @@ describe("SteamService", () => {
 		const service = new SteamService("steam-key", undefined, {
 			fetch: fetcher,
 		});
-		expect(
-			await service.findRandomCommonMultiplayerGame(["a", "b"]),
-		).toBeNull();
+		expect(await service.findRandomCommonOnlineCoopGame(["a", "b"])).toBeNull();
 	});
 
 	test("throws SteamLibraryUnavailableError when games missing and game_count is not 0", async () => {
@@ -272,7 +268,7 @@ describe("SteamService", () => {
 		});
 
 		try {
-			await service.findRandomCommonMultiplayerGame(["private-id"]);
+			await service.findRandomCommonOnlineCoopGame(["private-id"]);
 			throw new Error("expected throw");
 		} catch (error) {
 			expect(error).toBeInstanceOf(SteamLibraryUnavailableError);
@@ -293,7 +289,7 @@ describe("SteamService", () => {
 			);
 
 			await expect(
-				service.findRandomCommonMultiplayerGame(["s1"]),
+				service.findRandomCommonOnlineCoopGame(["s1"]),
 			).rejects.toThrow(`Steam owned games returned HTTP ${status}`);
 			expect(recordCredentialRejection).toHaveBeenCalledWith("steam");
 		}
@@ -319,7 +315,7 @@ describe("SteamService", () => {
 			);
 
 			await expect(
-				service.findRandomCommonMultiplayerGame(["s1"]),
+				service.findRandomCommonOnlineCoopGame(["s1"]),
 			).rejects.toThrow();
 			expect(recordCredentialRejection).not.toHaveBeenCalled();
 		}
@@ -341,7 +337,7 @@ describe("SteamService", () => {
 		);
 
 		await expect(
-			service.findRandomCommonMultiplayerGame(["a", "b"]),
+			service.findRandomCommonOnlineCoopGame(["a", "b"]),
 		).rejects.toThrow("Steam storefront returned HTTP 503");
 		expect(recordCredentialRejection).not.toHaveBeenCalled();
 		expect(String(fetcher.mock.calls.at(-1)?.[0])).toBe(storeUrl(1));

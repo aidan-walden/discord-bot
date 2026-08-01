@@ -43,7 +43,7 @@ function buildCommandData(): SlashCommandBuilder {
 	const builder = new SlashCommandBuilder()
 		.setName("friendslop")
 		.setDescription(
-			"Pick a random multiplayer Steam game everyone selected owns",
+			"Pick a random online co-op Steam game everyone selected owns",
 		);
 
 	for (const [index, name] of MEMBER_OPTION_NAMES.entries()) {
@@ -184,13 +184,13 @@ export default class Friendslop implements Command {
 			steamIdToUser = new Map(
 				resolved.pairs.map((pair) => [pair.steamId, pair.user]),
 			);
-			const game = await steam.findRandomCommonMultiplayerGame(
+			const game = await steam.findRandomCommonOnlineCoopGame(
 				resolved.pairs.map((pair) => pair.steamId),
 			);
 
 			if (!game) {
 				await interaction.editReply({
-					content: "No multiplayer Steam game is owned by everyone selected.",
+					content: "No online co-op Steam game is owned by everyone selected.",
 					allowedMentions: { parse: [] },
 				});
 				return;
@@ -214,7 +214,7 @@ export default class Friendslop implements Command {
 
 			console.error("friendslop failed:", error);
 			await interaction.editReply({
-				content: "Failed to find a common multiplayer game.",
+				content: "Failed to find a common online co-op game.",
 				allowedMentions: { parse: [] },
 			});
 		}

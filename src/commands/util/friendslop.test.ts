@@ -36,7 +36,7 @@ function buildInteraction(opts: BuildOpts = {}) {
 		};
 	});
 
-	const findRandomCommonMultiplayerGame = mock(async () => {
+	const findRandomCommonOnlineCoopGame = mock(async () => {
 		if (opts.steamError !== undefined) {
 			throw opts.steamError;
 		}
@@ -52,7 +52,7 @@ function buildInteraction(opts: BuildOpts = {}) {
 			bot: {
 				steam: {
 					isAvailable: mock(() => opts.available ?? true),
-					findRandomCommonMultiplayerGame,
+					findRandomCommonOnlineCoopGame,
 				},
 			},
 		},
@@ -64,13 +64,13 @@ function buildInteraction(opts: BuildOpts = {}) {
 	return {
 		interaction,
 		restGet,
-		findRandomCommonMultiplayerGame,
+		findRandomCommonOnlineCoopGame,
 	};
 }
 
 describe("Friendslop", () => {
 	test("replies ephemerally when Steam is unconfigured without deferring", async () => {
-		const { interaction, findRandomCommonMultiplayerGame } = buildInteraction({
+		const { interaction, findRandomCommonOnlineCoopGame } = buildInteraction({
 			available: false,
 		});
 		await new Friendslop().execute(interaction);
@@ -80,11 +80,11 @@ describe("Friendslop", () => {
 			flags: MessageFlags.Ephemeral,
 		});
 		expect(interaction.deferReply).not.toHaveBeenCalled();
-		expect(findRandomCommonMultiplayerGame).not.toHaveBeenCalled();
+		expect(findRandomCommonOnlineCoopGame).not.toHaveBeenCalled();
 	});
 
 	test("fetches Discord profiles via REST with expected query and dedupes users", async () => {
-		const { interaction, restGet, findRandomCommonMultiplayerGame } =
+		const { interaction, restGet, findRandomCommonOnlineCoopGame } =
 			buildInteraction({
 				users: {
 					member_one: { id: "u1" },
@@ -115,14 +115,14 @@ describe("Friendslop", () => {
 				with_mutual_friends_count: "false",
 			}),
 		});
-		expect(findRandomCommonMultiplayerGame).toHaveBeenCalledWith([
+		expect(findRandomCommonOnlineCoopGame).toHaveBeenCalledWith([
 			"steam-u1",
 			"steam-u2",
 		]);
 	});
 
 	test("trims surrounding whitespace on connected Steam IDs", async () => {
-		const { interaction, findRandomCommonMultiplayerGame } = buildInteraction({
+		const { interaction, findRandomCommonOnlineCoopGame } = buildInteraction({
 			profiles: {
 				u1: {
 					connected_accounts: [{ type: "steam", id: "  steam-u1  " }],
@@ -135,14 +135,14 @@ describe("Friendslop", () => {
 
 		await new Friendslop().execute(interaction);
 
-		expect(findRandomCommonMultiplayerGame).toHaveBeenCalledWith([
+		expect(findRandomCommonOnlineCoopGame).toHaveBeenCalledWith([
 			"steam-u1",
 			"steam-u2",
 		]);
 	});
 
 	test("lists all missing Steam links without calling Steam", async () => {
-		const { interaction, findRandomCommonMultiplayerGame } = buildInteraction({
+		const { interaction, findRandomCommonOnlineCoopGame } = buildInteraction({
 			users: {
 				member_one: { id: "u1" },
 				member_two: { id: "u2" },
@@ -159,7 +159,7 @@ describe("Friendslop", () => {
 
 		await new Friendslop().execute(interaction);
 
-		expect(findRandomCommonMultiplayerGame).not.toHaveBeenCalled();
+		expect(findRandomCommonOnlineCoopGame).not.toHaveBeenCalled();
 		expect(interaction.editReply).toHaveBeenCalledWith({
 			content: `These users do not have Steam connected: ${userMention("u1")}, ${userMention("u3")}`,
 			allowedMentions: { parse: [] },
@@ -178,12 +178,12 @@ describe("Friendslop", () => {
 		});
 	});
 
-	test("reports when no common multiplayer game exists", async () => {
+	test("reports when no common online co-op game exists", async () => {
 		const { interaction } = buildInteraction({ game: null });
 		await new Friendslop().execute(interaction);
 
 		expect(interaction.editReply).toHaveBeenCalledWith({
-			content: "No multiplayer Steam game is owned by everyone selected.",
+			content: "No online co-op Steam game is owned by everyone selected.",
 			allowedMentions: { parse: [] },
 		});
 	});
@@ -207,7 +207,7 @@ describe("Friendslop", () => {
 		await new Friendslop().execute(interaction);
 
 		expect(interaction.editReply).toHaveBeenCalledWith({
-			content: "Failed to find a common multiplayer game.",
+			content: "Failed to find a common online co-op game.",
 			allowedMentions: { parse: [] },
 		});
 	});

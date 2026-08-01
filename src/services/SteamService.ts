@@ -13,9 +13,8 @@ export class SteamLibraryUnavailableError extends Error {
 	}
 }
 
-const MULTIPLAYER_CATEGORY_IDS = new Set([
-	1, 9, 20, 24, 27, 36, 37, 38, 39, 47, 48, 49,
-]);
+// Steam store category: Online Co-op
+const ONLINE_COOP_CATEGORY_ID = 38;
 
 const OWNED_GAMES_URL =
 	"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
@@ -68,7 +67,7 @@ function parseOwnedGames(body: unknown, steamId: string): SteamGame[] {
 	return [...byAppid.values()];
 }
 
-function isMultiplayerGame(body: unknown, appid: number): boolean | "skip" {
+function isOnlineCoopGame(body: unknown, appid: number): boolean | "skip" {
 	if (typeof body !== "object" || body === null) {
 		return "skip";
 	}
@@ -95,7 +94,7 @@ function isMultiplayerGame(body: unknown, appid: number): boolean | "skip" {
 			continue;
 		}
 		const id = (category as { id?: unknown }).id;
-		if (typeof id === "number" && MULTIPLAYER_CATEGORY_IDS.has(id)) {
+		if (id === ONLINE_COOP_CATEGORY_ID) {
 			return true;
 		}
 	}
@@ -131,7 +130,7 @@ export default class SteamService {
 		return this.apiKey !== null;
 	}
 
-	async findRandomCommonMultiplayerGame(
+	async findRandomCommonOnlineCoopGame(
 		steamIds: readonly string[],
 	): Promise<SteamGame | null> {
 		if (!this.apiKey) {
@@ -167,7 +166,7 @@ export default class SteamService {
 		shuffleInPlace(candidates, this.randomInt);
 
 		for (const candidate of candidates) {
-			const eligible = await this.isEligibleMultiplayer(candidate.appid);
+			const eligible = await this.isEligibleOnlineCoop(candidate.appid);
 			if (eligible) {
 				return candidate;
 			}
@@ -205,7 +204,7 @@ export default class SteamService {
 		return parseOwnedGames(body, steamId);
 	}
 
-	private async isEligibleMultiplayer(appid: number): Promise<boolean> {
+	private async isEligibleOnlineCoop(appid: number): Promise<boolean> {
 		const url = new URL(APP_DETAILS_URL);
 		url.searchParams.set("appids", String(appid));
 		url.searchParams.set("filters", "basic,categories");
@@ -227,7 +226,7 @@ export default class SteamService {
 			throw new Error("Steam storefront response was invalid");
 		}
 
-		const result = isMultiplayerGame(body, appid);
+		const result = isOnlineCoopGame(body, appid);
 		return result === true;
 	}
 }
