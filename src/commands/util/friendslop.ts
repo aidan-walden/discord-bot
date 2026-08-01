@@ -203,10 +203,14 @@ export default class Friendslop implements Command {
 			});
 		} catch (error) {
 			if (error instanceof SteamLibraryUnavailableError) {
-				const user = steamIdToUser?.get(error.steamId);
-				const mention = user ? userMention(user.id) : "A selected user";
+				const mentions = error.steamIds
+					.flatMap((steamId) => {
+						const user = steamIdToUser?.get(steamId);
+						return user ? [userMention(user.id)] : [];
+					})
+					.join(", ");
 				await interaction.editReply({
-					content: `${mention} must set Steam game details to public.`,
+					content: `These users must set Steam game details to public: ${mentions || "a selected user"}`,
 					allowedMentions: { parse: [] },
 				});
 				return;

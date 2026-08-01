@@ -272,9 +272,38 @@ describe("SteamService", () => {
 			throw new Error("expected throw");
 		} catch (error) {
 			expect(error).toBeInstanceOf(SteamLibraryUnavailableError);
-			expect((error as SteamLibraryUnavailableError).steamId).toBe(
+			expect((error as SteamLibraryUnavailableError).steamIds).toEqual([
 				"private-id",
-			);
+			]);
+		}
+	});
+
+	test("collects every private library into one SteamLibraryUnavailableError", async () => {
+		const fetcher = mock(async (input: string | URL | Request) => {
+			const url = new URL(String(input));
+			const steamId = url.searchParams.get("steamid");
+			if (steamId === "public") {
+				return jsonResponse(ownedGamesResponse([{ appid: 1, name: "Game" }]));
+			}
+			return jsonResponse({ response: {} });
+		});
+		const service = new SteamService("steam-key", undefined, {
+			fetch: fetcher,
+		});
+
+		try {
+			await service.findRandomCommonOnlineCoopGame([
+				"private-a",
+				"public",
+				"private-b",
+			]);
+			throw new Error("expected throw");
+		} catch (error) {
+			expect(error).toBeInstanceOf(SteamLibraryUnavailableError);
+			expect((error as SteamLibraryUnavailableError).steamIds).toEqual([
+				"private-a",
+				"private-b",
+			]);
 		}
 	});
 

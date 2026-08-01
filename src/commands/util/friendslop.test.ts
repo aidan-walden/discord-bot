@@ -188,14 +188,19 @@ describe("Friendslop", () => {
 		});
 	});
 
-	test("maps private library errors back to the Discord user", async () => {
+	test("lists all private libraries mapped back to Discord users", async () => {
 		const { interaction } = buildInteraction({
-			steamError: new SteamLibraryUnavailableError("steam-u2"),
+			users: {
+				member_one: { id: "u1" },
+				member_two: { id: "u2" },
+				member_three: { id: "u3" },
+			},
+			steamError: new SteamLibraryUnavailableError(["steam-u1", "steam-u3"]),
 		});
 		await new Friendslop().execute(interaction);
 
 		expect(interaction.editReply).toHaveBeenCalledWith({
-			content: `${userMention("u2")} must set Steam game details to public.`,
+			content: `These users must set Steam game details to public: ${userMention("u1")}, ${userMention("u3")}`,
 			allowedMentions: { parse: [] },
 		});
 	});

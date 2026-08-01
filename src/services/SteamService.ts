@@ -7,8 +7,8 @@ export interface SteamGame {
 }
 
 export class SteamLibraryUnavailableError extends Error {
-	constructor(public readonly steamId: string) {
-		super(`Steam library unavailable for ${steamId}`);
+	constructor(public readonly steamIds: readonly string[]) {
+		super(`Steam library unavailable for ${steamIds.join(", ")}`);
 		this.name = "SteamLibraryUnavailableError";
 	}
 }
@@ -32,14 +32,14 @@ function parseOwnedGames(body: unknown, steamId: string): SteamGame[] {
 	}
 	const response = (body as { response?: unknown }).response;
 	if (typeof response !== "object" || response === null) {
-		throw new SteamLibraryUnavailableError(steamId);
+		throw new SteamLibraryUnavailableError([steamId]);
 	}
 	const record = response as { game_count?: unknown; games?: unknown };
 	if (record.games === undefined) {
 		if (record.game_count === 0) {
 			return [];
 		}
-		throw new SteamLibraryUnavailableError(steamId);
+		throw new SteamLibraryUnavailableError([steamId]);
 	}
 	if (!Array.isArray(record.games)) {
 		throw new Error("Steam owned games response was invalid");
@@ -141,9 +141,26 @@ export default class SteamService {
 		}
 
 		const uniqueIds = [...new Set(steamIds)];
-		const libraries = await Promise.all(
+		const settled = await Promise.allSettled(
 			uniqueIds.map((steamId) => this.fetchOwnedGames(steamId)),
 		);
+
+		const unavailable: string[] = [];
+		const libraries: SteamGame[][] = [];
+		for (const [index, result] of settled.entries()) {
+			if (result.status === "fulfilled") {
+				libraries.push(result.value);
+				continue;
+			}
+			if (result.reason instanceof SteamLibraryUnavailableError) {
+				unavailable.push(uniqueIds[index] as string);
+				continue;
+			}
+			throw result.reason;
+		}
+		if (unavailable.length > 0) {
+			throw new SteamLibraryUnavailableError(unavailable);
+		}
 
 		let common: SteamGame[] | null = null;
 		for (const library of libraries) {
