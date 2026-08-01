@@ -32,17 +32,27 @@ function chunkMessage(
 
 		const nextChunk = remaining.slice(0, limit);
 		const splitAt = nextChunk.lastIndexOf("\n");
-		const chunkLength = splitAt > 0 ? splitAt : limit;
-		chunks.push(remaining.slice(0, chunkLength));
-		remaining = remaining.slice(chunkLength).trimStart();
+		if (splitAt > 0) {
+			// Omit only the delimiter newline; keep blank lines/indent after it.
+			chunks.push(remaining.slice(0, splitAt));
+			remaining = remaining.slice(splitAt + 1);
+		} else {
+			chunks.push(remaining.slice(0, limit));
+			remaining = remaining.slice(limit);
+		}
 	}
 
 	return chunks;
 }
 
-function prepareChunks(
+/**
+ * Split content into Discord-safe message chunks (<=2000 chars each).
+ * Newline splits omit only that delimiter; hard splits keep every character.
+ * Defaults to escaping Markdown (same as sendLongMessage).
+ */
+export function prepareMessageChunks(
 	content: string,
-	shouldEscapeMarkdown: boolean,
+	shouldEscapeMarkdown = true,
 ): string[] {
 	const text = shouldEscapeMarkdown ? escapeMarkdown(content) : content;
 	const body = stripOuterCodeBlock(text);
@@ -61,7 +71,7 @@ export async function sendLongMessage(
 	baseOptions: Omit<MessageCreateOptions, "content"> = {},
 	shouldEscapeMarkdown = true,
 ): Promise<void> {
-	for (const chunk of prepareChunks(content, shouldEscapeMarkdown)) {
+	for (const chunk of prepareMessageChunks(content, shouldEscapeMarkdown)) {
 		await channel.send({
 			...baseOptions,
 			allowedMentions: { parse: [] },

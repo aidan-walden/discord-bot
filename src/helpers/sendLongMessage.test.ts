@@ -1,6 +1,56 @@
 import { describe, expect, test } from "bun:test";
 import { codeBlock } from "discord.js";
-import { sendLongMessage } from "./sendLongMessage";
+import { prepareMessageChunks, sendLongMessage } from "./sendLongMessage";
+
+describe("prepareMessageChunks", () => {
+	test("keeps multi-chunk output at or under 2000 chars and preserves content across newline splits", () => {
+		const firstLine = "a".repeat(1990);
+		const secondLine = "b".repeat(20);
+		const content = `${firstLine}\n${secondLine}`;
+
+		const chunks = prepareMessageChunks(content, false);
+
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeLessThanOrEqual(2000);
+		}
+		// Reconstruct by reinserting the omitted delimiter newline between chunks.
+		expect(chunks.join("\n")).toBe(content);
+	});
+
+	test("hard-splits without newlines and preserves full content when rejoined", () => {
+		const content = "x".repeat(2500);
+		const chunks = prepareMessageChunks(content, false);
+
+		expect(chunks.length).toBe(2);
+		expect(chunks[0]?.length).toBe(2000);
+		expect(chunks[1]?.length).toBe(500);
+		expect(chunks.join("")).toBe(content);
+	});
+
+	test("preserves blank lines and indentation after a newline split boundary", () => {
+		// Delimiter at index 1999 so it is the last char in the 2000 window;
+		// blank lines/indent then start the next chunk (not eaten by lastIndexOf).
+		const firstLine = "a".repeat(1999);
+		const suffix = "\n\n\t  indented\nmore";
+		const content = `${firstLine}\n${suffix}`;
+
+		const chunks = prepareMessageChunks(content, false);
+
+		expect(chunks.length).toBeGreaterThan(1);
+		for (const chunk of chunks) {
+			expect(chunk.length).toBeLessThanOrEqual(2000);
+		}
+		expect(chunks[0]).toBe(firstLine);
+		expect(chunks[1]?.startsWith("\n\n\t  indented")).toBe(true);
+		// Reconstruct by reinserting the omitted delimiter newline between chunks.
+		expect(chunks.join("\n")).toBe(content);
+	});
+
+	test("escapes Markdown by default", () => {
+		expect(prepareMessageChunks("**bold**")).toEqual(["\\*\\*bold\\*\\*"]);
+	});
+});
 
 describe("sendLongMessage", () => {
 	test("sends short messages in a single chunk", async () => {

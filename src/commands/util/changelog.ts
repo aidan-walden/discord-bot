@@ -1,10 +1,10 @@
 import path from "node:path";
 import {
-	AttachmentBuilder,
 	type ChatInputCommandInteraction,
 	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
+import { prepareMessageChunks } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
 
 const CHANGELOG_PATH = path.resolve(
@@ -29,16 +29,22 @@ export default class Changelog implements Command {
 			return;
 		}
 
-		// ponytail: attach when over 2000; chunked followUps if in-channel multi-post preferred later
 		if (text.length <= 2000) {
 			await interaction.reply({ content: text });
 			return;
 		}
 
+		const chunks = prepareMessageChunks(text, false);
+		const [first, ...rest] = chunks;
 		await interaction.reply({
-			files: [
-				new AttachmentBuilder(Buffer.from(text), { name: "changelog.md" }),
-			],
+			content: first,
+			allowedMentions: { parse: [] },
 		});
+		for (const chunk of rest) {
+			await interaction.followUp({
+				content: chunk,
+				allowedMentions: { parse: [] },
+			});
+		}
 	}
 }
