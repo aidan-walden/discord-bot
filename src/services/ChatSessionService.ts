@@ -70,9 +70,9 @@ function parsePersistedSession(value: unknown): PersistedChatSession | null {
 export default class ChatSessionService {
 	private readonly sessionsByThreadId = new Map<string, ChatSession>();
 	private readonly sessionsByRootKey = new Map<string, ChatSession>();
-	// ponytail: single write chain serializes snapshot updates; fine at one-bot scale.
+	// Single write chain serializes snapshot updates.
 	private persistQueue: Promise<void> = Promise.resolve();
-	// ponytail: per-root create/close chain; fine at one-bot scale.
+	// Per-root chain serializes create/close for the same root.
 	private readonly rootQueues = new Map<string, Promise<unknown>>();
 
 	constructor(

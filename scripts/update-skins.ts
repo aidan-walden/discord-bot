@@ -117,9 +117,8 @@ function buildExpected(skins: ByMykelSkin[]): ExpectedCatalog {
 		// would flag those cases stale forever. Every real skin has "weapon | finish".
 		if (!name.includes("|")) continue;
 		for (const crate of skin.crates) {
-			// ponytail: weapon cases are the only stash.clash.gg-scrapable containers;
+			// Weapon cases are the only stash.clash.gg-scrapable containers;
 			// filter by the "Case" naming convention to skip souvenir packages / capsules.
-			// If Valve ever ships a case not named "... Case", widen this.
 			if (!/case/i.test(crate.name)) continue;
 			let byBucket = expected.get(crate.name);
 			if (!byBucket) {

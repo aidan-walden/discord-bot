@@ -137,7 +137,7 @@ export default class RiotApiClient {
 	/** host → bucketKey → state */
 	private readonly rateBuckets = new Map<string, Map<string, RateBucket>>();
 	private readonly rateBucketsLoaded = new Set<string>();
-	// ponytail: one process; chain serializes bucket mutate+persist
+	// Chain serializes rate-bucket mutate+persist.
 	private rateLock: Promise<void> = Promise.resolve();
 
 	constructor(
@@ -254,7 +254,7 @@ export default class RiotApiClient {
 		if (!this.apiKey) {
 			return [];
 		}
-		// ponytail: no match-id cache — poller must see new games immediately
+		// Uncached: poller must see new match IDs immediately.
 		const path = `/lol/match/v5/matches/by-puuid/${encodeURIComponent(puuid)}/ids`;
 		return this.request<string[]>(region, path, {
 			start: opts?.start,

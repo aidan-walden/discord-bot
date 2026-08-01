@@ -55,9 +55,9 @@ function isPersistedSession(value: unknown): value is PersistedDeafenSession {
  */
 export default class DeafenTrackerService {
 	private readonly activeSessions = new Map<string, ActiveDeafenSession>();
-	// ponytail: per session-key chain; fine at one-bot / few-user scale.
+	// Per session-key chain serializes concurrent updates for the same session.
 	private readonly sessionQueues = new Map<string, Promise<void>>();
-	// ponytail: single write chain so cross-user snapshots cannot finish out of order.
+	// Single write chain so cross-user snapshots cannot finish out of order.
 	private persistQueue: Promise<void> = Promise.resolve();
 	private reconciled = false;
 

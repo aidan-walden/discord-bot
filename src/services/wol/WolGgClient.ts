@@ -146,7 +146,7 @@ export default class WolGgClient {
 			}
 			const minutes = parseWolMinutes(await response.text());
 			if (minutes === null) {
-				// ponytail: do not cache misses — poller retries next cycle
+				// Do not cache misses; poller retries next cycle.
 				return null;
 			}
 			const seconds = minutes * 60;

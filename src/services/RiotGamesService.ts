@@ -319,7 +319,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 						platform: player.platform,
 					});
 				} catch (error) {
-					// ponytail: never emit("error") — unhandled crashes the process
+					// Log rather than emit("error") - unhandled EventEmitter errors crash the process.
 					console.error(
 						`Riot poll failed for ${label} (${player.platform}):`,
 						error,
@@ -698,7 +698,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			identity.tagLine,
 		);
 		if (backfillSeconds === null) {
-			// ponytail: retry later — do not lock 0 on a scrape miss
+			// Do not lock 0 on a scrape miss; retry next cycle.
 			return;
 		}
 		await this.matchSync.setBackfill(
