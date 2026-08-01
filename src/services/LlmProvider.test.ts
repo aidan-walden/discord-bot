@@ -240,17 +240,17 @@ describe("LlmUserRateLimiter", () => {
 		},
 	);
 
-	test("caches the override and re-reads it after setOverride", async () => {
+	test("re-reads the override repository on each assertion and after setOverride", async () => {
 		const { get, limiter } = createLimiter({ defaultLimit: 5 });
 		const allow = () => limiter.assertAllowed(req("user-1"));
 
 		await allow();
 		await allow();
-		expect(get).toHaveBeenCalledTimes(1);
+		expect(get).toHaveBeenCalledTimes(2);
 
 		await limiter.setOverride("user-1", 10);
 		await allow();
-		expect(get).toHaveBeenCalledTimes(2);
+		expect(get).toHaveBeenCalledTimes(3);
 	});
 
 	test("refunds quota when the provider call fails", async () => {

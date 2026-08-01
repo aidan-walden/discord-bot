@@ -89,8 +89,6 @@ function parseRecords(raw: unknown): RequestRecord[] {
 }
 
 export class LlmUserRateLimiter {
-	// ponytail: single-process cache; needs invalidation via pub/sub if the bot ever runs multi-instance.
-	private readonly overrideCache = new Map<string, number | null>();
 	/** Per-user promise chain so concurrent RMW on Redis cannot overshoot quota. */
 	private readonly userLocks = new Map<string, Promise<unknown>>();
 
@@ -225,13 +223,7 @@ export class LlmUserRateLimiter {
 	}
 
 	private async getOverride(userId: string): Promise<number | null> {
-		const cached = this.overrideCache.get(userId);
-		if (cached !== undefined) {
-			return cached;
-		}
-		const override = await this.overrides.get(userId);
-		this.overrideCache.set(userId, override);
-		return override;
+		return this.overrides.get(userId);
 	}
 
 	async setOverride(userId: string, requestsPerHour: number): Promise<void> {
@@ -249,7 +241,6 @@ export class LlmUserRateLimiter {
 		} else {
 			await this.overrides.set(userId, requestsPerHour);
 		}
-		this.overrideCache.delete(userId);
 	}
 }
 
