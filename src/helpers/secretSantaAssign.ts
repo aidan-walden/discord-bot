@@ -1,5 +1,3 @@
-// ponytail: backtracking fine for n≪100; Hopcroft–Karp if ever huge
-
 export type ExclusionPair = readonly [string, string];
 
 function exclusionKey(a: string, b: string): string {
@@ -69,33 +67,76 @@ export function assignSecretSanta(
 		(a, b) => (adj.get(a)?.length ?? 0) - (adj.get(b)?.length ?? 0),
 	);
 
-	const assignment = new Map<string, string>();
-	const taken = new Set<string>();
+	// Hopcroft-Karp: O(E * sqrt(V)) bipartite matching
+	const matchGiver = new Map<string, string>();
+	const matchRecipient = new Map<string, string>();
+	const dist = new Map<string, number>();
+	const INF = Number.POSITIVE_INFINITY;
+	// Phase shortest augmenting path length (classic dist[NIL])
+	let shortest = INF;
 
-	function solve(index: number): boolean {
-		if (index >= givers.length) {
-			return true;
+	function bfs(): boolean {
+		const queue: string[] = [];
+		for (const giver of givers) {
+			if (!matchGiver.has(giver)) {
+				dist.set(giver, 0);
+				queue.push(giver);
+			} else {
+				dist.set(giver, INF);
+			}
 		}
-		const giver = givers[index] as string;
-		const options = adj.get(giver) ?? [];
-		for (const recipient of options) {
-			if (taken.has(recipient)) {
+		shortest = INF;
+		for (let qi = 0; qi < queue.length; qi++) {
+			const giver = queue[qi] as string;
+			const d = dist.get(giver) ?? INF;
+			// Do not expand at/after first free-recipient layer
+			if (d >= shortest) {
 				continue;
 			}
-			taken.add(recipient);
-			assignment.set(giver, recipient);
-			if (solve(index + 1)) {
+			for (const recipient of adj.get(giver) ?? []) {
+				const paired = matchRecipient.get(recipient);
+				if (paired === undefined) {
+					if (shortest === INF) {
+						shortest = d + 1;
+					}
+				} else if ((dist.get(paired) ?? INF) === INF) {
+					dist.set(paired, d + 1);
+					queue.push(paired);
+				}
+			}
+		}
+		return shortest !== INF;
+	}
+
+	function dfs(giver: string): boolean {
+		const d = dist.get(giver) ?? INF;
+		for (const recipient of adj.get(giver) ?? []) {
+			const paired = matchRecipient.get(recipient);
+			const nextDist =
+				paired === undefined ? shortest : (dist.get(paired) ?? INF);
+			if (nextDist === d + 1 && (paired === undefined || dfs(paired))) {
+				matchGiver.set(giver, recipient);
+				matchRecipient.set(recipient, giver);
 				return true;
 			}
-			taken.delete(recipient);
-			assignment.delete(giver);
 		}
+		dist.set(giver, INF);
 		return false;
 	}
 
-	if (!solve(0)) {
+	while (bfs()) {
+		for (const giver of givers) {
+			if (!matchGiver.has(giver)) {
+				dfs(giver);
+			}
+		}
+	}
+
+	if (matchGiver.size !== n) {
 		return null;
 	}
+
+	const assignment = new Map(matchGiver);
 
 	if (assignment.size !== n) {
 		return null;

@@ -91,4 +91,38 @@ describe("assignSecretSanta", () => {
 			["b", "a"],
 		]);
 	});
+
+	test("large constrained instance yields complete bijection", () => {
+		// 40 disjoint triangles: each giver only has 2 legal recipients, so
+		// deterministic option order forces augmenting reassignment.
+		const groupSize = 3;
+		const groupCount = 40;
+		const n = groupSize * groupCount;
+		const ids = Array.from({ length: n }, (_, i) => `p${i}`);
+		const groupOf = (id: string) => Math.floor(Number(id.slice(1)) / groupSize);
+		const exclusions: [string, string][] = [];
+		for (let i = 0; i < n; i++) {
+			const a = `p${i}`;
+			for (let j = i + 1; j < n; j++) {
+				if (Math.floor(i / groupSize) !== Math.floor(j / groupSize)) {
+					exclusions.push([a, `p${j}`]);
+				}
+			}
+		}
+		const blocked = new Set(
+			exclusions.map(([a, b]) => (a < b ? `${a}\0${b}` : `${b}\0${a}`)),
+		);
+		const result = assignSecretSanta(ids, exclusions, () => 0);
+		expect(result).not.toBeNull();
+		if (!result) {
+			return;
+		}
+		expect(result.size).toBe(n);
+		expect(new Set(result.values()).size).toBe(n);
+		for (const [g, r] of result) {
+			expect(g).not.toBe(r);
+			expect(groupOf(g)).toBe(groupOf(r));
+			expect(blocked.has(g < r ? `${g}\0${r}` : `${r}\0${g}`)).toBe(false);
+		}
+	});
 });
