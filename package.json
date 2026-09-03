@@ -12,7 +12,7 @@
 		"update-skins": "bun scripts/update-skins.ts"
 	},
 	"devDependencies": {
-		"@biomejs/biome": "2.5.5",
+		"@biomejs/biome": "2.5.7",
 		"@types/bun": "latest",
 		"@types/luxon": "^3.7.4",
 		"drizzle-kit": "^0.31.10",
