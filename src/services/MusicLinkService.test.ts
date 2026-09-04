@@ -163,4 +163,15 @@ describe("MusicLinkService", () => {
 		expect(await service.convert(APPLE_ALBUM_LINK)).toBeNull();
 		expect(apple.calls).toEqual([]);
 	});
+
+	test("is unavailable and converts nothing when Apple Music is unconfigured", async () => {
+		const spotify = new FakeProvider({ resolve: spotifyTrack });
+		const apple = new FakeProvider({ available: false });
+		const service = new MusicLinkService(spotify, apple);
+
+		expect(service.isAvailable()).toBe(false);
+		expect(await service.convert(SPOTIFY_TRACK_LINK)).toBeNull();
+		expect(spotify.calls).toEqual([]);
+		expect(apple.calls).toEqual([]);
+	});
 });

@@ -37,8 +37,8 @@ export default class MusicLinkService {
 	) {}
 
 	/**
-	 * Both conversion directions read from and/or search Spotify, while Apple
-	 * Music is always available, so the feature is usable iff Spotify is.
+	 * Both conversion directions read from and/or search Spotify and Apple Music,
+	 * so the feature is usable only when both providers are available.
 	 */
 	isAvailable(): boolean {
 		return this.spotify.isAvailable() && this.apple.isAvailable();

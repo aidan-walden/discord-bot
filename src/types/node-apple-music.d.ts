@@ -42,6 +42,7 @@ declare module "node-apple-music" {
 	export interface AppleFetchOptions {
 		countryCode?: string;
 		lang?: string;
+		token?: string;
 		[key: string]: unknown;
 	}
 
@@ -62,6 +63,10 @@ declare module "node-apple-music" {
 		size?: number;
 		format?: string;
 	}
+
+	export function getToken(): string | undefined;
+	export function setToken(jwt: string): void;
+	export function fetchToken(): Promise<void>;
 
 	export function fetchSong(
 		id: string,

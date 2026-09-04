@@ -270,6 +270,7 @@ export default class Bot extends Client {
 		await migrateDatabase(this.db);
 		await this.deafenTracker.initialize();
 		await this.chatSessions.initialize();
+		await this.appleMusic.fetchToken();
 		await this.registerCommands(path.join(import.meta.dirname, "../commands"));
 		await this.registerEvents(path.join(import.meta.dirname, "../events"));
 
