@@ -139,9 +139,11 @@ export default class MusicLinkService {
 	private isVerifiedStableMatch(
 		source: MusicItem,
 		match: TargetMatch,
-  ): boolean {
-    const normalizedSourceUpc = source.upc ? normalizeUpc(source.upc) : null;
-    const normalizedTargetUpc = match.target.upc ? normalizeUpc(match.target.upc) : null;
+	): boolean {
+		const normalizedSourceUpc = source.upc ? normalizeUpc(source.upc) : null;
+		const normalizedTargetUpc = match.target.upc
+			? normalizeUpc(match.target.upc)
+			: null;
 		if (
 			match.provenance === "isrc" &&
 			source.kind === "track" &&
