@@ -19,10 +19,20 @@ export interface MusicProvider {
 	searchText(kind: MusicKind, query: string): Promise<MusicItem | null>;
 }
 
+export interface MusicLinkMappingStore {
+	findOtherIds(platform: MusicPlatform, id: string): Promise<string[]>;
+	record(spotifyId: string, appleId: string): Promise<void>;
+}
+
 export interface MusicLinkConversion {
-	source: MusicItem;
+	sourcePlatform: MusicPlatform;
 	target: MusicItem;
 }
+
+type TargetMatch = {
+	target: MusicItem;
+	provenance: "isrc" | "upc" | "text";
+};
 
 /**
  * Converts a single music link to its equivalent on the opposite platform.
@@ -34,33 +44,127 @@ export default class MusicLinkService {
 	constructor(
 		private readonly spotify: MusicProvider,
 		private readonly apple: MusicProvider,
+		private readonly mappingStore?: MusicLinkMappingStore,
 	) {}
 
 	/**
 	 * Both conversion directions read from and/or search Spotify and Apple Music,
-	 * so the feature is usable only when both providers are available.
+	 * so the feature is usable only when both providers are available unless a
+	 * mapping store can serve a cached conversion.
 	 */
 	isAvailable(): boolean {
-		return this.spotify.isAvailable() && this.apple.isAvailable();
+		return this.mappingStore
+			? this.spotify.isAvailable() || this.apple.isAvailable()
+			: this.spotify.isAvailable() && this.apple.isAvailable();
 	}
 
 	async convert(link: ParsedMusicLink): Promise<MusicLinkConversion | null> {
-		if (!this.isAvailable()) {
+		const targetPlatform = otherPlatform(link.platform);
+		const targetProvider = this.providerFor(targetPlatform);
+		const sourceProvider = this.providerFor(link.platform);
+
+		if (!targetProvider.isAvailable()) {
 			return null;
 		}
 
-		const source = await this.providerFor(link.platform).resolve(link);
+		if (this.mappingStore) {
+			const mappedTargetIds = await this.findMappedIds(link);
+			for (const mappedTargetId of mappedTargetIds) {
+				let target: MusicItem | null;
+				try {
+					target = await targetProvider.resolve({
+						platform: targetPlatform,
+						kind: link.kind,
+						id: mappedTargetId,
+					});
+				} catch {
+					continue;
+				}
+				if (target) {
+					return { sourcePlatform: link.platform, target };
+				}
+			}
+		}
+
+		if (!sourceProvider.isAvailable()) {
+			return null;
+		}
+
+		const source = await sourceProvider.resolve(link);
 		if (!source) {
 			return null;
 		}
 
-		const targetProvider = this.providerFor(otherPlatform(link.platform));
-		const target = await this.lookupTarget(targetProvider, source);
-		if (!target) {
+		const match = await this.lookupTarget(targetProvider, source);
+		if (!match) {
 			return null;
 		}
 
-		return { source, target };
+		await this.recordMapping(source, match);
+		return { sourcePlatform: link.platform, target: match.target };
+	}
+
+	private async findMappedIds(link: ParsedMusicLink): Promise<string[]> {
+		if (!this.mappingStore) {
+			return [];
+		}
+
+		try {
+			return await this.mappingStore.findOtherIds(link.platform, link.id);
+		} catch (error) {
+			console.error("Music link mapping lookup failed:", error);
+			return [];
+		}
+	}
+
+	private async recordMapping(
+		source: MusicItem,
+		match: TargetMatch,
+	): Promise<void> {
+		if (!this.mappingStore || !this.isVerifiedStableMatch(source, match)) {
+			return;
+		}
+
+		const spotifyId =
+			source.platform === "spotify" ? source.id : match.target.id;
+		const appleId = source.platform === "apple" ? source.id : match.target.id;
+
+		try {
+			await this.mappingStore.record(spotifyId, appleId);
+		} catch (error) {
+			console.error("Music link mapping record failed:", error);
+		}
+	}
+
+	private isVerifiedStableMatch(
+		source: MusicItem,
+		match: TargetMatch,
+  ): boolean {
+    const normalizedSourceUpc = source.upc ? normalizeUpc(source.upc) : null;
+    const normalizedTargetUpc = match.target.upc ? normalizeUpc(match.target.upc) : null;
+		if (
+			match.provenance === "isrc" &&
+			source.kind === "track" &&
+			match.target.platform === otherPlatform(source.platform) &&
+			match.target.kind === "track" &&
+			source.isrc !== undefined &&
+			match.target.isrc !== undefined
+		) {
+			return source.isrc.toUpperCase() === match.target.isrc.toUpperCase();
+		}
+
+		if (
+			match.provenance === "upc" &&
+			source.kind === "album" &&
+			match.target.platform === otherPlatform(source.platform) &&
+			match.target.kind === "album" &&
+			normalizedSourceUpc !== null &&
+			normalizedTargetUpc !== null
+		) {
+			return normalizedSourceUpc === normalizedTargetUpc;
+		}
+
+		return false;
 	}
 
 	private providerFor(platform: MusicPlatform): MusicProvider {
@@ -70,17 +174,17 @@ export default class MusicLinkService {
 	private async lookupTarget(
 		provider: MusicProvider,
 		source: MusicItem,
-	): Promise<MusicItem | null> {
+	): Promise<TargetMatch | null> {
 		// Prefer stable identifiers first.
 		if (source.kind === "track" && source.isrc) {
 			const byIsrc = await provider.findByIsrc(source.isrc);
 			if (byIsrc) {
-				return byIsrc;
+				return { target: byIsrc, provenance: "isrc" };
 			}
 		} else if (source.kind === "album" && source.upc) {
 			const byUpc = await provider.findByUpc(source.upc);
 			if (byUpc) {
-				return byUpc;
+				return { target: byUpc, provenance: "upc" };
 			}
 		}
 
@@ -89,6 +193,16 @@ export default class MusicLinkService {
 		if (query.length === 0) {
 			return null;
 		}
-		return provider.searchText(source.kind, query);
+
+		const byText = await provider.searchText(source.kind, query);
+		return byText ? { target: byText, provenance: "text" } : null;
 	}
+}
+
+function normalizeUpc(upc: string | undefined): string | null {
+	if (!upc || !/^\d{12,14}$/.test(upc) || /^0+$/.test(upc)) {
+		return null;
+	}
+
+	return upc.padStart(14, "0");
 }

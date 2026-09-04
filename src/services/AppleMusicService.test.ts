@@ -86,6 +86,7 @@ describe("AppleMusicService", () => {
 		expect(item).toEqual({
 			platform: "apple",
 			kind: "track",
+			id: "song1",
 			title: "Get Lucky",
 			artist: "Daft Punk",
 			isrc: "USQX91300108",

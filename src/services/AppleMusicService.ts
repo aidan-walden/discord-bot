@@ -218,6 +218,7 @@ export default class AppleMusicService {
 		return {
 			platform: "apple",
 			kind: "track",
+			id: song.id,
 			title: attributes.name,
 			artist: attributes.artistName,
 			isrc: attributes.isrc || undefined,
@@ -234,6 +235,7 @@ export default class AppleMusicService {
 		return {
 			platform: "apple",
 			kind: "album",
+			id: album.id,
 			title: attributes.name,
 			artist: attributes.artistName,
 			upc: attributes.upc || undefined,

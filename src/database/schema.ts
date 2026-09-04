@@ -29,6 +29,24 @@ export const gptUserBans = banTable("gpt_user_bans", "user_id");
 export const musicUserBans = banTable("music_user_bans", "user_id");
 export const musicGuildBans = banTable("music_guild_bans", "guild_id");
 
+export const musicLinkMappings = pgTable(
+	"music_link_mappings",
+	{
+		spotifyId: text("spotify_id").notNull(),
+		appleMusicId: text("apple_music_id").notNull(),
+	},
+	(table) => [
+		primaryKey({
+			name: "music_link_mappings_pkey",
+			columns: [table.spotifyId, table.appleMusicId],
+		}),
+		index("idx_music_link_mappings_apple_music_id_spotify_id").on(
+			table.appleMusicId,
+			table.spotifyId,
+		),
+	],
+);
+
 export const llmUserRateLimits = pgTable(
 	"llm_user_rate_limits",
 	{

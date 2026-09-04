@@ -41,6 +41,10 @@ export interface LlmConfig {
 	userRequestsPerHour: number;
 }
 
+export interface MusicLinksConfig {
+	persistMappings: boolean;
+}
+
 export interface SpotifyConfig {
 	SPOTIFY_CLIENT_ID?: string;
 	SPOTIFY_CLIENT_SECRET?: string;
@@ -86,6 +90,9 @@ interface AppConfigFile {
 	llm?: {
 		userRequestsPerHour?: number;
 	};
+	musicLinks?: {
+		persistMappings?: boolean;
+	};
 	spotify?: SpotifyConfig;
 	tiktok?: TikTokConfig;
 	imgur?: ImgurConfig;
@@ -118,6 +125,7 @@ export interface AppConfig {
 	openai: OpenAIConfig;
 	anthropic: AnthropicConfig;
 	llm: LlmConfig;
+	musicLinks: MusicLinksConfig;
 	spotify: SpotifyConfig;
 	tiktok: TikTokConfig;
 	imgur: ImgurConfig;
@@ -262,6 +270,22 @@ const RIOT_PLATFORM_SET = new Set<string>(RIOT_PLATFORMS);
 const RIOT_PLAYER_KEYS = new Set(["riotId", "platform"]);
 const DEFAULT_RIOT_POLL_INTERVAL_SECONDS = 60;
 const DEFAULT_LLM_USER_REQUESTS_PER_HOUR = 5;
+
+function validateMusicLinks(value: unknown): MusicLinksConfig {
+	if (value === undefined) {
+		return { persistMappings: false };
+	}
+	if (typeof value !== "object" || value === null || Array.isArray(value)) {
+		throw new Error("Invalid config value for musicLinks: expected object.");
+	}
+	const persistMappings = (value as Record<string, unknown>).persistMappings;
+	return {
+		persistMappings:
+			persistMappings === undefined
+				? false
+				: ensureBoolean(persistMappings, "musicLinks.persistMappings"),
+	};
+}
 
 function validateLlm(value: unknown): LlmConfig {
 	if (value === undefined) {
@@ -570,6 +594,7 @@ function validateConfigFile(
 	const openai = validateOpenAI(configFile.openai);
 	const anthropic = validateAnthropic(configFile.anthropic);
 	const llm = validateLlm(configFile.llm);
+	const musicLinks = validateMusicLinks(configFile.musicLinks);
 	const spotify = validateSpotify(configFile.spotify);
 	const tiktok = validateTikTok(configFile.tiktok);
 	const imgur = validateImgur(configFile.imgur);
@@ -598,6 +623,7 @@ function validateConfigFile(
 		openai,
 		anthropic,
 		llm,
+		musicLinks,
 		spotify,
 		tiktok,
 		imgur,

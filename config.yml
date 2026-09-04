@@ -23,6 +23,9 @@ spotify:
   SPOTIFY_CLIENT_ID: ""
   SPOTIFY_CLIENT_SECRET: ""
 
+musicLinks:
+  persistMappings: false
+
 imgur:
   IMGUR_CLIENT_ID: ""
 

@@ -4,6 +4,7 @@ import SpotifyService from "./SpotifyService";
 
 function fakeTrack(overrides: Record<string, unknown> = {}) {
 	return {
+		id: "track1",
 		name: "Get Lucky",
 		artists: [{ name: "Daft Punk" }, { name: "Pharrell Williams" }],
 		external_ids: { isrc: "USQX91300108" },
@@ -15,6 +16,7 @@ function fakeTrack(overrides: Record<string, unknown> = {}) {
 
 function fakeAlbum(overrides: Record<string, unknown> = {}) {
 	return {
+		id: "album1",
 		name: "Random Access Memories",
 		artists: [{ name: "Daft Punk" }],
 		external_ids: { upc: "886443919266" },
@@ -85,6 +87,7 @@ describe("SpotifyService", () => {
 		expect(item).toEqual({
 			platform: "spotify",
 			kind: "track",
+			id: "track1",
 			title: "Get Lucky",
 			artist: "Daft Punk, Pharrell Williams",
 			isrc: "USQX91300108",

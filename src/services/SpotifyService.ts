@@ -96,6 +96,7 @@ export default class SpotifyService {
 		return {
 			platform: "spotify",
 			kind: "track",
+			id: track.id,
 			title: track.name,
 			artist: this.joinArtists(track.artists),
 			isrc: track.external_ids?.isrc || undefined,
@@ -108,6 +109,7 @@ export default class SpotifyService {
 		return {
 			platform: "spotify",
 			kind: "album",
+			id: album.id,
 			title: album.name,
 			artist: this.joinArtists(album.artists),
 			upc: album.external_ids?.upc || undefined,

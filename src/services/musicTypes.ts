@@ -13,6 +13,8 @@ export type MusicKind = "track" | "album";
 export interface MusicItem {
 	platform: MusicPlatform;
 	kind: MusicKind;
+	/** The platform's stable entity ID. */
+	id: string;
 	title: string;
 	artist: string;
 	/** International Standard Recording Code, present for tracks. */

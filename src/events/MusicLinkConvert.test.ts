@@ -14,6 +14,7 @@ const SPOTIFY_LINK = "https://open.spotify.com/track/6rqhFgbbKwnb9MLmUQDhG6";
 const sourceItem: MusicItem = {
 	platform: "spotify",
 	kind: "track",
+	id: "6rqhFgbbKwnb9MLmUQDhG6",
 	title: "Get Lucky",
 	artist: "Daft Punk",
 	isrc: "USQX91300108",
@@ -22,6 +23,7 @@ const sourceItem: MusicItem = {
 const targetItem: MusicItem = {
 	platform: "apple",
 	kind: "track",
+	id: "2",
 	title: "Get Lucky",
 	artist: "Daft Punk",
 	isrc: "USQX91300108",
@@ -77,7 +79,10 @@ function createMessage(options: {
 
 function createBot(options: {
 	available?: boolean;
-	conversion?: { source: MusicItem; target: MusicItem } | null;
+	conversion?: {
+		sourcePlatform: "spotify" | "apple";
+		target: MusicItem;
+	} | null;
 }): Bot {
 	return {
 		musicLinks: {
@@ -126,7 +131,7 @@ describe("MusicLinkConvert", () => {
 
 	test("replies with an embed and a delete button", async () => {
 		const bot = createBot({
-			conversion: { source: sourceItem, target: targetItem },
+			conversion: { sourcePlatform: sourceItem.platform, target: targetItem },
 		});
 		const built = createReply();
 		const { message, getPayload } = createMessage({ reply: built.reply });
@@ -156,7 +161,7 @@ describe("MusicLinkConvert", () => {
 
 	test("deletes the reply when the button is clicked", async () => {
 		const bot = createBot({
-			conversion: { source: sourceItem, target: targetItem },
+			conversion: { sourcePlatform: sourceItem.platform, target: targetItem },
 		});
 		const built = createReply();
 		const { message } = createMessage({ reply: built.reply });
@@ -176,7 +181,7 @@ describe("MusicLinkConvert", () => {
 
 	test("ignores clicks with an unrelated custom id", async () => {
 		const bot = createBot({
-			conversion: { source: sourceItem, target: targetItem },
+			conversion: { sourcePlatform: sourceItem.platform, target: targetItem },
 		});
 		const built = createReply();
 		const { message } = createMessage({ reply: built.reply });
@@ -192,7 +197,7 @@ describe("MusicLinkConvert", () => {
 
 	test("removes the button when it expires without a click", async () => {
 		const bot = createBot({
-			conversion: { source: sourceItem, target: targetItem },
+			conversion: { sourcePlatform: sourceItem.platform, target: targetItem },
 		});
 		const built = createReply();
 		const { message } = createMessage({ reply: built.reply });
@@ -205,7 +210,7 @@ describe("MusicLinkConvert", () => {
 
 	test("does not edit the reply after a button-triggered deletion", async () => {
 		const bot = createBot({
-			conversion: { source: sourceItem, target: targetItem },
+			conversion: { sourcePlatform: sourceItem.platform, target: targetItem },
 		});
 		const built = createReply();
 		const { message } = createMessage({ reply: built.reply });

@@ -56,7 +56,10 @@ export default class MusicLinkConvert implements BotEvent {
 				return;
 			}
 
-			const embed = this.buildEmbed(conversion.source, conversion.target);
+			const embed = this.buildEmbed(
+				conversion.sourcePlatform,
+				conversion.target,
+			);
 			const row = new ActionRowBuilder<ButtonBuilder>().addComponents(
 				new ButtonBuilder()
 					.setCustomId(DELETE_BUTTON_ID)
@@ -75,7 +78,10 @@ export default class MusicLinkConvert implements BotEvent {
 		}
 	}
 
-	private buildEmbed(source: MusicItem, target: MusicItem): EmbedBuilder {
+	private buildEmbed(
+		sourcePlatform: MusicPlatform,
+		target: MusicItem,
+	): EmbedBuilder {
 		const embed = new EmbedBuilder()
 			.setColor(PLATFORM_COLORS[target.platform])
 			.setTitle(escapeMarkdown(target.title))
@@ -86,7 +92,7 @@ export default class MusicLinkConvert implements BotEvent {
 				value: target.url,
 			})
 			.setFooter({
-				text: `Converted from ${PLATFORM_LABELS[source.platform]}`,
+				text: `Converted from ${PLATFORM_LABELS[sourcePlatform]}`,
 			});
 
 		if (target.artworkUrl) {

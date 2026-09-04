@@ -97,6 +97,7 @@ type YamlOptions = {
 	holidayProfilePicturesBlock?: string;
 	deafentrackerBlock?: string;
 	llmBlock?: string;
+	musicLinksBlock?: string;
 	openaiBlock?: string;
 	tiktokBlock?: string;
 	riotBlock?: string;
@@ -120,6 +121,7 @@ function buildYaml(options: YamlOptions = {}) {
 		holidayProfilePicturesBlock,
 		deafentrackerBlock,
 		llmBlock,
+		musicLinksBlock,
 		openaiBlock,
 		tiktokBlock,
 		riotBlock,
@@ -200,6 +202,10 @@ function buildYaml(options: YamlOptions = {}) {
 
 	if (llmBlock !== undefined && llmBlock.length > 0) {
 		lines.push(llmBlock);
+	}
+
+	if (musicLinksBlock !== undefined && musicLinksBlock.length > 0) {
+		lines.push(musicLinksBlock);
 	}
 
 	if (riotBlock !== undefined && riotBlock.length > 0) {
@@ -780,6 +786,39 @@ describe("Config", () => {
 				);
 			},
 		);
+	});
+
+	describe("musicLinks validation", () => {
+		test("defaults mapping persistence to disabled", async () => {
+			const filePath = await writeTempConfig(buildYaml());
+			const config = await Config.load(filePath);
+
+			expect(config.get("musicLinks")).toEqual({ persistMappings: false });
+		});
+
+		test("loads mapping persistence from YAML", async () => {
+			const filePath = await writeTempConfig(
+				buildYaml({
+					musicLinksBlock: ["musicLinks:", "  persistMappings: true"].join(
+						"\n",
+					),
+				}),
+			);
+			const config = await Config.load(filePath);
+
+			expect(config.get("musicLinks")).toEqual({ persistMappings: true });
+		});
+
+		test("rejects a non-boolean persistMappings value", async () => {
+			await expectLoadConfigError(
+				buildYaml({
+					musicLinksBlock: ["musicLinks:", '  persistMappings: "yes"'].join(
+						"\n",
+					),
+				}),
+				"Invalid config value for musicLinks.persistMappings: expected boolean.",
+			);
+		});
 	});
 
 	describe("riot validation", () => {

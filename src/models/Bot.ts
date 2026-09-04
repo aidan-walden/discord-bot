@@ -32,6 +32,7 @@ import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import GuildSettingsRepository from "../repositories/GuildSettingsRepository";
 import LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
+import MusicLinkMappingRepository from "../repositories/MusicLinkMappingRepository";
 import RiotMatchRepository from "../repositories/RiotMatchRepository";
 import RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
@@ -180,7 +181,14 @@ export default class Bot extends Client {
 				: null;
 		this.spotify = new SpotifyService(spotifyClient, this.metrics);
 		this.appleMusic = new AppleMusicService();
-		this.musicLinks = new MusicLinkService(this.spotify, this.appleMusic);
+		const musicLinksConfig = config.get("musicLinks");
+		this.musicLinks = new MusicLinkService(
+			this.spotify,
+			this.appleMusic,
+			musicLinksConfig.persistMappings
+				? new MusicLinkMappingRepository(this.db)
+				: undefined,
+		);
 		const riotConfig = config.get("riot");
 		const riotApiKey = riotConfig.RIOT_API_KEY?.trim() || null;
 		this.riot = new RiotGamesService(riotApiKey, this.metrics, {
