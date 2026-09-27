@@ -2,6 +2,10 @@ const APPLE_MUSIC_BROWSE_URL = "https://music.apple.com/us/browse";
 const APPLE_MUSIC_BASE_URL = "https://music.apple.com";
 const TOKEN_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const TOKEN_FETCH_TIMEOUT_MS = 10_000;
+/** Startup waits at most this long before the scrape continues in the background. */
+const FOREGROUND_DEADLINE_MS = 30_000;
+/** JavaScript assets checked before the scrape continues in the background. */
+const FOREGROUND_ASSET_LIMIT = 8;
 const BROWSER_USER_AGENT =
 	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
@@ -44,10 +48,68 @@ export function isValidAppleMusicDeveloperToken(token: string): boolean {
 	);
 }
 
-export async function scrapeAppleMusicDeveloperToken(
+export interface AppleMusicTokenScrapeOptions {
+	/** Longest time {@link AppleMusicTokenScrape.foreground} waits, in milliseconds. */
+	foregroundDeadlineMs?: number;
+	/** Assets checked before {@link AppleMusicTokenScrape.foreground} settles. */
+	foregroundAssetLimit?: number;
+}
+
+/**
+ * A running token scrape. The scrape walks every JavaScript asset on the
+ * browse page, but callers that must not block for long (bot startup) can
+ * await only the bounded {@link foreground} phase and let the rest continue
+ * in the background.
+ */
+export interface AppleMusicTokenScrape {
+	/**
+	 * Settles once the token is found, the whole scrape ends, the first
+	 * `foregroundAssetLimit` assets have been checked, or the foreground deadline
+	 * passes — whichever comes first. Never rejects.
+	 */
+	foreground: Promise<void>;
+	/** Settles once the whole scrape ends, with the token or the failure. */
+	token: Promise<string>;
+}
+
+export function startAppleMusicTokenScrape(
 	fetcher?: typeof fetch,
+	options: AppleMusicTokenScrapeOptions = {},
+): AppleMusicTokenScrape {
+	const foregroundAssetLimit =
+		options.foregroundAssetLimit ?? FOREGROUND_ASSET_LIMIT;
+	const { promise: assetLimitReached, resolve: reachAssetLimit } =
+		Promise.withResolvers<void>();
+	const token = scrapeToken(
+		fetcher ?? fetch,
+		foregroundAssetLimit,
+		reachAssetLimit,
+	);
+
+	let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<void>((resolve) => {
+		deadlineTimer = setTimeout(
+			resolve,
+			options.foregroundDeadlineMs ?? FOREGROUND_DEADLINE_MS,
+		);
+	});
+	const foreground = Promise.race([
+		token.then(
+			() => undefined,
+			() => undefined,
+		),
+		assetLimitReached,
+		deadline,
+	]).finally(() => clearTimeout(deadlineTimer));
+
+	return { foreground, token };
+}
+
+async function scrapeToken(
+	request: typeof fetch,
+	foregroundAssetLimit: number,
+	onForegroundAssetsChecked: () => void,
 ): Promise<string> {
-	const request = fetcher ?? fetch;
 	const html = await fetchText(request, APPLE_MUSIC_BROWSE_URL);
 	if (html === null) {
 		throw new Error("Failed to fetch the Apple Music browse page.");
@@ -58,7 +120,12 @@ export async function scrapeAppleMusicDeveloperToken(
 		return htmlToken;
 	}
 
-	for (const assetUrl of collectJavaScriptAssetUrls(html)) {
+	const assetUrls = prioritizeAssetUrls(collectJavaScriptAssetUrls(html));
+	for (const [index, assetUrl] of assetUrls.entries()) {
+		if (index === foregroundAssetLimit) {
+			onForegroundAssetsChecked();
+		}
+
 		const javascript = await fetchText(request, assetUrl);
 		if (javascript === null) {
 			continue;
@@ -145,6 +212,19 @@ function collectJavaScriptAssetUrls(html: string): string[] {
 	}
 
 	return [...urls];
+}
+
+/**
+ * The developer token lives in the main `index-*.js` entry bundle, so try
+ * those first; the remaining assets keep their document order.
+ */
+function prioritizeAssetUrls(urls: string[]): string[] {
+	const isEntryBundle = (url: string) =>
+		/\/index[^/]*\.js$/i.test(new URL(url).pathname);
+	return [
+		...urls.filter(isEntryBundle),
+		...urls.filter((url) => !isEntryBundle(url)),
+	];
 }
 
 async function fetchText(

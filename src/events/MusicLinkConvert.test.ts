@@ -6,6 +6,7 @@ import type {
 	Message,
 } from "discord.js";
 import type Bot from "../models/Bot";
+import { AppleMusicUnavailableError } from "../services/AppleMusicService";
 import type { MusicItem } from "../services/musicTypes";
 import MusicLinkConvert from "./MusicLinkConvert";
 
@@ -239,6 +240,27 @@ describe("MusicLinkConvert", () => {
 
 		expect(message.reply).not.toHaveBeenCalled();
 		expect(errorSpy).toHaveBeenCalled();
+		errorSpy.mockRestore();
+	});
+
+	test("stays silent without logging while Apple Music is uninitialized", async () => {
+		const errorSpy = spyOn(console, "error").mockImplementation(
+			() => undefined,
+		);
+		const bot = {
+			musicLinks: {
+				isAvailable: mock(() => true),
+				convert: mock(async () => {
+					throw new AppleMusicUnavailableError("initializing");
+				}),
+			},
+		} as unknown as Bot;
+		const { message } = createMessage({});
+
+		await new MusicLinkConvert().execute(bot, message);
+
+		expect(message.reply).not.toHaveBeenCalled();
+		expect(errorSpy).not.toHaveBeenCalled();
 		errorSpy.mockRestore();
 	});
 });
