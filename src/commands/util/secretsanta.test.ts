@@ -330,6 +330,30 @@ describe("SecretSanta", () => {
 		}
 	});
 
+	test("spend limit rejects amounts beyond the cap", async () => {
+		const setSpendLimitCents = mock(async () => draw({ name: "party" }));
+		const interaction = buildInteraction({
+			sub: "spendlimit",
+			amountUsd: 25_000_000,
+			secretSanta: { setSpendLimitCents },
+		});
+		await new SecretSanta().execute(interaction);
+		expect(setSpendLimitCents).not.toHaveBeenCalled();
+		expect(interaction.reply).toHaveBeenCalledWith({
+			content: "Spend limit must be between $0 and $1000000.00.",
+			flags: MessageFlags.Ephemeral,
+		});
+	});
+
+	test("spend limit option declares a max value", () => {
+		const json = new SecretSanta().data.toJSON();
+		const sub = json.options?.find((o) => o.name === "spendlimit") as
+			| { options?: { name: string; max_value?: number }[] }
+			| undefined;
+		const amount = sub?.options?.find((o) => o.name === "amount_usd");
+		expect(amount?.max_value).toBe(1_000_000);
+	});
+
 	test("rejects invalid name", async () => {
 		const interaction = buildInteraction({
 			sub: "init",

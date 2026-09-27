@@ -17,6 +17,8 @@ import type {
 } from "../../repositories/SecretSantaRepository";
 
 const NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/;
+// Keeps spend_limit_cents well inside Postgres' 32-bit integer range.
+const MAX_SPEND_LIMIT_USD = 1_000_000;
 
 function formatSpendLimit(cents: number | null): string {
 	if (cents === null) {
@@ -147,7 +149,8 @@ export default class SecretSanta implements Command {
 						.setName("amount_usd")
 						.setDescription("Spend limit in USD")
 						.setRequired(true)
-						.setMinValue(0),
+						.setMinValue(0)
+						.setMaxValue(MAX_SPEND_LIMIT_USD),
 				),
 		)
 		.addSubcommand((sc) =>
@@ -386,6 +389,13 @@ export default class SecretSanta implements Command {
 			return;
 		}
 		const usd = interaction.options.getNumber("amount_usd", true);
+		if (!(usd >= 0 && usd <= MAX_SPEND_LIMIT_USD)) {
+			await interaction.reply({
+				content: `Spend limit must be between $0 and ${formatSpendLimit(MAX_SPEND_LIMIT_USD * 100)}.`,
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
 		const cents = Math.round(usd * 100);
 		const updated = await interaction.client.bot.secretSanta.setSpendLimitCents(
 			name,
