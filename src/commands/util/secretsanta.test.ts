@@ -115,6 +115,7 @@ function buildInteraction(opts: {
 			}),
 		),
 		deferReply: mock(async () => undefined),
+		followUp: mock(async () => undefined),
 		editReply: mock(async () => undefined),
 	} as unknown as ChatInputCommandInteraction;
 }
@@ -210,6 +211,31 @@ describe("SecretSanta", () => {
 			content: "`party` — open, not drawn, 3 participant(s), $25.00",
 			flags: MessageFlags.Ephemeral,
 		});
+	});
+
+	test("status list splits many draws across messages", async () => {
+		const draws = Array.from({ length: 60 }, (_, index) =>
+			draw({ name: `draw-${index}`.padEnd(32, "x"), spendLimitCents: 2500 }),
+		);
+		const interaction = buildInteraction({
+			sub: "status",
+			name: null,
+			secretSanta: {
+				list: mock(async () => draws),
+				participantCount: mock(async () => 3),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+
+		const contents = [
+			...(interaction.reply as ReturnType<typeof mock>).mock.calls,
+			...(interaction.followUp as ReturnType<typeof mock>).mock.calls,
+		].map(([payload]) => (payload as { content: string }).content);
+		expect(contents.length).toBeGreaterThan(1);
+		for (const content of contents) {
+			expect(content.length).toBeLessThanOrEqual(2000);
+		}
+		expect(contents.join("\n").split("\n")).toHaveLength(draws.length);
 	});
 
 	test("draw confirm shows Yes/No buttons", async () => {

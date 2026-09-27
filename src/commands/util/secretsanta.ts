@@ -10,6 +10,7 @@ import {
 	userMention,
 } from "discord.js";
 import { assignSecretSanta } from "../../helpers/secretSantaAssign";
+import { prepareMessageChunks } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
 import type {
 	SecretSantaAssignment,
@@ -593,10 +594,17 @@ export default class SecretSanta implements Command {
 				const count = await repo.participantCount(draw.name);
 				lines.push(this.statusLine(draw, count));
 			}
+			const [first, ...rest] = prepareMessageChunks(lines.join("\n"), false);
 			await interaction.reply({
-				content: lines.join("\n"),
+				content: first,
 				flags: MessageFlags.Ephemeral,
 			});
+			for (const chunk of rest) {
+				await interaction.followUp({
+					content: chunk,
+					flags: MessageFlags.Ephemeral,
+				});
+			}
 			return;
 		}
 
