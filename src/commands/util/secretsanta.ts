@@ -812,7 +812,7 @@ export default class SecretSanta implements Command {
 		await click.deferUpdate();
 		const result = await repo.finalizeAssignments(
 			name,
-			draw.revision,
+			draw,
 			reroll,
 			(currentParticipants, exclusions) => {
 				const assignment = assignSecretSanta(
