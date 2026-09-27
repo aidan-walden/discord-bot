@@ -9,7 +9,9 @@ import {
 import { sql } from "drizzle-orm";
 import { createDatabase } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
-import SecretSantaRepository from "./SecretSantaRepository";
+import SecretSantaRepository, {
+	type SecretSantaDraw,
+} from "./SecretSantaRepository";
 
 function pairs(participants: string[], shift = 1) {
 	return participants.map((giverId, index) => ({
@@ -32,6 +34,12 @@ describeWithDb("SecretSantaRepository", () => {
 	beforeEach(async () => {
 		await db.execute(sql`TRUNCATE secret_santa_draws CASCADE`);
 	});
+
+	async function version(name: string): Promise<SecretSantaDraw> {
+		const draw = await repo.get(name);
+		if (!draw) throw new Error(`missing draw ${name}`);
+		return draw;
+	}
 
 	afterAll(async () => {
 		await db.$client.close();
@@ -73,14 +81,15 @@ describeWithDb("SecretSantaRepository", () => {
 		await repo.create("y");
 		await repo.addParticipant("y", "a");
 		await repo.addParticipant("y", "b");
-		const result = await repo.finalizeAssignments("y", 0, false, (users) =>
+		const before = await version("y");
+		const result = await repo.finalizeAssignments("y", before, false, (users) =>
 			pairs(users),
 		);
 
 		const draw = await repo.get("y");
 		expect(result.status).toBe("committed");
 		expect(draw?.drawnAt).not.toBeNull();
-		expect(draw?.revision).toBe(1);
+		expect(draw?.revision).toBe(before.revision + 1);
 		expect(await repo.listAssignments("y")).toEqual([
 			{ giverId: "a", recipientId: "b" },
 			{ giverId: "b", recipientId: "a" },
@@ -92,21 +101,54 @@ describeWithDb("SecretSantaRepository", () => {
 		expect(await repo.listAssignments("y")).toEqual([]);
 	});
 
-	test("finalization reloads the roster after preview", async () => {
-		await repo.create("fresh");
-		await repo.addParticipant("fresh", "a");
-		await repo.addParticipant("fresh", "b");
-		expect(await repo.listParticipants("fresh")).toEqual(["a", "b"]);
-		await repo.addParticipant("fresh", "c");
+	test("changes after preview make finalization stale", async () => {
+		const changes: [string, () => Promise<unknown>][] = [
+			["opt-in", () => repo.addParticipant("fresh", "c")],
+			["opt-out", () => repo.removeParticipant("fresh", "b")],
+			["exclusion", () => repo.addExclusions("fresh", ["a", "b"])],
+			["spend limit", () => repo.setSpendLimitCents("fresh", 2500)],
+			[
+				"recreate",
+				async () => {
+					await repo.delete("fresh");
+					await repo.create("fresh");
+					await repo.addParticipant("fresh", "a");
+					await repo.addParticipant("fresh", "b");
+				},
+			],
+		];
+		for (const [label, change] of changes) {
+			await repo.delete("fresh");
+			await repo.create("fresh");
+			await repo.addParticipant("fresh", "a");
+			await repo.addParticipant("fresh", "b");
+			const preview = await version("fresh");
+			await change();
 
-		const result = await repo.finalizeAssignments(
-			"fresh",
-			0,
-			false,
-			(current) => pairs(current),
-		);
-		expect(result.status).toBe("committed");
-		expect(await repo.listAssignments("fresh")).toHaveLength(3);
+			const result = await repo.finalizeAssignments(
+				"fresh",
+				preview,
+				false,
+				(current) => pairs(current),
+			);
+			expect({ label, status: result.status }).toEqual({
+				label,
+				status: "stale",
+			});
+			expect(await repo.listAssignments("fresh")).toEqual([]);
+		}
+	});
+
+	test("no-op roster and exclusion changes keep the revision", async () => {
+		await repo.create("same");
+		await repo.addParticipant("same", "a");
+		await repo.addExclusions("same", ["a", "b"]);
+		const before = await version("same");
+
+		await repo.addParticipant("same", "a");
+		await repo.removeParticipant("same", "b");
+		await repo.addExclusions("same", ["b", "a"]);
+		expect((await version("same")).revision).toBe(before.revision);
 	});
 
 	test("only one concurrent draw and reroll commits per revision", async () => {
@@ -115,9 +157,14 @@ describeWithDb("SecretSantaRepository", () => {
 			await repo.addParticipant("race", userId);
 		}
 
+		const preview = await version("race");
 		const draws = await Promise.all([
-			repo.finalizeAssignments("race", 0, false, (users) => pairs(users, 1)),
-			repo.finalizeAssignments("race", 0, false, (users) => pairs(users, 2)),
+			repo.finalizeAssignments("race", preview, false, (users) =>
+				pairs(users, 1),
+			),
+			repo.finalizeAssignments("race", preview, false, (users) =>
+				pairs(users, 2),
+			),
 		]);
 		expect(draws.map((result) => result.status).sort()).toEqual([
 			"committed",
@@ -128,9 +175,10 @@ describeWithDb("SecretSantaRepository", () => {
 			drawWinner?.status === "committed" ? drawWinner.pairs : [],
 		);
 
+		const drawn = await version("race");
 		const rerolls = await Promise.all([
-			repo.finalizeAssignments("race", 1, true, (users) => pairs(users, 1)),
-			repo.finalizeAssignments("race", 1, true, (users) => pairs(users, 2)),
+			repo.finalizeAssignments("race", drawn, true, (users) => pairs(users, 1)),
+			repo.finalizeAssignments("race", drawn, true, (users) => pairs(users, 2)),
 		]);
 		expect(rerolls.map((result) => result.status).sort()).toEqual([
 			"committed",
@@ -142,21 +190,27 @@ describeWithDb("SecretSantaRepository", () => {
 		expect(await repo.listAssignments("race")).toEqual(
 			rerollWinner?.status === "committed" ? rerollWinner.pairs : [],
 		);
-		expect((await repo.get("race"))?.revision).toBe(2);
+		expect((await repo.get("race"))?.revision).toBe(drawn.revision + 1);
 	});
 
 	test("impossible reroll preserves assignments and revision", async () => {
 		await repo.create("keep");
 		await repo.addParticipant("keep", "a");
 		await repo.addParticipant("keep", "b");
-		await repo.finalizeAssignments("keep", 0, false, (users) => pairs(users));
+		await repo.finalizeAssignments(
+			"keep",
+			await version("keep"),
+			false,
+			(users) => pairs(users),
+		);
+		const drawn = await version("keep");
 		const before = await repo.listAssignments("keep");
 
-		expect(await repo.finalizeAssignments("keep", 1, true, () => null)).toEqual(
-			{ status: "impossible" },
-		);
+		expect(
+			await repo.finalizeAssignments("keep", drawn, true, () => null),
+		).toEqual({ status: "impossible" });
 		expect(await repo.listAssignments("keep")).toEqual(before);
-		expect((await repo.get("keep"))?.revision).toBe(1);
+		expect((await repo.get("keep"))?.revision).toBe(drawn.revision);
 	});
 
 	test("setOpen and setSpendLimitCents", async () => {

@@ -10,6 +10,7 @@ import {
 	userMention,
 } from "discord.js";
 import { assignSecretSanta } from "../../helpers/secretSantaAssign";
+import { prepareMessageChunks } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
 import type {
 	SecretSantaAssignment,
@@ -17,6 +18,8 @@ import type {
 } from "../../repositories/SecretSantaRepository";
 
 const NAME_RE = /^[a-zA-Z0-9_-]{1,32}$/;
+// Keeps spend_limit_cents well inside Postgres' 32-bit integer range.
+const MAX_SPEND_LIMIT_USD = 1_000_000;
 
 function formatSpendLimit(cents: number | null): string {
 	if (cents === null) {
@@ -25,20 +28,30 @@ function formatSpendLimit(cents: number | null): string {
 	return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatMentionList(ids: string[]): string {
-	if (ids.length === 0) return "None";
+// Joins whole items into an embed field value (max 1024 chars), noting how
+// many were left out instead of cutting an item mid-way.
+function formatFieldList(items: string[], separator: string): string {
+	if (items.length === 0) return "None";
 	let value = "";
-	for (let i = 0; i < ids.length; i++) {
+	for (let i = 0; i < items.length; i++) {
 		const next = value
-			? `${value}, ${userMention(ids[i] as string)}`
-			: userMention(ids[i] as string);
-		const remaining = ids.length - i - 1;
-		if (`${next}${remaining ? `, and ${remaining} more` : ""}`.length > 1024) {
-			return `${value}, and ${ids.length - i} more`;
+			? `${value}${separator}${items[i]}`
+			: (items[i] as string);
+		const remaining = items.length - i - 1;
+		const suffix = remaining ? `${separator}and ${remaining} more` : "";
+		if (`${next}${suffix}`.length > 1024) {
+			return `${value}${separator}and ${items.length - i} more`;
 		}
 		value = next;
 	}
 	return value;
+}
+
+function formatMentionList(ids: string[]): string {
+	return formatFieldList(
+		ids.map((id) => userMention(id)),
+		", ",
+	);
 }
 
 function parseName(raw: string | null): string | null {
@@ -147,7 +160,8 @@ export default class SecretSanta implements Command {
 						.setName("amount_usd")
 						.setDescription("Spend limit in USD")
 						.setRequired(true)
-						.setMinValue(0),
+						.setMinValue(0)
+						.setMaxValue(MAX_SPEND_LIMIT_USD),
 				),
 		)
 		.addSubcommand((sc) =>
@@ -386,6 +400,13 @@ export default class SecretSanta implements Command {
 			return;
 		}
 		const usd = interaction.options.getNumber("amount_usd", true);
+		if (!(usd >= 0 && usd <= MAX_SPEND_LIMIT_USD)) {
+			await interaction.reply({
+				content: `Spend limit must be between $0 and ${formatSpendLimit(MAX_SPEND_LIMIT_USD * 100)}.`,
+				flags: MessageFlags.Ephemeral,
+			});
+			return;
+		}
 		const cents = Math.round(usd * 100);
 		const updated = await interaction.client.bot.secretSanta.setSpendLimitCents(
 			name,
@@ -583,10 +604,17 @@ export default class SecretSanta implements Command {
 				const count = await repo.participantCount(draw.name);
 				lines.push(this.statusLine(draw, count));
 			}
+			const [first, ...rest] = prepareMessageChunks(lines.join("\n"), false);
 			await interaction.reply({
-				content: lines.join("\n"),
+				content: first,
 				flags: MessageFlags.Ephemeral,
 			});
+			for (const chunk of rest) {
+				await interaction.followUp({
+					content: chunk,
+					flags: MessageFlags.Ephemeral,
+				});
+			}
 			return;
 		}
 
@@ -629,15 +657,12 @@ export default class SecretSanta implements Command {
 				},
 				{
 					name: "Exclusions",
-					value:
-						exclusions.length === 0
-							? "None"
-							: exclusions
-									.map(
-										(e) => `${userMention(e.userA)} ↔ ${userMention(e.userB)}`,
-									)
-									.join("\n")
-									.slice(0, 1024),
+					value: formatFieldList(
+						exclusions.map(
+							(e) => `${userMention(e.userA)} ↔ ${userMention(e.userB)}`,
+						),
+						"\n",
+					),
 				},
 			);
 
@@ -812,7 +837,7 @@ export default class SecretSanta implements Command {
 		await click.deferUpdate();
 		const result = await repo.finalizeAssignments(
 			name,
-			draw.revision,
+			draw,
 			reroll,
 			(currentParticipants, exclusions) => {
 				const assignment = assignSecretSanta(

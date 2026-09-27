@@ -115,6 +115,7 @@ function buildInteraction(opts: {
 			}),
 		),
 		deferReply: mock(async () => undefined),
+		followUp: mock(async () => undefined),
 		editReply: mock(async () => undefined),
 	} as unknown as ChatInputCommandInteraction;
 }
@@ -210,6 +211,31 @@ describe("SecretSanta", () => {
 			content: "`party` — open, not drawn, 3 participant(s), $25.00",
 			flags: MessageFlags.Ephemeral,
 		});
+	});
+
+	test("status list splits many draws across messages", async () => {
+		const draws = Array.from({ length: 60 }, (_, index) =>
+			draw({ name: `draw-${index}`.padEnd(32, "x"), spendLimitCents: 2500 }),
+		);
+		const interaction = buildInteraction({
+			sub: "status",
+			name: null,
+			secretSanta: {
+				list: mock(async () => draws),
+				participantCount: mock(async () => 3),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+
+		const contents = [
+			...(interaction.reply as ReturnType<typeof mock>).mock.calls,
+			...(interaction.followUp as ReturnType<typeof mock>).mock.calls,
+		].map(([payload]) => (payload as { content: string }).content);
+		expect(contents.length).toBeGreaterThan(1);
+		for (const content of contents) {
+			expect(content.length).toBeLessThanOrEqual(2000);
+		}
+		expect(contents.join("\n").split("\n")).toHaveLength(draws.length);
 	});
 
 	test("draw confirm shows Yes/No buttons", async () => {
@@ -328,6 +354,59 @@ describe("SecretSanta", () => {
 				`and ${participants.length - parts.length + 1} more`,
 			);
 		}
+	});
+
+	test("spend limit rejects amounts beyond the cap", async () => {
+		const setSpendLimitCents = mock(async () => draw({ name: "party" }));
+		const interaction = buildInteraction({
+			sub: "spendlimit",
+			amountUsd: 25_000_000,
+			secretSanta: { setSpendLimitCents },
+		});
+		await new SecretSanta().execute(interaction);
+		expect(setSpendLimitCents).not.toHaveBeenCalled();
+		expect(interaction.reply).toHaveBeenCalledWith({
+			content: "Spend limit must be between $0 and $1000000.00.",
+			flags: MessageFlags.Ephemeral,
+		});
+	});
+
+	test("spend limit option declares a max value", () => {
+		const json = new SecretSanta().data.toJSON();
+		const sub = json.options?.find((o) => o.name === "spendlimit") as
+			| { options?: { name: string; max_value?: number }[] }
+			| undefined;
+		const amount = sub?.options?.find((o) => o.name === "amount_usd");
+		expect(amount?.max_value).toBe(1_000_000);
+	});
+
+	test("exclusions field keeps whole pairs and notes the rest", async () => {
+		const exclusions = Array.from({ length: 40 }, (_, index) => ({
+			userA: `${100000000000000000n + BigInt(index)}`,
+			userB: `${200000000000000000n + BigInt(index)}`,
+		}));
+		const interaction = buildInteraction({
+			sub: "status",
+			secretSanta: {
+				get: mock(async () => draw({ name: "party" })),
+				listExclusions: mock(async () => exclusions),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+		const payload = (interaction.reply as ReturnType<typeof mock>).mock
+			.calls[0]?.[0] as {
+			embeds: { data: { fields?: { name: string; value: string }[] } }[];
+		};
+		const value =
+			payload.embeds[0]?.data.fields?.find((f) => f.name === "Exclusions")
+				?.value ?? "";
+		expect(value.length).toBeLessThanOrEqual(1024);
+		const lines = value.split("\n");
+		const shown = lines.slice(0, -1);
+		for (const line of shown) {
+			expect(line).toMatch(/^<@\d+> ↔ <@\d+>$/);
+		}
+		expect(lines.at(-1)).toBe(`and ${exclusions.length - shown.length} more`);
 	});
 
 	test("rejects invalid name", async () => {

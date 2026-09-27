@@ -42,6 +42,13 @@ export type FinalizeAssignmentsResult =
 			status: "missing" | "stale" | "wrong-mode" | "too-few" | "impossible";
 	  };
 
+export type SecretSantaDrawVersion = Pick<
+	SecretSantaDraw,
+	"revision" | "createdAt"
+>;
+
+const bumpRevision = { revision: sql`${secretSantaDraws.revision} + 1` };
+
 const exclusionColumns = {
 	userA: secretSantaExclusions.userA,
 	userB: secretSantaExclusions.userB,
@@ -105,7 +112,7 @@ export default class SecretSantaRepository {
 	): Promise<SecretSantaDraw | null> {
 		const rows = await this.db
 			.update(secretSantaDraws)
-			.set({ spendLimitCents: cents })
+			.set({ spendLimitCents: cents, ...bumpRevision })
 			.where(eq(secretSantaDraws.name, name))
 			.returning();
 		return rows[0] ?? null;
@@ -134,7 +141,12 @@ export default class SecretSantaRepository {
 				.values({ drawName: name, userId })
 				.onConflictDoNothing()
 				.returning({ userId: secretSantaParticipants.userId });
-			return rows.length > 0 ? "added" : "already-present";
+			if (rows.length === 0) return "already-present";
+			await tx
+				.update(secretSantaDraws)
+				.set(bumpRevision)
+				.where(eq(secretSantaDraws.name, name));
+			return "added";
 		});
 	}
 
@@ -161,7 +173,12 @@ export default class SecretSantaRepository {
 					),
 				)
 				.returning({ userId: secretSantaParticipants.userId });
-			return rows.length > 0 ? "removed" : "not-present";
+			if (rows.length === 0) return "not-present";
+			await tx
+				.update(secretSantaDraws)
+				.set(bumpRevision)
+				.where(eq(secretSantaDraws.name, name));
+			return "removed";
 		});
 	}
 
@@ -180,22 +197,37 @@ export default class SecretSantaRepository {
 			return 0;
 		}
 
-		let inserted = 0;
-		for (let i = 0; i < unique.length; i++) {
-			for (let j = i + 1; j < unique.length; j++) {
-				const a = unique[i] as string;
-				const b = unique[j] as string;
-				const userA = a < b ? a : b;
-				const userB = a < b ? b : a;
-				const rows = await this.db
-					.insert(secretSantaExclusions)
-					.values({ drawName: name, userA, userB })
-					.onConflictDoNothing()
-					.returning({ userA: secretSantaExclusions.userA });
-				inserted += rows.length;
+		return this.db.transaction(async (tx) => {
+			const draws = await tx
+				.select({ name: secretSantaDraws.name })
+				.from(secretSantaDraws)
+				.where(eq(secretSantaDraws.name, name))
+				.for("update");
+			if (draws.length === 0) return 0;
+
+			let inserted = 0;
+			for (let i = 0; i < unique.length; i++) {
+				for (let j = i + 1; j < unique.length; j++) {
+					const a = unique[i] as string;
+					const b = unique[j] as string;
+					const userA = a < b ? a : b;
+					const userB = a < b ? b : a;
+					const rows = await tx
+						.insert(secretSantaExclusions)
+						.values({ drawName: name, userA, userB })
+						.onConflictDoNothing()
+						.returning({ userA: secretSantaExclusions.userA });
+					inserted += rows.length;
+				}
 			}
-		}
-		return inserted;
+			if (inserted > 0) {
+				await tx
+					.update(secretSantaDraws)
+					.set(bumpRevision)
+					.where(eq(secretSantaDraws.name, name));
+			}
+			return inserted;
+		});
 	}
 
 	async listExclusions(name: string): Promise<SecretSantaExclusion[]> {
@@ -211,7 +243,7 @@ export default class SecretSantaRepository {
 
 	async finalizeAssignments(
 		name: string,
-		expectedRevision: number,
+		expected: SecretSantaDrawVersion,
 		reroll: boolean,
 		assign: (
 			participants: string[],
@@ -226,7 +258,13 @@ export default class SecretSantaRepository {
 				.for("update");
 			const draw = draws[0];
 			if (!draw) return { status: "missing" };
-			if (draw.revision !== expectedRevision) return { status: "stale" };
+			// A recreated draw restarts at revision 0, so match createdAt too.
+			if (
+				draw.revision !== expected.revision ||
+				draw.createdAt.getTime() !== expected.createdAt.getTime()
+			) {
+				return { status: "stale" };
+			}
 			if (reroll !== Boolean(draw.drawnAt)) return { status: "wrong-mode" };
 
 			const participantRows = await tx
@@ -260,10 +298,7 @@ export default class SecretSantaRepository {
 			}
 			const updated = await tx
 				.update(secretSantaDraws)
-				.set({
-					drawnAt: sql`NOW()`,
-					revision: sql`${secretSantaDraws.revision} + 1`,
-				})
+				.set({ drawnAt: sql`NOW()`, ...bumpRevision })
 				.where(eq(secretSantaDraws.name, name))
 				.returning();
 			return {
