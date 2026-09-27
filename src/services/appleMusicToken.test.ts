@@ -1,5 +1,5 @@
 import { describe, expect, test } from "bun:test";
-import { scrapeAppleMusicDeveloperToken } from "./appleMusicToken";
+import { startAppleMusicTokenScrape } from "./appleMusicToken";
 
 const BROWSE_URL = "https://music.apple.com/us/browse";
 
@@ -13,7 +13,7 @@ function response(body: string): Response {
 	return new Response(body, { status: 200 });
 }
 
-describe("scrapeAppleMusicDeveloperToken", () => {
+describe("startAppleMusicTokenScrape", () => {
 	test("finds a valid token in a JavaScript asset", async () => {
 		const token = buildJwt(Math.floor(Date.now() / 1000) + 3600);
 		const requestedUrls: string[] = [];
@@ -25,7 +25,7 @@ describe("scrapeAppleMusicDeveloperToken", () => {
 				: response(`window.token = "${token}";`);
 		}) as typeof fetch;
 
-		expect(await scrapeAppleMusicDeveloperToken(fetcher)).toBe(token);
+		expect(await startAppleMusicTokenScrape(fetcher).token).toBe(token);
 		expect(requestedUrls).toEqual([
 			BROWSE_URL,
 			"https://music.apple.com/assets/index-abc.js",
@@ -50,7 +50,7 @@ describe("scrapeAppleMusicDeveloperToken", () => {
 				: response(`const token = "${validToken}";`);
 		}) as typeof fetch;
 
-		expect(await scrapeAppleMusicDeveloperToken(fetcher)).toBe(validToken);
+		expect(await startAppleMusicTokenScrape(fetcher).token).toBe(validToken);
 	});
 
 	test("throws when no JWT is present", async () => {
@@ -59,7 +59,7 @@ describe("scrapeAppleMusicDeveloperToken", () => {
 				? response('<script src="/assets/index.js"></script>')
 				: response("const app = true;")) as typeof fetch;
 
-		await expect(scrapeAppleMusicDeveloperToken(fetcher)).rejects.toThrow(
+		await expect(startAppleMusicTokenScrape(fetcher).token).rejects.toThrow(
 			"Unable to find a valid Apple Music developer token",
 		);
 	});
@@ -75,7 +75,7 @@ describe("scrapeAppleMusicDeveloperToken", () => {
 				: response(token);
 		}) as typeof fetch;
 
-		expect(await scrapeAppleMusicDeveloperToken(fetcher)).toBe(token);
+		expect(await startAppleMusicTokenScrape(fetcher).token).toBe(token);
 		expect(requestedUrls[1]).toBe("https://music.apple.com/assets/index.js");
 	});
 
@@ -96,61 +96,75 @@ describe("scrapeAppleMusicDeveloperToken", () => {
 			return url.endsWith("index-abc.js") ? response(token) : response("");
 		}) as typeof fetch;
 
-		expect(await scrapeAppleMusicDeveloperToken(fetcher)).toBe(token);
+		expect(await startAppleMusicTokenScrape(fetcher).token).toBe(token);
 		expect(requestedUrls).toEqual([
 			BROWSE_URL,
 			"https://music.apple.com/assets/index-abc.js",
 		]);
 	});
 
-	test("caps the number of JavaScript assets fetched", async () => {
+	test("settles the foreground after the asset limit and keeps searching in the background", async () => {
+		const token = buildJwt(Math.floor(Date.now() / 1000) + 3600);
 		const requestedUrls: string[] = [];
 		const assets = Array.from(
-			{ length: 50 },
+			{ length: 12 },
 			(_, index) => `<script src="/assets/chunk-${index}.js"></script>`,
 		).join("");
+		let releaseBackground: () => void = () => {};
+		const backgroundGate = new Promise<void>((resolve) => {
+			releaseBackground = resolve;
+		});
 		const fetcher = (async (input: string | Request | URL) => {
 			const url = String(input);
 			requestedUrls.push(url);
-			return url === BROWSE_URL ? response(assets) : response("");
-		}) as typeof fetch;
-
-		await expect(
-			scrapeAppleMusicDeveloperToken(fetcher, { maxAssetRequests: 3 }),
-		).rejects.toThrow("Unable to find a valid Apple Music developer token");
-		expect(requestedUrls).toHaveLength(4);
-	});
-
-	test("stops fetching assets once the overall deadline passes", async () => {
-		const requestedUrls: string[] = [];
-		const fetcher = (async (
-			input: string | Request | URL,
-			init?: RequestInit,
-		) => {
-			const url = String(input);
-			requestedUrls.push(url);
 			if (url === BROWSE_URL) {
-				return response(
-					[
-						'<script src="/assets/a.js"></script>',
-						'<script src="/assets/b.js"></script>',
-					].join(""),
-				);
+				return response(assets);
 			}
-			// Hang until the scrape's abort signal fires.
-			return new Promise<Response>((_, reject) => {
-				init?.signal?.addEventListener("abort", () =>
-					reject(init.signal?.reason),
-				);
-			});
+			if (url.endsWith("chunk-3.js")) {
+				await backgroundGate;
+			}
+			return url.endsWith("chunk-10.js") ? response(token) : response("");
 		}) as typeof fetch;
 
-		await expect(
-			scrapeAppleMusicDeveloperToken(fetcher, { deadlineMs: 20 }),
-		).rejects.toThrow("Timed out");
+		const scrape = startAppleMusicTokenScrape(fetcher, {
+			foregroundAssetLimit: 3,
+		});
+		await scrape.foreground;
+		// The foreground settles once the first 3 assets are checked; the 4th is
+		// already in flight in the background.
 		expect(requestedUrls).toEqual([
 			BROWSE_URL,
-			"https://music.apple.com/assets/a.js",
+			"https://music.apple.com/assets/chunk-0.js",
+			"https://music.apple.com/assets/chunk-1.js",
+			"https://music.apple.com/assets/chunk-2.js",
+			"https://music.apple.com/assets/chunk-3.js",
 		]);
+
+		releaseBackground();
+		expect(await scrape.token).toBe(token);
+		expect(requestedUrls).toHaveLength(12);
+	});
+
+	test("settles the foreground at the deadline while the scrape continues", async () => {
+		const token = buildJwt(Math.floor(Date.now() / 1000) + 3600);
+		let releaseAsset: () => void = () => {};
+		const assetGate = new Promise<void>((resolve) => {
+			releaseAsset = resolve;
+		});
+		const fetcher = (async (input: string | Request | URL) => {
+			if (String(input) === BROWSE_URL) {
+				return response('<script src="/assets/index.js"></script>');
+			}
+			await assetGate;
+			return response(token);
+		}) as typeof fetch;
+
+		const scrape = startAppleMusicTokenScrape(fetcher, {
+			foregroundDeadlineMs: 10,
+		});
+		await scrape.foreground;
+
+		releaseAsset();
+		expect(await scrape.token).toBe(token);
 	});
 });

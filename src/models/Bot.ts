@@ -278,9 +278,9 @@ export default class Bot extends Client {
 		await migrateDatabase(this.db);
 		await this.deafenTracker.initialize();
 		await this.chatSessions.initialize();
-		// Scrape the Apple Music token in the background so a slow or unreachable
-		// music.apple.com never delays startup; conversions stay idle until it lands.
-		void this.appleMusic.fetchToken();
+		// Waits only for the bounded first phase of the token scrape; any remaining
+		// search continues in the background and startup proceeds even on failure.
+		await this.appleMusic.initialize();
 		await this.registerCommands(path.join(import.meta.dirname, "../commands"));
 		await this.registerEvents(path.join(import.meta.dirname, "../events"));
 

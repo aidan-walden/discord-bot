@@ -2,10 +2,10 @@ const APPLE_MUSIC_BROWSE_URL = "https://music.apple.com/us/browse";
 const APPLE_MUSIC_BASE_URL = "https://music.apple.com";
 const TOKEN_PATTERN = /eyJ[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]+/g;
 const TOKEN_FETCH_TIMEOUT_MS = 10_000;
-/** Overall budget for the whole scrape, across the browse page and all assets. */
-const TOKEN_SCRAPE_DEADLINE_MS = 30_000;
-/** Upper bound on JavaScript assets fetched while searching for the token. */
-const MAX_ASSET_REQUESTS = 8;
+/** Startup waits at most this long before the scrape continues in the background. */
+const FOREGROUND_DEADLINE_MS = 30_000;
+/** JavaScript assets checked before the scrape continues in the background. */
+const FOREGROUND_ASSET_LIMIT = 8;
 const BROWSER_USER_AGENT =
 	"Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36";
 
@@ -49,23 +49,68 @@ export function isValidAppleMusicDeveloperToken(token: string): boolean {
 }
 
 export interface AppleMusicTokenScrapeOptions {
-	/** Overall time budget for the scrape in milliseconds. */
-	deadlineMs?: number;
-	/** Maximum number of JavaScript assets to fetch. */
-	maxAssetRequests?: number;
+	/** Longest time {@link AppleMusicTokenScrape.foreground} waits, in milliseconds. */
+	foregroundDeadlineMs?: number;
+	/** Assets checked before {@link AppleMusicTokenScrape.foreground} settles. */
+	foregroundAssetLimit?: number;
 }
 
-export async function scrapeAppleMusicDeveloperToken(
+/**
+ * A running token scrape. The scrape walks every JavaScript asset on the
+ * browse page, but callers that must not block for long (bot startup) can
+ * await only the bounded {@link foreground} phase and let the rest continue
+ * in the background.
+ */
+export interface AppleMusicTokenScrape {
+	/**
+	 * Settles once the token is found, the whole scrape ends, the first
+	 * `foregroundAssetLimit` assets have been checked, or the foreground deadline
+	 * passes — whichever comes first. Never rejects.
+	 */
+	foreground: Promise<void>;
+	/** Settles once the whole scrape ends, with the token or the failure. */
+	token: Promise<string>;
+}
+
+export function startAppleMusicTokenScrape(
 	fetcher?: typeof fetch,
 	options: AppleMusicTokenScrapeOptions = {},
-): Promise<string> {
-	const request = fetcher ?? fetch;
-	const deadline = AbortSignal.timeout(
-		options.deadlineMs ?? TOKEN_SCRAPE_DEADLINE_MS,
+): AppleMusicTokenScrape {
+	const foregroundAssetLimit =
+		options.foregroundAssetLimit ?? FOREGROUND_ASSET_LIMIT;
+	const { promise: assetLimitReached, resolve: reachAssetLimit } =
+		Promise.withResolvers<void>();
+	const token = scrapeToken(
+		fetcher ?? fetch,
+		foregroundAssetLimit,
+		reachAssetLimit,
 	);
-	const maxAssetRequests = options.maxAssetRequests ?? MAX_ASSET_REQUESTS;
 
-	const html = await fetchText(request, APPLE_MUSIC_BROWSE_URL, deadline);
+	let deadlineTimer: ReturnType<typeof setTimeout> | undefined;
+	const deadline = new Promise<void>((resolve) => {
+		deadlineTimer = setTimeout(
+			resolve,
+			options.foregroundDeadlineMs ?? FOREGROUND_DEADLINE_MS,
+		);
+	});
+	const foreground = Promise.race([
+		token.then(
+			() => undefined,
+			() => undefined,
+		),
+		assetLimitReached,
+		deadline,
+	]).finally(() => clearTimeout(deadlineTimer));
+
+	return { foreground, token };
+}
+
+async function scrapeToken(
+	request: typeof fetch,
+	foregroundAssetLimit: number,
+	onForegroundAssetsChecked: () => void,
+): Promise<string> {
+	const html = await fetchText(request, APPLE_MUSIC_BROWSE_URL);
 	if (html === null) {
 		throw new Error("Failed to fetch the Apple Music browse page.");
 	}
@@ -75,18 +120,13 @@ export async function scrapeAppleMusicDeveloperToken(
 		return htmlToken;
 	}
 
-	const assetUrls = prioritizeAssetUrls(collectJavaScriptAssetUrls(html)).slice(
-		0,
-		maxAssetRequests,
-	);
-	for (const assetUrl of assetUrls) {
-		if (deadline.aborted) {
-			throw new Error(
-				"Timed out searching the music.apple.com web bundle for an Apple Music developer token.",
-			);
+	const assetUrls = prioritizeAssetUrls(collectJavaScriptAssetUrls(html));
+	for (const [index, assetUrl] of assetUrls.entries()) {
+		if (index === foregroundAssetLimit) {
+			onForegroundAssetsChecked();
 		}
 
-		const javascript = await fetchText(request, assetUrl, deadline);
+		const javascript = await fetchText(request, assetUrl);
 		if (javascript === null) {
 			continue;
 		}
@@ -190,16 +230,12 @@ function prioritizeAssetUrls(urls: string[]): string[] {
 async function fetchText(
 	fetcher: typeof fetch,
 	url: string,
-	deadline: AbortSignal,
 ): Promise<string | null> {
 	try {
 		const response = await fetcher(url, {
 			method: "GET",
 			headers: { "User-Agent": BROWSER_USER_AGENT },
-			signal: AbortSignal.any([
-				deadline,
-				AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS),
-			]),
+			signal: AbortSignal.timeout(TOKEN_FETCH_TIMEOUT_MS),
 		});
 		if (response.ok === false) {
 			return null;

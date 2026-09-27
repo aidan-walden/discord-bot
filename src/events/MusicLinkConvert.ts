@@ -12,6 +12,7 @@ import {
 import { detectMusicLinks } from "../helpers/musicLinks";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
+import { AppleMusicUnavailableError } from "../services/AppleMusicService";
 import type { MusicItem, MusicPlatform } from "../services/musicTypes";
 
 const DELETE_BUTTON_ID = "musiclink:delete";
@@ -74,6 +75,10 @@ export default class MusicLinkConvert implements BotEvent {
 
 			this.attachDeleteButton(reply);
 		} catch (error) {
+			// Passive feature: stay silent while Apple Music is uninitialized.
+			if (error instanceof AppleMusicUnavailableError) {
+				return;
+			}
 			console.error("Music link conversion failed:", error);
 		}
 	}
