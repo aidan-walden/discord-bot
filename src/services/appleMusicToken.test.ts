@@ -78,4 +78,79 @@ describe("scrapeAppleMusicDeveloperToken", () => {
 		expect(await scrapeAppleMusicDeveloperToken(fetcher)).toBe(token);
 		expect(requestedUrls[1]).toBe("https://music.apple.com/assets/index.js");
 	});
+
+	test("fetches the index entry bundle before other assets", async () => {
+		const token = buildJwt(Math.floor(Date.now() / 1000) + 3600);
+		const requestedUrls: string[] = [];
+		const fetcher = (async (input: string | Request | URL) => {
+			const url = String(input);
+			requestedUrls.push(url);
+			if (url === BROWSE_URL) {
+				return response(
+					[
+						'<script src="/assets/vendor.js"></script>',
+						'<script src="/assets/index-abc.js"></script>',
+					].join(""),
+				);
+			}
+			return url.endsWith("index-abc.js") ? response(token) : response("");
+		}) as typeof fetch;
+
+		expect(await scrapeAppleMusicDeveloperToken(fetcher)).toBe(token);
+		expect(requestedUrls).toEqual([
+			BROWSE_URL,
+			"https://music.apple.com/assets/index-abc.js",
+		]);
+	});
+
+	test("caps the number of JavaScript assets fetched", async () => {
+		const requestedUrls: string[] = [];
+		const assets = Array.from(
+			{ length: 50 },
+			(_, index) => `<script src="/assets/chunk-${index}.js"></script>`,
+		).join("");
+		const fetcher = (async (input: string | Request | URL) => {
+			const url = String(input);
+			requestedUrls.push(url);
+			return url === BROWSE_URL ? response(assets) : response("");
+		}) as typeof fetch;
+
+		await expect(
+			scrapeAppleMusicDeveloperToken(fetcher, { maxAssetRequests: 3 }),
+		).rejects.toThrow("Unable to find a valid Apple Music developer token");
+		expect(requestedUrls).toHaveLength(4);
+	});
+
+	test("stops fetching assets once the overall deadline passes", async () => {
+		const requestedUrls: string[] = [];
+		const fetcher = (async (
+			input: string | Request | URL,
+			init?: RequestInit,
+		) => {
+			const url = String(input);
+			requestedUrls.push(url);
+			if (url === BROWSE_URL) {
+				return response(
+					[
+						'<script src="/assets/a.js"></script>',
+						'<script src="/assets/b.js"></script>',
+					].join(""),
+				);
+			}
+			// Hang until the scrape's abort signal fires.
+			return new Promise<Response>((_, reject) => {
+				init?.signal?.addEventListener("abort", () =>
+					reject(init.signal?.reason),
+				);
+			});
+		}) as typeof fetch;
+
+		await expect(
+			scrapeAppleMusicDeveloperToken(fetcher, { deadlineMs: 20 }),
+		).rejects.toThrow("Timed out");
+		expect(requestedUrls).toEqual([
+			BROWSE_URL,
+			"https://music.apple.com/assets/a.js",
+		]);
+	});
 });
