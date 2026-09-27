@@ -28,20 +28,30 @@ function formatSpendLimit(cents: number | null): string {
 	return `$${(cents / 100).toFixed(2)}`;
 }
 
-function formatMentionList(ids: string[]): string {
-	if (ids.length === 0) return "None";
+// Joins whole items into an embed field value (max 1024 chars), noting how
+// many were left out instead of cutting an item mid-way.
+function formatFieldList(items: string[], separator: string): string {
+	if (items.length === 0) return "None";
 	let value = "";
-	for (let i = 0; i < ids.length; i++) {
+	for (let i = 0; i < items.length; i++) {
 		const next = value
-			? `${value}, ${userMention(ids[i] as string)}`
-			: userMention(ids[i] as string);
-		const remaining = ids.length - i - 1;
-		if (`${next}${remaining ? `, and ${remaining} more` : ""}`.length > 1024) {
-			return `${value}, and ${ids.length - i} more`;
+			? `${value}${separator}${items[i]}`
+			: (items[i] as string);
+		const remaining = items.length - i - 1;
+		const suffix = remaining ? `${separator}and ${remaining} more` : "";
+		if (`${next}${suffix}`.length > 1024) {
+			return `${value}${separator}and ${items.length - i} more`;
 		}
 		value = next;
 	}
 	return value;
+}
+
+function formatMentionList(ids: string[]): string {
+	return formatFieldList(
+		ids.map((id) => userMention(id)),
+		", ",
+	);
 }
 
 function parseName(raw: string | null): string | null {
@@ -647,15 +657,12 @@ export default class SecretSanta implements Command {
 				},
 				{
 					name: "Exclusions",
-					value:
-						exclusions.length === 0
-							? "None"
-							: exclusions
-									.map(
-										(e) => `${userMention(e.userA)} ↔ ${userMention(e.userB)}`,
-									)
-									.join("\n")
-									.slice(0, 1024),
+					value: formatFieldList(
+						exclusions.map(
+							(e) => `${userMention(e.userA)} ↔ ${userMention(e.userB)}`,
+						),
+						"\n",
+					),
 				},
 			);
 

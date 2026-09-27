@@ -380,6 +380,35 @@ describe("SecretSanta", () => {
 		expect(amount?.max_value).toBe(1_000_000);
 	});
 
+	test("exclusions field keeps whole pairs and notes the rest", async () => {
+		const exclusions = Array.from({ length: 40 }, (_, index) => ({
+			userA: `${100000000000000000n + BigInt(index)}`,
+			userB: `${200000000000000000n + BigInt(index)}`,
+		}));
+		const interaction = buildInteraction({
+			sub: "status",
+			secretSanta: {
+				get: mock(async () => draw({ name: "party" })),
+				listExclusions: mock(async () => exclusions),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+		const payload = (interaction.reply as ReturnType<typeof mock>).mock
+			.calls[0]?.[0] as {
+			embeds: { data: { fields?: { name: string; value: string }[] } }[];
+		};
+		const value =
+			payload.embeds[0]?.data.fields?.find((f) => f.name === "Exclusions")
+				?.value ?? "";
+		expect(value.length).toBeLessThanOrEqual(1024);
+		const lines = value.split("\n");
+		const shown = lines.slice(0, -1);
+		for (const line of shown) {
+			expect(line).toMatch(/^<@\d+> ↔ <@\d+>$/);
+		}
+		expect(lines.at(-1)).toBe(`and ${exclusions.length - shown.length} more`);
+	});
+
 	test("rejects invalid name", async () => {
 		const interaction = buildInteraction({
 			sub: "init",
