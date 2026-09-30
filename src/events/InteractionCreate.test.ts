@@ -1,5 +1,5 @@
 import { describe, expect, mock, test } from "bun:test";
-import type { Interaction } from "discord.js";
+import { type Interaction, MessageFlags } from "discord.js";
 import type Bot from "../models/Bot";
 import type Command from "../models/Command";
 import InteractionCreate from "./InteractionCreate";
@@ -100,9 +100,70 @@ describe("InteractionCreate", () => {
 		const bot = createBot({ execute });
 		const interaction = createInteraction({ chatInput: true });
 
-		expect(new InteractionCreate().execute(bot, interaction)).rejects.toThrow(
-			"command failed",
-		);
+		await new InteractionCreate().execute(bot, interaction);
+
 		expect(bot.metrics.recordCommand).toHaveBeenCalledWith("cmd");
+	});
+
+	test("replies ephemerally when a command fails before replying", async () => {
+		const bot = createBot({
+			execute: mock(async () => {
+				throw new Error("command failed");
+			}),
+		});
+		const reply = mock(async () => undefined);
+		const interaction = Object.assign(createInteraction({ chatInput: true }), {
+			replied: false,
+			deferred: false,
+			reply,
+		});
+
+		await new InteractionCreate().execute(bot, interaction);
+
+		expect(reply).toHaveBeenCalledWith({
+			content: "Something went wrong while running that command.",
+			flags: MessageFlags.Ephemeral,
+		});
+	});
+
+	test("edits the deferred reply when a command fails after deferring", async () => {
+		const bot = createBot({
+			execute: mock(async () => {
+				throw new Error("command failed");
+			}),
+		});
+		const editReply = mock(async () => undefined);
+		const interaction = Object.assign(createInteraction({ chatInput: true }), {
+			replied: false,
+			deferred: true,
+			editReply,
+		});
+
+		await new InteractionCreate().execute(bot, interaction);
+
+		expect(editReply).toHaveBeenCalledWith(
+			"Something went wrong while running that command.",
+		);
+	});
+
+	test("follows up when a command fails after replying", async () => {
+		const bot = createBot({
+			execute: mock(async () => {
+				throw new Error("command failed");
+			}),
+		});
+		const followUp = mock(async () => undefined);
+		const interaction = Object.assign(createInteraction({ chatInput: true }), {
+			replied: true,
+			deferred: false,
+			followUp,
+		});
+
+		await new InteractionCreate().execute(bot, interaction);
+
+		expect(followUp).toHaveBeenCalledWith({
+			content: "Something went wrong while running that command.",
+			flags: MessageFlags.Ephemeral,
+		});
 	});
 });

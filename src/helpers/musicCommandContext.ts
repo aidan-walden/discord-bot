@@ -5,22 +5,27 @@ import {
 } from "discord.js";
 import type { KazagumoPlayer } from "kazagumo";
 
-type MusicCommandContext = {
-	guildId: string;
-	member: GuildMember;
-	voiceChannelId: string | null;
-	player?: KazagumoPlayer;
-};
-
 type MusicCommandContextOptions = {
 	requireVoiceChannel?: boolean;
 	requirePlayer?: boolean;
 };
 
-export async function getMusicCommandContext(
+/** Narrows `voiceChannelId` and `player` to non-null when the caller required them. */
+type MusicCommandContext<O extends MusicCommandContextOptions> = {
+	guildId: string;
+	member: GuildMember;
+	voiceChannelId: O["requireVoiceChannel"] extends true
+		? string
+		: string | null;
+	player: O["requirePlayer"] extends true ? KazagumoPlayer : undefined;
+};
+
+export async function getMusicCommandContext<
+	const O extends MusicCommandContextOptions = Record<never, never>,
+>(
 	interaction: ChatInputCommandInteraction,
-	options: MusicCommandContextOptions = {},
-): Promise<MusicCommandContext | null> {
+	options: O = {} as O,
+): Promise<MusicCommandContext<O> | null> {
 	const { requireVoiceChannel = false, requirePlayer = false } = options;
 
 	if (!interaction.guildId) {
@@ -78,5 +83,5 @@ export async function getMusicCommandContext(
 		member: interaction.member,
 		voiceChannelId,
 		player,
-	};
+	} as MusicCommandContext<O>;
 }

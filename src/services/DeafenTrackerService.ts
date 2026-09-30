@@ -1,7 +1,7 @@
 import type { VoiceState } from "discord.js";
 import type { DeafenTrackerConfig } from "../config";
 import type DeafenSessionRepository from "../repositories/DeafenSessionRepository";
-import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 
 const ACTIVE_SESSIONS_KEY = "deafen:active-sessions";
 
@@ -16,11 +16,6 @@ type PersistedDeafenSession = {
 	guildId: string;
 	startedAt: string;
 };
-
-type TemporaryStateStore = Pick<
-	TemporaryStateRepository,
-	"get" | "set" | "delete"
->;
 
 /**
  * The deafen tracker only does anything when it is explicitly enabled and at least

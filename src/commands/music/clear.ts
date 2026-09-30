@@ -15,7 +15,7 @@ export default class Clear implements Command {
 			requireVoiceChannel: true,
 			requirePlayer: true,
 		});
-		if (!context?.player) {
+		if (!context) {
 			return;
 		}
 

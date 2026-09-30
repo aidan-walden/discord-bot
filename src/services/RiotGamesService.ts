@@ -1,8 +1,10 @@
 import { EventEmitter } from "node:events";
 import type RiotMatchRepository from "../repositories/RiotMatchRepository";
 import type RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
+import type { RiotMatchSync } from "../repositories/RiotMatchSyncRepository";
 import type RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import type RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
@@ -13,7 +15,7 @@ import {
 	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
 } from "./riot/constants";
-import RiotApiClient, { type TemporaryStateStore } from "./riot/RiotApiClient";
+import RiotApiClient from "./riot/RiotApiClient";
 import type {
 	Fetcher,
 	RiotAccount,
@@ -407,14 +409,6 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return this.client.getSummonerByPuuid(platform, puuid);
 	}
 
-	async request<T>(
-		routing: RiotRegion | RiotPlatform,
-		path: string,
-		query?: Record<string, string | number | undefined>,
-	): Promise<T> {
-		return this.client.request(routing, path, query);
-	}
-
 	private async resolveAccount(
 		player: RiotPlayerConfig,
 	): Promise<RiotAccount | null> {
@@ -460,7 +454,12 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			memory.seededFromDb = true;
 		}
 
-		const active = await this.client.getActiveGame(player.platform, puuid);
+		const [active, matchIds, entries] = await Promise.all([
+			this.client.getActiveGame(player.platform, puuid),
+			this.client.getMatchIdsByPuuid(region, puuid, { count: 1 }),
+			this.client.getLeagueEntriesByPuuid(player.platform, puuid),
+		]);
+		const currentRank = soloRankFromEntries(entries);
 		let inProgress: RiotActiveGameStatus | null = null;
 		if (active) {
 			const self = active.participants.find((p) => p.puuid === puuid);
@@ -474,18 +473,11 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			};
 		}
 
-		const matchIds = await this.client.getMatchIdsByPuuid(region, puuid, {
-			count: 1,
-		});
 		const newestMatchId = matchIds[0] ?? null;
 
 		if (newestMatchId !== null && newestMatchId !== memory.lastMatchId) {
 			const match = await this.client.getMatch(region, newestMatchId);
-			const entries = await this.client.getLeagueEntriesByPuuid(
-				player.platform,
-				puuid,
-			);
-			const rankAfter = soloRankFromEntries(entries);
+			const rankAfter = currentRank;
 			const rankBefore = memory.currentRank;
 			const participant = match?.info.participants.find(
 				(p) => p.puuid === puuid,
@@ -506,14 +498,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 				};
 			}
 			memory.lastMatchId = newestMatchId;
-			memory.currentRank = rankAfter;
-		} else {
-			const entries = await this.client.getLeagueEntriesByPuuid(
-				player.platform,
-				puuid,
-			);
-			memory.currentRank = soloRankFromEntries(entries);
 		}
+		memory.currentRank = currentRank;
 
 		if (memory.currentRank && this.rankHistory) {
 			await this.rankHistory.recordIfChanged(
@@ -681,16 +667,25 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		platform: RiotPlatform;
 		riotId?: string;
 	}): Promise<void> {
+		await this.backfilledSyncRow(player);
+	}
+
+	/** Backfills if needed; returns the sync row once backfilled, else null. */
+	private async backfilledSyncRow(player: {
+		puuid: string;
+		platform: RiotPlatform;
+		riotId?: string;
+	}): Promise<RiotMatchSync | null> {
 		if (!this.matchSync || !this.wol) {
-			return;
+			return null;
 		}
 		const row = await this.matchSync.get(player.puuid);
 		if (row?.backfilled) {
-			return;
+			return row;
 		}
 		const identity = await this.resolveRiotId(player);
 		if (!identity) {
-			return;
+			return null;
 		}
 		const backfillSeconds = await this.wol.fetchPlaytimeSeconds(
 			player.platform,
@@ -699,13 +694,14 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		);
 		if (backfillSeconds === null) {
 			// Do not lock 0 on a scrape miss; retry next cycle.
-			return;
+			return null;
 		}
 		await this.matchSync.setBackfill(
 			player.puuid,
 			backfillSeconds,
 			new Date(this.now()),
 		);
+		return this.matchSync.get(player.puuid);
 	}
 
 	private async syncPlayerMatches(player: {
@@ -715,8 +711,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		if (!this.matches || !this.matchSync || !this.wol) {
 			return;
 		}
-		await this.ensurePlaytimeBackfill(player);
-		const row = await this.matchSync.get(player.puuid);
+		const row = await this.backfilledSyncRow(player);
 		if (!row?.backfilled) {
 			return;
 		}

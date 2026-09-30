@@ -20,6 +20,7 @@ import {
 	getRarityColor,
 	isUnboxCatalogAvailable,
 	listCaseNames,
+	RARITY_ORDER,
 	runUnboxSimulation,
 } from "../../helpers/unbox";
 import type Command from "../../models/Command";
@@ -79,31 +80,11 @@ export default class Unbox implements Command {
 				},
 				{ name: "Float", value: floatDisplay, inline: true },
 				{ name: "Total rolls", value: result.rolls.toString(), inline: true },
-				{
-					name: "Blues",
-					value: result.countsByRarity.Blue.toString(),
+				...RARITY_ORDER.map((rarity) => ({
+					name: `${rarity}s`,
+					value: result.countsByRarity[rarity].toString(),
 					inline: true,
-				},
-				{
-					name: "Purples",
-					value: result.countsByRarity.Purple.toString(),
-					inline: true,
-				},
-				{
-					name: "Pinks",
-					value: result.countsByRarity.Pink.toString(),
-					inline: true,
-				},
-				{
-					name: "Reds",
-					value: result.countsByRarity.Red.toString(),
-					inline: true,
-				},
-				{
-					name: "Golds",
-					value: result.countsByRarity.Gold.toString(),
-					inline: true,
-				},
+				})),
 				{
 					name: "Total spent on keys",
 					value: formatCurrency(result.spentKeys),
@@ -153,11 +134,18 @@ export default class Unbox implements Command {
 			? [new ActionRowBuilder<ButtonBuilder>().addComponents(inspectButton)]
 			: [];
 
+		const content =
+			`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
+			`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
+			`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`;
+		const settledReply = {
+			content,
+			embeds: [embed],
+			components: remainingComponents,
+		};
+
 		const reply = await interaction.editReply({
-			content:
-				`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
-				`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
-				`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
+			content,
 			embeds: [embed],
 			components: [row],
 		});
@@ -170,31 +158,16 @@ export default class Unbox implements Command {
 				time: 60_000,
 			});
 
-			await confirmation.update({
-				content:
-					`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
-					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
-					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
-				embeds: [embed],
-				components: remainingComponents,
-			});
+			await confirmation.update(settledReply);
 			if (confirmation.channel?.isSendable()) {
 				await sendLongMessage(
 					confirmation.channel,
 					formatRolledSkinsSummary(result.rolledSkins),
-					{},
 					false,
 				);
 			}
 		} catch {
-			await interaction.editReply({
-				content:
-					`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
-					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
-					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
-				embeds: [embed],
-				components: remainingComponents,
-			});
+			await interaction.editReply(settledReply);
 		}
 	}
 

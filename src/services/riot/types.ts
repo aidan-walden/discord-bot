@@ -1,6 +1,8 @@
+import type { Fetcher } from "../../helpers/fetcher";
 import type { RiotPlatform } from "./constants";
 
 export type { RiotPlatform, RiotRegion } from "./constants";
+export type { Fetcher };
 
 export interface RiotPlayerConfig {
 	platform: RiotPlatform;
@@ -155,17 +157,9 @@ export class RiotGamesError extends Error {
 	}
 }
 
-export type Fetcher = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
-
 export interface RiotApiClientOptions {
 	fetch?: Fetcher;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
-	temporaryState?: Pick<
-		import("../../repositories/TemporaryStateRepository").TemporaryStateRepository,
-		"get" | "set" | "delete"
-	>;
+	temporaryState?: import("../../repositories/TemporaryStateRepository").TemporaryStateStore;
 }

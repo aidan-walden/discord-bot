@@ -15,7 +15,7 @@ export default class Queue implements Command {
 		const context = await getMusicCommandContext(interaction, {
 			requirePlayer: true,
 		});
-		if (!context?.player) {
+		if (!context) {
 			return;
 		}
 		const { player } = context;

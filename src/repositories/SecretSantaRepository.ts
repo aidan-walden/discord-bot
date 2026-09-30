@@ -205,21 +205,24 @@ export default class SecretSantaRepository {
 				.for("update");
 			if (draws.length === 0) return 0;
 
-			let inserted = 0;
+			const pairs: { drawName: string; userA: string; userB: string }[] = [];
 			for (let i = 0; i < unique.length; i++) {
 				for (let j = i + 1; j < unique.length; j++) {
 					const a = unique[i] as string;
 					const b = unique[j] as string;
-					const userA = a < b ? a : b;
-					const userB = a < b ? b : a;
-					const rows = await tx
-						.insert(secretSantaExclusions)
-						.values({ drawName: name, userA, userB })
-						.onConflictDoNothing()
-						.returning({ userA: secretSantaExclusions.userA });
-					inserted += rows.length;
+					pairs.push({
+						drawName: name,
+						userA: a < b ? a : b,
+						userB: a < b ? b : a,
+					});
 				}
 			}
+			const insertedRows = await tx
+				.insert(secretSantaExclusions)
+				.values(pairs)
+				.onConflictDoNothing()
+				.returning({ userA: secretSantaExclusions.userA });
+			const inserted = insertedRows.length;
 			if (inserted > 0) {
 				await tx
 					.update(secretSantaDraws)
@@ -291,10 +294,10 @@ export default class SecretSantaRepository {
 			await tx
 				.delete(secretSantaAssignments)
 				.where(eq(secretSantaAssignments.drawName, name));
-			for (const pair of pairs) {
+			if (pairs.length > 0) {
 				await tx
 					.insert(secretSantaAssignments)
-					.values({ drawName: name, ...pair });
+					.values(pairs.map((pair) => ({ drawName: name, ...pair })));
 			}
 			const updated = await tx
 				.update(secretSantaDraws)

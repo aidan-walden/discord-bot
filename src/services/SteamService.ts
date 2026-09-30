@@ -1,4 +1,6 @@
 import { randomInt as cryptoRandomInt } from "node:crypto";
+import type { Fetcher } from "../helpers/fetcher";
+import { shuffleInPlace } from "../helpers/shuffle";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 
 export interface SteamGame {
@@ -20,10 +22,6 @@ const OWNED_GAMES_URL =
 	"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
 const APP_DETAILS_URL = "https://store.steampowered.com/api/appdetails";
 
-type Fetcher = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
 type RandomInt = (maxExclusive: number) => number;
 
 function parseOwnedGames(body: unknown, steamId: string): SteamGame[] {
@@ -67,27 +65,27 @@ function parseOwnedGames(body: unknown, steamId: string): SteamGame[] {
 	return [...byAppid.values()];
 }
 
-function isOnlineCoopGame(body: unknown, appid: number): boolean | "skip" {
+function isOnlineCoopGame(body: unknown, appid: number): boolean {
 	if (typeof body !== "object" || body === null) {
-		return "skip";
+		return false;
 	}
 	const entry = (body as Record<string, unknown>)[String(appid)];
 	if (typeof entry !== "object" || entry === null) {
-		return "skip";
+		return false;
 	}
 	const record = entry as { success?: unknown; data?: unknown };
 	if (record.success !== true) {
-		return "skip";
+		return false;
 	}
 	if (typeof record.data !== "object" || record.data === null) {
-		return "skip";
+		return false;
 	}
 	const data = record.data as { type?: unknown; categories?: unknown };
 	if (data.type !== "game") {
 		return false;
 	}
 	if (!Array.isArray(data.categories)) {
-		return "skip";
+		return false;
 	}
 	for (const category of data.categories) {
 		if (typeof category !== "object" || category === null) {
@@ -101,15 +99,6 @@ function isOnlineCoopGame(body: unknown, appid: number): boolean | "skip" {
 	return false;
 }
 
-function shuffleInPlace<T>(items: T[], randomInt: RandomInt): void {
-	for (let i = items.length - 1; i > 0; i--) {
-		const j = randomInt(i + 1);
-		const tmp = items[i] as T;
-		items[i] = items[j] as T;
-		items[j] = tmp;
-	}
-}
-
 export default class SteamService {
 	private readonly apiKey: string | null;
 	private readonly fetcher: Fetcher;
@@ -120,8 +109,7 @@ export default class SteamService {
 		private readonly credentialReporter?: CredentialRejectionReporter,
 		options: { fetch?: Fetcher; randomInt?: RandomInt } = {},
 	) {
-		const trimmed = apiKey?.trim() || null;
-		this.apiKey = trimmed && trimmed.length > 0 ? trimmed : null;
+		this.apiKey = apiKey?.trim() || null;
 		this.fetcher = options.fetch ?? fetch;
 		this.randomInt = options.randomInt ?? ((max) => cryptoRandomInt(max));
 	}
@@ -243,7 +231,6 @@ export default class SteamService {
 			throw new Error("Steam storefront response was invalid");
 		}
 
-		const result = isOnlineCoopGame(body, appid);
-		return result === true;
+		return isOnlineCoopGame(body, appid);
 	}
 }

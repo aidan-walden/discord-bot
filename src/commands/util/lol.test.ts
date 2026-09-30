@@ -133,7 +133,6 @@ function buildInteraction(opts: BuildOpts = {}): ChatInputCommandInteraction {
 	};
 	const linkResult = opts.link === undefined ? defaultLink : opts.link;
 	const riotLinks = {
-		getPrimaryByUserId: mock(async () => linkResult),
 		listByUserId: mock(async () => (linkResult ? [linkResult] : [])),
 		upsert: mock(async (row: unknown) => row),
 	};

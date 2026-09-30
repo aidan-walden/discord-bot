@@ -1,9 +1,9 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { TimestampStyles, time } from "discord.js";
+import { TimestampStyles, time, userMention } from "discord.js";
 import OpenAI from "openai";
 import type { AnthropicConfig, OpenAIConfig } from "../config";
 import type LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
-import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type { ExternalApiProvider } from "./ExternalApiCredentialStatus";
 
 export type LlmMessage = { role: "user" | "assistant"; content: string };
@@ -34,8 +34,6 @@ type RequestRecord = {
 	timestamp: number;
 };
 
-type TemporaryState = Pick<TemporaryStateRepository, "get" | "set" | "delete">;
-
 export class LlmUserRateLimitError extends Error {
 	/** @param retryAt epoch ms when the oldest request leaves the rolling window */
 	constructor(
@@ -45,6 +43,13 @@ export class LlmUserRateLimitError extends Error {
 		super(`User has reached the LLM limit of ${limit} requests per hour.`);
 		this.name = "LlmUserRateLimitError";
 	}
+}
+
+export const LLM_USER_BANNED_MESSAGE =
+	"You're banned from using the AI assistant.";
+
+export function llmFailureNotice(ownerId: string): string {
+	return `The AI assistant failed to respond. Please contact ${userMention(ownerId)}`;
 }
 
 export function llmRateLimitNotice(error: LlmUserRateLimitError): string {
@@ -96,7 +101,7 @@ export class LlmUserRateLimiter {
 		private readonly defaultLimit: number,
 		private readonly overrides: LlmUserRateLimitRepository,
 		private readonly isAdminUser: (userId: string) => boolean,
-		private readonly temporaryState: TemporaryState,
+		private readonly temporaryState: TemporaryStateStore,
 		private readonly now: () => number = Date.now,
 	) {}
 

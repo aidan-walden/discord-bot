@@ -1,7 +1,33 @@
-import type { ClientEvents, Interaction } from "discord.js";
-import { Events } from "discord.js";
+import type {
+	ChatInputCommandInteraction,
+	ClientEvents,
+	Interaction,
+} from "discord.js";
+import { Events, MessageFlags } from "discord.js";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
+
+const COMMAND_FAILED_MESSAGE =
+	"Something went wrong while running that command.";
+
+/** Tells the user a command failed, whatever state its reply was left in. */
+async function replyCommandFailed(
+	interaction: ChatInputCommandInteraction,
+): Promise<void> {
+	if (interaction.replied) {
+		await interaction.followUp({
+			content: COMMAND_FAILED_MESSAGE,
+			flags: MessageFlags.Ephemeral,
+		});
+	} else if (interaction.deferred) {
+		await interaction.editReply(COMMAND_FAILED_MESSAGE);
+	} else {
+		await interaction.reply({
+			content: COMMAND_FAILED_MESSAGE,
+			flags: MessageFlags.Ephemeral,
+		});
+	}
+}
 
 export default class InteractionCreate implements BotEvent {
 	once: boolean = false;
@@ -27,6 +53,17 @@ export default class InteractionCreate implements BotEvent {
 		}
 
 		bot.metrics.recordCommand(interaction.commandName);
-		await command.execute(interaction);
+		try {
+			await command.execute(interaction);
+		} catch (error) {
+			// Shared boundary: commands only catch errors they can explain better.
+			console.error(`/${interaction.commandName} failed`, error);
+			await replyCommandFailed(interaction).catch((replyError) =>
+				console.error(
+					`Failed to report /${interaction.commandName} failure`,
+					replyError,
+				),
+			);
+		}
 	}
 }

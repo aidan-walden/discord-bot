@@ -1,9 +1,4 @@
-import {
-	codeBlock,
-	escapeMarkdown,
-	type MessageCreateOptions,
-	type SendableChannels,
-} from "discord.js";
+import { codeBlock, escapeMarkdown, type SendableChannels } from "discord.js";
 
 const DISCORD_MESSAGE_LIMIT = 2000;
 // ```\n + \n```
@@ -68,12 +63,10 @@ export function prepareMessageChunks(
 export async function sendLongMessage(
 	channel: SendableChannels,
 	content: string,
-	baseOptions: Omit<MessageCreateOptions, "content"> = {},
 	shouldEscapeMarkdown = true,
 ): Promise<void> {
 	for (const chunk of prepareMessageChunks(content, shouldEscapeMarkdown)) {
 		await channel.send({
-			...baseOptions,
 			allowedMentions: { parse: [] },
 			content: chunk,
 		});

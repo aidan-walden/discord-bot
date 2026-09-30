@@ -42,7 +42,7 @@ export default class Underwater implements Command {
 			requireVoiceChannel: true,
 			requirePlayer: true,
 		});
-		if (!context?.player) {
+		if (!context) {
 			return;
 		}
 		const { player } = context;

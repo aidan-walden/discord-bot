@@ -1,7 +1,6 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
-	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
@@ -24,19 +23,12 @@ export default class Pitch implements Command {
 			requireVoiceChannel: true,
 			requirePlayer: true,
 		});
-		if (!context?.player) {
+		if (!context) {
 			return;
 		}
 		const { player } = context;
 
-		const newPitch = interaction.options.getInteger("pitch");
-		if (newPitch === null) {
-			await interaction.reply({
-				content: "You must specify a new pitch.",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
+		const newPitch = interaction.options.getInteger("pitch", true);
 
 		const timescale = player.filters.timescale ?? {};
 		await player.shoukaku.setTimescale({ ...timescale, pitch: newPitch / 100 });

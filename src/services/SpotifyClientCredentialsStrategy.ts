@@ -3,14 +3,12 @@ import type {
 	IAuthStrategy,
 	SdkConfiguration,
 } from "@spotify/web-api-ts-sdk";
-import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SDK_CACHE_KEY = "discord-bot:spotify-client-credentials-token";
 const REDIS_KEY = "spotify:client-credentials-token";
-
-type TemporaryState = Pick<TemporaryStateRepository, "get" | "set" | "delete">;
 
 function isValidAccessToken(value: unknown, now: number): value is AccessToken {
 	if (typeof value !== "object" || value === null) {
@@ -35,7 +33,7 @@ export default class SpotifyClientCredentialsStrategy implements IAuthStrategy {
 		private readonly clientId: string,
 		private readonly clientSecret: string,
 		private readonly credentialReporter: CredentialRejectionReporter,
-		private readonly temporaryState: TemporaryState,
+		private readonly temporaryState: TemporaryStateStore,
 	) {}
 
 	setConfiguration(configuration: SdkConfiguration): void {

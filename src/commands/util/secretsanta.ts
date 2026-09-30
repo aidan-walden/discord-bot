@@ -9,8 +9,10 @@ import {
 	SlashCommandBuilder,
 	userMention,
 } from "discord.js";
+import { requireAdminUser } from "../../helpers/permissions";
 import { assignSecretSanta } from "../../helpers/secretSantaAssign";
 import { prepareMessageChunks } from "../../helpers/sendLongMessage";
+import { formatCurrency } from "../../helpers/unbox";
 import type Command from "../../models/Command";
 import type {
 	SecretSantaAssignment,
@@ -25,7 +27,7 @@ function formatSpendLimit(cents: number | null): string {
 	if (cents === null) {
 		return "No spend limit set.";
 	}
-	return `$${(cents / 100).toFixed(2)}`;
+	return formatCurrency(cents / 100);
 }
 
 // Joins whole items into an embed field value (max 1024 chars), noting how
@@ -65,17 +67,15 @@ function parseName(raw: string | null): string | null {
 	return name;
 }
 
-function requireAdmin(interaction: ChatInputCommandInteraction): boolean {
-	return interaction.client.bot.permissions.isAdminUser(interaction.user.id);
+function replyEphemeral(
+	interaction: ChatInputCommandInteraction,
+	content: string,
+) {
+	return interaction.reply({ content, flags: MessageFlags.Ephemeral });
 }
 
-async function denyAdmin(
-	interaction: ChatInputCommandInteraction,
-): Promise<void> {
-	await interaction.reply({
-		content: "You don't have permission to use this command.",
-		flags: MessageFlags.Ephemeral,
-	});
+function noDrawNamed(name: string): string {
+	return `No draw named \`${name}\`.`;
 }
 
 function dmBody(
@@ -288,10 +288,7 @@ export default class SecretSanta implements Command {
 			case "status":
 				return this.handleStatus(interaction);
 			default:
-				await interaction.reply({
-					content: "Unknown subcommand.",
-					flags: MessageFlags.Ephemeral,
-				});
+				await replyEphemeral(interaction, "Unknown subcommand.");
 		}
 	}
 
@@ -305,11 +302,10 @@ export default class SecretSanta implements Command {
 		}
 		const name = parseName(raw);
 		if (!name) {
-			await interaction.reply({
-				content:
-					"Invalid name. Use 1–32 characters: letters, numbers, `_`, `-`.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"Invalid name. Use 1–32 characters: letters, numbers, `_`, `-`.",
+			);
 			return null;
 		}
 		return name;
@@ -318,8 +314,8 @@ export default class SecretSanta implements Command {
 	private async handleInit(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -327,44 +323,39 @@ export default class SecretSanta implements Command {
 		}
 		const repo = interaction.client.bot.secretSanta;
 		if (await repo.get(name)) {
-			await interaction.reply({
-				content: `Draw \`${name}\` already exists.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, `Draw \`${name}\` already exists.`);
 			return;
 		}
 		await repo.create(name);
-		await interaction.reply({
-			content: `Created Secret Santa draw \`${name}\` (opt-in open).`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			`Created Secret Santa draw \`${name}\` (opt-in open).`,
+		);
 	}
 
 	private async handleDelete(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
 			return;
 		}
 		const deleted = await interaction.client.bot.secretSanta.delete(name);
-		await interaction.reply({
-			content: deleted
-				? `Deleted draw \`${name}\`.`
-				: `No draw named \`${name}\`.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			deleted ? `Deleted draw \`${name}\`.` : noDrawNamed(name),
+		);
 	}
 
 	private async handleOpenClose(
 		interaction: ChatInputCommandInteraction,
 		open: boolean,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -375,25 +366,20 @@ export default class SecretSanta implements Command {
 			open,
 		);
 		if (!updated) {
-			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, noDrawNamed(name));
 			return;
 		}
-		await interaction.reply({
-			content: open
-				? `Opt-in open for \`${name}\`.`
-				: `Opt-in closed for \`${name}\`.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			open ? `Opt-in open for \`${name}\`.` : `Opt-in closed for \`${name}\`.`,
+		);
 	}
 
 	private async handleSpendLimit(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -401,10 +387,10 @@ export default class SecretSanta implements Command {
 		}
 		const usd = interaction.options.getNumber("amount_usd", true);
 		if (!(usd >= 0 && usd <= MAX_SPEND_LIMIT_USD)) {
-			await interaction.reply({
-				content: `Spend limit must be between $0 and ${formatSpendLimit(MAX_SPEND_LIMIT_USD * 100)}.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				`Spend limit must be between $0 and ${formatSpendLimit(MAX_SPEND_LIMIT_USD * 100)}.`,
+			);
 			return;
 		}
 		const cents = Math.round(usd * 100);
@@ -413,23 +399,20 @@ export default class SecretSanta implements Command {
 			cents,
 		);
 		if (!updated) {
-			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, noDrawNamed(name));
 			return;
 		}
-		await interaction.reply({
-			content: `Spend limit for \`${name}\` set to ${formatSpendLimit(cents)}.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			`Spend limit for \`${name}\` set to ${formatSpendLimit(cents)}.`,
+		);
 	}
 
 	private async handleExclude(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -437,10 +420,7 @@ export default class SecretSanta implements Command {
 		}
 		const repo = interaction.client.bot.secretSanta;
 		if (!(await repo.get(name))) {
-			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, noDrawNamed(name));
 			return;
 		}
 
@@ -463,18 +443,18 @@ export default class SecretSanta implements Command {
 		}
 		const unique = [...new Set(userIds)];
 		if (unique.length < 2) {
-			await interaction.reply({
-				content: "Provide at least two distinct users to exclude.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"Provide at least two distinct users to exclude.",
+			);
 			return;
 		}
 
 		const added = await repo.addExclusions(name, unique);
-		await interaction.reply({
-			content: `Added ${added} new exclusion pair(s) for \`${name}\` among ${unique.length} users.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			`Added ${added} new exclusion pair(s) for \`${name}\` among ${unique.length} users.`,
+		);
 	}
 
 	private async handleOptIn(
@@ -487,33 +467,26 @@ export default class SecretSanta implements Command {
 		const repo = interaction.client.bot.secretSanta;
 		const result = await repo.addParticipant(name, interaction.user.id);
 		if (result === "missing") {
-			await interaction.reply({
-				content: `No draw named ${inlineCode(name)}.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, `No draw named ${inlineCode(name)}.`);
 			return;
 		}
 		if (result === "locked") {
-			await interaction.reply({
-				content: "This draw already has pairings; the roster is locked.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"This draw already has pairings; the roster is locked.",
+			);
 			return;
 		}
 		if (result === "closed") {
-			await interaction.reply({
-				content: "Opt-in is closed for this draw.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, "Opt-in is closed for this draw.");
 			return;
 		}
-		await interaction.reply({
-			content:
-				result === "added"
-					? `You opted in to ${inlineCode(name)}.`
-					: `You are already opted in to ${inlineCode(name)}.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			result === "added"
+				? `You opted in to ${inlineCode(name)}.`
+				: `You are already opted in to ${inlineCode(name)}.`,
+		);
 	}
 
 	private async handleOptOut(
@@ -526,33 +499,29 @@ export default class SecretSanta implements Command {
 		const repo = interaction.client.bot.secretSanta;
 		const result = await repo.removeParticipant(name, interaction.user.id);
 		if (result === "missing") {
-			await interaction.reply({
-				content: `No draw named ${inlineCode(name)}.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, `No draw named ${inlineCode(name)}.`);
 			return;
 		}
 		if (result === "locked") {
-			await interaction.reply({
-				content: "This draw already has pairings; the roster is locked.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"This draw already has pairings; the roster is locked.",
+			);
 			return;
 		}
-		await interaction.reply({
-			content:
-				result === "removed"
-					? `You opted out of ${inlineCode(name)}.`
-					: `You were not opted in to ${inlineCode(name)}.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			result === "removed"
+				? `You opted out of ${inlineCode(name)}.`
+				: `You were not opted in to ${inlineCode(name)}.`,
+		);
 	}
 
 	private async handleRemove(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -562,26 +531,22 @@ export default class SecretSanta implements Command {
 		const user = interaction.options.getUser("user", true);
 		const result = await repo.removeParticipant(name, user.id);
 		if (result === "missing") {
-			await interaction.reply({
-				content: `No draw named ${inlineCode(name)}.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, `No draw named ${inlineCode(name)}.`);
 			return;
 		}
 		if (result === "locked") {
-			await interaction.reply({
-				content: "This draw already has pairings; the roster is locked.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"This draw already has pairings; the roster is locked.",
+			);
 			return;
 		}
-		await interaction.reply({
-			content:
-				result === "removed"
-					? `Removed ${userMention(user.id)} from ${inlineCode(name)}.`
-					: `${userMention(user.id)} was not in ${inlineCode(name)}.`,
-			flags: MessageFlags.Ephemeral,
-		});
+		await replyEphemeral(
+			interaction,
+			result === "removed"
+				? `Removed ${userMention(user.id)} from ${inlineCode(name)}.`
+				: `${userMention(user.id)} was not in ${inlineCode(name)}.`,
+		);
 	}
 
 	private async handleStatus(
@@ -593,17 +558,15 @@ export default class SecretSanta implements Command {
 		if (raw === null) {
 			const draws = await repo.list();
 			if (draws.length === 0) {
-				await interaction.reply({
-					content: "No Secret Santa draws.",
-					flags: MessageFlags.Ephemeral,
-				});
+				await replyEphemeral(interaction, "No Secret Santa draws.");
 				return;
 			}
-			const lines: string[] = [];
-			for (const draw of draws) {
-				const count = await repo.participantCount(draw.name);
-				lines.push(this.statusLine(draw, count));
-			}
+			const counts = await Promise.all(
+				draws.map((draw) => repo.participantCount(draw.name)),
+			);
+			const lines = draws.map((draw, index) =>
+				this.statusLine(draw, counts[index] ?? 0),
+			);
 			const [first, ...rest] = prepareMessageChunks(lines.join("\n"), false);
 			await interaction.reply({
 				content: first,
@@ -620,25 +583,23 @@ export default class SecretSanta implements Command {
 
 		const name = parseName(raw);
 		if (!name) {
-			await interaction.reply({
-				content:
-					"Invalid name. Use 1–32 characters: letters, numbers, `_`, `-`.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"Invalid name. Use 1–32 characters: letters, numbers, `_`, `-`.",
+			);
 			return;
 		}
 
 		const draw = await repo.get(name);
 		if (!draw) {
-			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, noDrawNamed(name));
 			return;
 		}
 
-		const participants = await repo.listParticipants(name);
-		const exclusions = await repo.listExclusions(name);
+		const [participants, exclusions] = await Promise.all([
+			repo.listParticipants(name),
+			repo.listExclusions(name),
+		]);
 		const embed = new EmbedBuilder()
 			.setTitle(`Secret Santa: ${name}`)
 			.addFields(
@@ -681,8 +642,8 @@ export default class SecretSanta implements Command {
 	private async handleResend(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -691,26 +652,23 @@ export default class SecretSanta implements Command {
 		const repo = interaction.client.bot.secretSanta;
 		const draw = await repo.get(name);
 		if (!draw) {
-			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, noDrawNamed(name));
 			return;
 		}
 		if (!draw.drawnAt) {
-			await interaction.reply({
-				content: `Draw \`${name}\` has no pairings yet.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				`Draw \`${name}\` has no pairings yet.`,
+			);
 			return;
 		}
 
 		const pairs = await repo.listAssignments(name);
 		if (pairs.length === 0) {
-			await interaction.reply({
-				content: `Draw \`${name}\` has no pairings yet.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				`Draw \`${name}\` has no pairings yet.`,
+			);
 			return;
 		}
 
@@ -734,8 +692,8 @@ export default class SecretSanta implements Command {
 		interaction: ChatInputCommandInteraction,
 		reroll: boolean,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -744,33 +702,30 @@ export default class SecretSanta implements Command {
 		const repo = interaction.client.bot.secretSanta;
 		const draw = await repo.get(name);
 		if (!draw) {
-			await interaction.reply({
-				content: `No draw named \`${name}\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(interaction, noDrawNamed(name));
 			return;
 		}
 		if (!reroll && draw.drawnAt) {
-			await interaction.reply({
-				content: `Draw \`${name}\` already has pairings. Use \`/secretsanta reroll\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				`Draw \`${name}\` already has pairings. Use \`/secretsanta reroll\`.`,
+			);
 			return;
 		}
 		if (reroll && !draw.drawnAt) {
-			await interaction.reply({
-				content: `Draw \`${name}\` has not been drawn yet. Use \`/secretsanta draw\`.`,
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				`Draw \`${name}\` has not been drawn yet. Use \`/secretsanta draw\`.`,
+			);
 			return;
 		}
 
 		const participants = await repo.listParticipants(name);
 		if (participants.length < 2) {
-			await interaction.reply({
-				content: "Need at least 2 participants to draw.",
-				flags: MessageFlags.Ephemeral,
-			});
+			await replyEphemeral(
+				interaction,
+				"Need at least 2 participants to draw.",
+			);
 			return;
 		}
 

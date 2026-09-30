@@ -71,8 +71,9 @@ function createInteraction(options: {
 		getUnavailableReason: mock(
 			() => sessions.unavailableReason ?? "unavailable",
 		),
-		getByThreadId: mock(() => sessions.byThreadId),
-		getByRootChannel: mock(() => sessions.byRootChannel),
+		getForChannel: mock((_userId: string, channel: { isThread(): boolean }) =>
+			channel.isThread() ? sessions.byThreadId : sessions.byRootChannel,
+		),
 		createSession: mock(async (userId: string) => createSession({ userId })),
 		closeSession: mock(async () => undefined),
 		prompt: mock(sessions.prompt ?? (async () => "response")),

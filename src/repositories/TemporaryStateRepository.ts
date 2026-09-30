@@ -61,3 +61,9 @@ export class TemporaryStateRepository {
 		this.client.close();
 	}
 }
+
+/** Read/write/delete surface services depend on, so tests can pass fakes. */
+export type TemporaryStateStore = Pick<
+	TemporaryStateRepository,
+	"get" | "set" | "delete"
+>;

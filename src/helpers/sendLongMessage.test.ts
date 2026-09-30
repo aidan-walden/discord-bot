@@ -68,24 +68,6 @@ describe("sendLongMessage", () => {
 		]);
 	});
 
-	test("passes through base message options", async () => {
-		const calls: Array<Record<string, unknown>> = [];
-		const channel = {
-			send: async (options: Record<string, unknown>) => {
-				calls.push(options);
-			},
-		} as never;
-
-		await sendLongMessage(channel, "hello", { allowedMentions: { parse: [] } });
-
-		expect(calls).toEqual([
-			{
-				allowedMentions: { parse: [] },
-				content: "hello",
-			},
-		]);
-	});
-
 	test("splits long messages on newline boundaries when possible", async () => {
 		const calls: Array<Record<string, unknown>> = [];
 		const channel = {
@@ -152,7 +134,7 @@ describe("sendLongMessage", () => {
 			},
 		} as never;
 
-		await sendLongMessage(channel, "**bold**", {}, false);
+		await sendLongMessage(channel, "**bold**", false);
 
 		expect(calls).toEqual([
 			{ content: "**bold**", allowedMentions: { parse: [] } },
@@ -168,7 +150,7 @@ describe("sendLongMessage", () => {
 		} as never;
 		const content = codeBlock("hi");
 
-		await sendLongMessage(channel, content, {}, false);
+		await sendLongMessage(channel, content, false);
 
 		expect(calls).toEqual([{ content, allowedMentions: { parse: [] } }]);
 	});
@@ -186,7 +168,7 @@ describe("sendLongMessage", () => {
 		);
 		const content = codeBlock(lines.join("\n"));
 
-		await sendLongMessage(channel, content, {}, false);
+		await sendLongMessage(channel, content, false);
 
 		expect(calls.length).toBeGreaterThan(1);
 		const bodies: string[] = [];

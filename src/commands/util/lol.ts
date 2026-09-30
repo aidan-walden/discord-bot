@@ -19,25 +19,12 @@ import {
 	type RiotPlatform,
 	SOLO_QUEUE,
 } from "../../services/RiotGamesService";
+import {
+	FRIENDLY_REGION_TO_PLATFORM,
+	PLATFORM_TO_FRIENDLY_REGION,
+} from "../../services/riot/constants";
 
-const FRIENDLY_REGIONS = [
-	"NA",
-	"EUW",
-	"EUNE",
-	"KR",
-	"BR",
-	"LAN",
-	"LAS",
-	"OCE",
-	"JP",
-	"TR",
-	"RU",
-	"PH",
-	"SG",
-	"TH",
-	"TW",
-	"VN",
-] as const;
+const FRIENDLY_REGIONS = Object.keys(FRIENDLY_REGION_TO_PLATFORM);
 
 function formatRank(entry: RiotLeagueEntry | undefined): string {
 	if (!entry) {
@@ -71,27 +58,8 @@ function matchLine(match: RiotMatch, puuid: string): string | null {
 	return `${result} ${champ} ${p.kills}/${p.deaths}/${p.assists} · ${queue} · ${formatDuration(match.info.gameDuration)}`;
 }
 
-const PLATFORM_LABEL: Record<RiotPlatform, string> = {
-	na1: "NA",
-	euw1: "EUW",
-	eun1: "EUNE",
-	kr: "KR",
-	br1: "BR",
-	la1: "LAN",
-	la2: "LAS",
-	oc1: "OCE",
-	jp1: "JP",
-	tr1: "TR",
-	ru: "RU",
-	ph2: "PH",
-	sg2: "SG",
-	th2: "TH",
-	tw2: "TW",
-	vn2: "VN",
-};
-
 function platformLabel(platform: RiotPlatform): string {
-	return PLATFORM_LABEL[platform] ?? platform.toUpperCase();
+	return PLATFORM_TO_FRIENDLY_REGION[platform] ?? platform.toUpperCase();
 }
 
 export default class Lol implements Command {
@@ -232,9 +200,11 @@ export default class Lol implements Command {
 			return;
 		}
 
-		const link = await interaction.client.bot.riotLinks.getPrimaryByUserId(
+		// Newest link first; it is the primary account shown in the embed.
+		const links = await interaction.client.bot.riotLinks.listByUserId(
 			member.id,
 		);
+		const link = links[0];
 		if (!link) {
 			await interaction.reply({
 				content: `${userMention(member.id)} has no League account mapped. Use \`/lol map\`.`,
@@ -245,24 +215,22 @@ export default class Lol implements Command {
 
 		await interaction.deferReply();
 
-		const links = await interaction.client.bot.riotLinks.listByUserId(
-			member.id,
-		);
-		await Promise.all(
-			links.map((account) =>
-				interaction.client.bot.riot.ensurePlaytimeBackfill({
-					puuid: account.puuid,
-					platform: account.platform,
-				}),
-			),
-		);
-
 		const [view, playtimeSeconds] = await Promise.all([
 			interaction.client.bot.riot.getLolView(link.platform, link.puuid, {
 				gameName: link.gameName,
 				tagLine: link.tagLine,
 			}),
-			interaction.client.bot.riotMatches.sumTimePlayedForUser(member.id),
+			// Playtime is summed from backfilled matches, so it waits for the backfill.
+			Promise.all(
+				links.map((account) =>
+					interaction.client.bot.riot.ensurePlaytimeBackfill({
+						puuid: account.puuid,
+						platform: account.platform,
+					}),
+				),
+			).then(() =>
+				interaction.client.bot.riotMatches.sumTimePlayedForUser(member.id),
+			),
 		]);
 
 		const solo = view.entries.find((e) => e.queueType === SOLO_QUEUE);

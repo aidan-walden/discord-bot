@@ -39,30 +39,23 @@ export default class VoiceStateUpdate implements BotEvent {
 			return;
 		}
 
-		await this.destroyPlayer(player);
+		await player.destroy();
 	}
 
 	private async handleBotVoiceStateUpdate(
 		player: KazagumoPlayer,
 		newState: VoiceState,
 	): Promise<void> {
-		if (!newState.channelId) {
-			await this.destroyPlayer(player);
-			return;
+		// Leave when disconnected or moved into a channel with no listeners.
+		if (
+			!newState.channelId ||
+			(newState.channel && !this.hasNonBotMembers(newState.channel))
+		) {
+			await player.destroy();
 		}
-
-		if (!newState.channel || this.hasNonBotMembers(newState.channel)) {
-			return;
-		}
-
-		await this.destroyPlayer(player);
 	}
 
 	private hasNonBotMembers(channel: VoiceBasedChannel): boolean {
-		return [...channel.members.values()].some((member) => !member.user.bot);
-	}
-
-	private async destroyPlayer(player: KazagumoPlayer): Promise<void> {
-		await player.destroy();
+		return channel.members.some((member) => !member.user.bot);
 	}
 }

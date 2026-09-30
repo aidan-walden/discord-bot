@@ -13,10 +13,7 @@ import {
 	Collection,
 	Events,
 	GatewayIntentBits,
-	type RESTGetAPIApplicationCommandsResult,
-	type RESTGetAPIApplicationGuildCommandsResult,
 	Routes,
-	type Snowflake,
 } from "discord.js";
 import { Kazagumo } from "kazagumo";
 import { Connectors } from "shoukaku";
@@ -272,17 +269,21 @@ export default class Bot extends Client {
 	}
 
 	async initialize(): Promise<void> {
+		// Waits only for the bounded first phase of the token scrape; any remaining
+		// search continues in the background and startup proceeds even on failure.
+		// It depends on nothing else, so start it first and overlap the rest.
+		const appleMusicReady = this.appleMusic.initialize();
 		// Redis is required; startup fails if unavailable. Connect before events so
 		// ClientReady reconciliation sees restored temporary state.
 		await this.temporaryState.connect();
 		await migrateDatabase(this.db);
-		await this.deafenTracker.initialize();
-		await this.chatSessions.initialize();
-		// Waits only for the bounded first phase of the token scrape; any remaining
-		// search continues in the background and startup proceeds even on failure.
-		await this.appleMusic.initialize();
-		await this.registerCommands(path.join(import.meta.dirname, "../commands"));
-		await this.registerEvents(path.join(import.meta.dirname, "../events"));
+		await Promise.all([
+			this.deafenTracker.initialize(),
+			this.chatSessions.initialize(),
+			appleMusicReady,
+			this.registerCommands(path.join(import.meta.dirname, "../commands")),
+			this.registerEvents(path.join(import.meta.dirname, "../events")),
+		]);
 
 		// Bot must be ready to deploy or remove commands, as we need to access the bot user's ID.
 		this.once(Events.ClientReady, async () => {
@@ -397,14 +398,17 @@ export default class Bot extends Client {
 			if (event.isEnabled && !event.isEnabled(this)) {
 				continue;
 			}
+			// Log handler failures here instead of leaving unhandled rejections.
+			const listener = (...args: unknown[]) =>
+				event
+					.execute(this, ...args)
+					.catch((error) =>
+						console.error(`${event.event} handler ${file} failed`, error),
+					);
 			if (event.once) {
-				this.once(event.event as keyof ClientEvents, (...args) =>
-					event.execute(this, ...args),
-				);
+				this.once(event.event as keyof ClientEvents, listener);
 			} else {
-				this.on(event.event as keyof ClientEvents, (...args) =>
-					event.execute(this, ...args),
-				);
+				this.on(event.event as keyof ClientEvents, listener);
 			}
 		}
 	}
@@ -438,26 +442,12 @@ export default class Bot extends Client {
 	 * @throws {Error} If the bot user is not found.
 	 */
 	async deployCommands(guildId: string | undefined): Promise<void> {
-		if (!this.user) {
-			throw new Error("Bot user not found");
-		}
-
-		if (guildId) {
-			console.log(`Deploying commands to guild ${guildId}...`);
-			await this.rest.put(
-				Routes.applicationGuildCommands(this.user.id, guildId),
-				{
-					body: this.commands.map((command) => command.data.toJSON()),
-				},
-			);
-			console.log(`Done deploying commands to guild ${guildId}`);
-		} else {
-			console.log(`Deploying commands globally...`);
-			await this.rest.put(Routes.applicationCommands(this.user.id), {
-				body: this.commands.map((command) => command.data.toJSON()),
-			});
-			console.log(`Done deploying commands globally`);
-		}
+		const target = guildId ? `to guild ${guildId}` : "globally";
+		console.log(`Deploying commands ${target}...`);
+		await this.rest.put(this.commandsRoute(guildId), {
+			body: this.commands.map((command) => command.data.toJSON()),
+		});
+		console.log(`Done deploying commands ${target}`);
 	}
 
 	/**
@@ -466,33 +456,20 @@ export default class Bot extends Client {
 	 * @throws {Error} If the bot user is not found.
 	 */
 	async removeCommands(guildId: string | undefined): Promise<void> {
+		const target = guildId ? `from guild ${guildId}` : "globally";
+		console.log(`Removing deployed commands ${target}...`);
+		// Bulk-overwriting with an empty list deletes every deployed command.
+		await this.rest.put(this.commandsRoute(guildId), { body: [] });
+		console.log(`Done removing commands ${target}`);
+	}
+
+	private commandsRoute(guildId: string | undefined) {
 		if (!this.user) {
 			throw new Error("Bot user not found");
 		}
-
-		if (guildId) {
-			console.log(`Removing deployed commands from guild ${guildId}...`);
-			const commands = (await this.rest.get(
-				Routes.applicationGuildCommands(this.user.id, guildId),
-			)) as RESTGetAPIApplicationGuildCommandsResult;
-			for (const command of commands) {
-				await this.rest.delete(
-					Routes.applicationGuildCommand(this.user.id, guildId, command.id),
-				);
-			}
-			console.log(`Done removing commands from guild ${guildId}`);
-		} else {
-			console.log(`Removing deployed commands globally...`);
-			const commands = (await this.rest.get(
-				Routes.applicationCommands(this.user.id),
-			)) as RESTGetAPIApplicationCommandsResult;
-			for (const command of commands) {
-				await this.rest.delete(
-					Routes.applicationCommand(this.user.id, command.id as Snowflake),
-				);
-			}
-			console.log(`Done removing commands globally`);
-		}
+		return guildId
+			? Routes.applicationGuildCommands(this.user.id, guildId)
+			: Routes.applicationCommands(this.user.id);
 	}
 }
 

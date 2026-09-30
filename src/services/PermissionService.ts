@@ -16,11 +16,15 @@ export default class PermissionService {
 		userId: string,
 		guildId: string,
 	): Promise<string | null> {
-		if (await this.musicUserBans.has(userId)) {
+		const [userBanned, guildBanned] = await Promise.all([
+			this.musicUserBans.has(userId),
+			this.musicGuildBans.has(guildId),
+		]);
+		if (userBanned) {
 			return "You're banned from using music commands.";
 		}
 
-		if (await this.musicGuildBans.has(guildId)) {
+		if (guildBanned) {
 			return "This server is banned from using music commands. If you move servers, music bot will work normally there.";
 		}
 

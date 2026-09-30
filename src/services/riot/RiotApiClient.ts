@@ -1,4 +1,4 @@
-import type { TemporaryStateRepository } from "../../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "../ExternalApiCredentialStatus";
 import {
 	ACCOUNT_CACHE_TTL_MS,
@@ -20,11 +20,6 @@ import type {
 	RiotSummoner,
 } from "./types";
 import { RiotGamesError } from "./types";
-
-export type TemporaryStateStore = Pick<
-	TemporaryStateRepository,
-	"get" | "set" | "delete"
->;
 
 interface CacheEntry<T> {
 	expiresAt: number;
@@ -80,10 +75,6 @@ function parseRateLimitPairs(header: string | null): Array<{
 		);
 }
 
-function defaultSleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function remainingTtlSeconds(expiresAt: number, now: number): number {
 	return Math.max(1, Math.ceil((expiresAt - now) / 1000));
 }
@@ -121,6 +112,18 @@ function isRateBucket(value: unknown, now: number): value is RateBucket {
 	);
 }
 
+/** Riot answers 404 for "no such account/match/game"; callers treat that as null. */
+async function nullIfNotFound<T>(request: Promise<T>): Promise<T | null> {
+	try {
+		return await request;
+	} catch (error) {
+		if (error instanceof RiotGamesError && error.status === 404) {
+			return null;
+		}
+		throw error;
+	}
+}
+
 export default class RiotApiClient {
 	private readonly apiKey: string | null;
 	private readonly fetcher: Fetcher;
@@ -147,7 +150,7 @@ export default class RiotApiClient {
 	) {
 		this.apiKey = apiKey?.trim() || null;
 		this.fetcher = options.fetch ?? fetch;
-		this.sleep = options.sleep ?? defaultSleep;
+		this.sleep = options.sleep ?? Bun.sleep;
 		this.now = options.now ?? Date.now;
 		this.temporaryState = options.temporaryState;
 	}
@@ -198,16 +201,13 @@ export default class RiotApiClient {
 		}
 
 		const path = `/riot/account/v1/accounts/by-riot-id/${encodeURIComponent(gameName)}/${encodeURIComponent(tagLine)}`;
-		try {
-			const account = await this.request<RiotAccount>(region, path);
+		const account = await nullIfNotFound(
+			this.request<RiotAccount>(region, path),
+		);
+		if (account) {
 			await this.cacheAccount(region, account, cacheKey);
-			return account;
-		} catch (error) {
-			if (error instanceof RiotGamesError && error.status === 404) {
-				return null;
-			}
-			throw error;
 		}
+		return account;
 	}
 
 	async getAccountByPuuid(
@@ -228,16 +228,13 @@ export default class RiotApiClient {
 		}
 
 		const path = `/riot/account/v1/accounts/by-puuid/${encodeURIComponent(puuid)}`;
-		try {
-			const account = await this.request<RiotAccount>(region, path);
+		const account = await nullIfNotFound(
+			this.request<RiotAccount>(region, path),
+		);
+		if (account) {
 			await this.cacheAccount(region, account, cacheKey);
-			return account;
-		} catch (error) {
-			if (error instanceof RiotGamesError && error.status === 404) {
-				return null;
-			}
-			throw error;
 		}
+		return account;
 	}
 
 	async getMatchIdsByPuuid(
@@ -283,21 +280,17 @@ export default class RiotApiClient {
 		}
 
 		const path = `/lol/match/v5/matches/${encodeURIComponent(matchId)}`;
-		try {
-			const match = await this.request<RiotMatch>(region, path);
-			const entry = {
-				expiresAt: this.now() + MATCH_CACHE_TTL_MS,
-				value: match,
-			};
-			this.matchCache.set(cacheKey, entry);
-			await this.writeCacheEntry(matchRedisKey(cacheKey), entry);
-			return match;
-		} catch (error) {
-			if (error instanceof RiotGamesError && error.status === 404) {
-				return null;
-			}
-			throw error;
+		const match = await nullIfNotFound(this.request<RiotMatch>(region, path));
+		if (match) {
+			await this.storeCached(
+				this.matchCache,
+				cacheKey,
+				matchRedisKey(cacheKey),
+				MATCH_CACHE_TTL_MS,
+				match,
+			);
 		}
+		return match;
 	}
 
 	async getLeagueEntriesByPuuid(
@@ -319,12 +312,13 @@ export default class RiotApiClient {
 
 		const path = `/lol/league/v4/entries/by-puuid/${encodeURIComponent(puuid)}`;
 		const entries = await this.request<RiotLeagueEntry[]>(platform, path);
-		const entry = {
-			expiresAt: this.now() + LEAGUE_CACHE_TTL_MS,
-			value: entries,
-		};
-		this.leagueCache.set(cacheKey, entry);
-		await this.writeCacheEntry(leagueRedisKey(cacheKey), entry);
+		await this.storeCached(
+			this.leagueCache,
+			cacheKey,
+			leagueRedisKey(cacheKey),
+			LEAGUE_CACHE_TTL_MS,
+			entries,
+		);
 		return entries;
 	}
 
@@ -336,14 +330,7 @@ export default class RiotApiClient {
 			return null;
 		}
 		const path = `/lol/spectator/v5/active-games/by-summoner/${encodeURIComponent(puuid)}`;
-		try {
-			return await this.request<RiotActiveGame>(platform, path);
-		} catch (error) {
-			if (error instanceof RiotGamesError && error.status === 404) {
-				return null;
-			}
-			throw error;
-		}
+		return nullIfNotFound(this.request<RiotActiveGame>(platform, path));
 	}
 
 	async getSummonerByPuuid(
@@ -364,30 +351,29 @@ export default class RiotApiClient {
 		}
 
 		const path = `/lol/summoner/v4/summoners/by-puuid/${encodeURIComponent(puuid)}`;
-		try {
-			const raw = await this.request<{
+		const raw = await nullIfNotFound(
+			this.request<{
 				puuid: string;
 				profileIconId: number;
 				summonerLevel: number;
-			}>(platform, path);
-			const summoner = {
-				puuid: raw.puuid,
-				profileIconId: raw.profileIconId,
-				summonerLevel: raw.summonerLevel,
-			};
-			const entry = {
-				expiresAt: this.now() + SUMMONER_CACHE_TTL_MS,
-				value: summoner,
-			};
-			this.summonerCache.set(cacheKey, entry);
-			await this.writeCacheEntry(summonerRedisKey(cacheKey), entry);
-			return summoner;
-		} catch (error) {
-			if (error instanceof RiotGamesError && error.status === 404) {
-				return null;
-			}
-			throw error;
+			}>(platform, path),
+		);
+		if (!raw) {
+			return null;
 		}
+		const summoner = {
+			puuid: raw.puuid,
+			profileIconId: raw.profileIconId,
+			summonerLevel: raw.summonerLevel,
+		};
+		await this.storeCached(
+			this.summonerCache,
+			cacheKey,
+			summonerRedisKey(cacheKey),
+			SUMMONER_CACHE_TTL_MS,
+			summoner,
+		);
+		return summoner;
 	}
 
 	async request<T>(
@@ -465,6 +451,18 @@ export default class RiotApiClient {
 		const hydrated = remote as CacheEntry<T>;
 		cache.set(key, hydrated);
 		return hydrated.value;
+	}
+
+	private async storeCached<T>(
+		cache: Map<string, CacheEntry<T>>,
+		key: string,
+		redisKey: string,
+		ttlMs: number,
+		value: T,
+	): Promise<void> {
+		const entry = { expiresAt: this.now() + ttlMs, value };
+		cache.set(key, entry);
+		await this.writeCacheEntry(redisKey, entry);
 	}
 
 	private async writeCacheEntry<T>(

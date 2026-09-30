@@ -11,7 +11,13 @@ import type {
 } from "../models/CounterStrikeSkin";
 
 const ASSET_PATH = path.resolve(import.meta.dirname, "../../assets/skins.json");
-const RARITY_ORDER: SkinRarity[] = ["Blue", "Purple", "Pink", "Red", "Gold"];
+export const RARITY_ORDER: SkinRarity[] = [
+	"Blue",
+	"Purple",
+	"Pink",
+	"Red",
+	"Gold",
+];
 type RollRarityKey = Exclude<keyof CounterStrikeCaseDefinition, "price">;
 
 let cachedFile: CounterStrikeSkinsFile | null = null;

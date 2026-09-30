@@ -1,14 +1,11 @@
-import {
-	type ClientEvents,
-	Events,
-	type Message,
-	userMention,
-} from "discord.js";
+import { type ClientEvents, Events, type Message } from "discord.js";
 import { sendLongMessage } from "../helpers/sendLongMessage";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
 import {
+	LLM_USER_BANNED_MESSAGE,
 	LlmUserRateLimitError,
+	llmFailureNotice,
 	llmRateLimitNotice,
 } from "../services/LlmProvider";
 
@@ -46,7 +43,7 @@ export default class MessageCreate implements BotEvent {
 
 		if (await bot.permissions.isGptUserBanned(message.author.id)) {
 			await bot.chatSessions.closeSession(session);
-			await message.reply("You're banned from using the AI assistant.");
+			await message.reply(LLM_USER_BANNED_MESSAGE);
 			return;
 		}
 
@@ -63,16 +60,14 @@ export default class MessageCreate implements BotEvent {
 		try {
 			await message.channel.sendTyping();
 			const response = await bot.chatSessions.prompt(session, prompt);
-			await sendLongMessage(message.channel, response, {}, false);
+			await sendLongMessage(message.channel, response, false);
 		} catch (error) {
 			if (error instanceof LlmUserRateLimitError) {
 				await message.reply(llmRateLimitNotice(error));
 				return;
 			}
 			console.error("AI assistant thread response failed:", error);
-			await message.reply(
-				`The AI assistant failed to respond. Please contact ${userMention(bot.config.get("BOT_OWNER_ID"))}`,
-			);
+			await message.reply(llmFailureNotice(bot.config.get("BOT_OWNER_ID")));
 		}
 	}
 }

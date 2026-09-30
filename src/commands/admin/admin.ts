@@ -19,6 +19,7 @@ import {
 	TextInputStyle,
 	userMention,
 } from "discord.js";
+import { requireAdminUser } from "../../helpers/permissions";
 import type Command from "../../models/Command";
 import {
 	FRIENDLY_REGION_TO_PLATFORM,
@@ -34,7 +35,6 @@ type Field = {
 	label: string;
 	min: number;
 	max: number;
-	required?: boolean;
 };
 
 export type Action = {
@@ -320,7 +320,7 @@ function buildModal(action: Action, customId: string): ModalBuilder {
 					.setStyle(TextInputStyle.Short)
 					.setMinLength(field.min)
 					.setMaxLength(field.max)
-					.setRequired(field.required ?? true),
+					.setRequired(true),
 			),
 		);
 	}
@@ -334,11 +334,7 @@ export default class Admin implements Command {
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
 		const bot = interaction.client.bot;
-		if (!bot.permissions.isAdminUser(interaction.user.id)) {
-			await interaction.reply({
-				content: "You don't have permission to use this command.",
-				flags: MessageFlags.Ephemeral,
-			});
+		if (!(await requireAdminUser(interaction))) {
 			return;
 		}
 

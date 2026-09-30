@@ -14,7 +14,7 @@ export default class Skip implements Command {
 			requireVoiceChannel: true,
 			requirePlayer: true,
 		});
-		if (!context?.player) {
+		if (!context) {
 			return;
 		}
 
