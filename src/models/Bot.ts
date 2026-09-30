@@ -13,10 +13,7 @@ import {
 	Collection,
 	Events,
 	GatewayIntentBits,
-	type RESTGetAPIApplicationCommandsResult,
-	type RESTGetAPIApplicationGuildCommandsResult,
 	Routes,
-	type Snowflake,
 } from "discord.js";
 import { Kazagumo } from "kazagumo";
 import { Connectors } from "shoukaku";
@@ -441,26 +438,12 @@ export default class Bot extends Client {
 	 * @throws {Error} If the bot user is not found.
 	 */
 	async deployCommands(guildId: string | undefined): Promise<void> {
-		if (!this.user) {
-			throw new Error("Bot user not found");
-		}
-
-		if (guildId) {
-			console.log(`Deploying commands to guild ${guildId}...`);
-			await this.rest.put(
-				Routes.applicationGuildCommands(this.user.id, guildId),
-				{
-					body: this.commands.map((command) => command.data.toJSON()),
-				},
-			);
-			console.log(`Done deploying commands to guild ${guildId}`);
-		} else {
-			console.log(`Deploying commands globally...`);
-			await this.rest.put(Routes.applicationCommands(this.user.id), {
-				body: this.commands.map((command) => command.data.toJSON()),
-			});
-			console.log(`Done deploying commands globally`);
-		}
+		const target = guildId ? `to guild ${guildId}` : "globally";
+		console.log(`Deploying commands ${target}...`);
+		await this.rest.put(this.commandsRoute(guildId), {
+			body: this.commands.map((command) => command.data.toJSON()),
+		});
+		console.log(`Done deploying commands ${target}`);
 	}
 
 	/**
@@ -469,33 +452,20 @@ export default class Bot extends Client {
 	 * @throws {Error} If the bot user is not found.
 	 */
 	async removeCommands(guildId: string | undefined): Promise<void> {
+		const target = guildId ? `from guild ${guildId}` : "globally";
+		console.log(`Removing deployed commands ${target}...`);
+		// Bulk-overwriting with an empty list deletes every deployed command.
+		await this.rest.put(this.commandsRoute(guildId), { body: [] });
+		console.log(`Done removing commands ${target}`);
+	}
+
+	private commandsRoute(guildId: string | undefined) {
 		if (!this.user) {
 			throw new Error("Bot user not found");
 		}
-
-		if (guildId) {
-			console.log(`Removing deployed commands from guild ${guildId}...`);
-			const commands = (await this.rest.get(
-				Routes.applicationGuildCommands(this.user.id, guildId),
-			)) as RESTGetAPIApplicationGuildCommandsResult;
-			for (const command of commands) {
-				await this.rest.delete(
-					Routes.applicationGuildCommand(this.user.id, guildId, command.id),
-				);
-			}
-			console.log(`Done removing commands from guild ${guildId}`);
-		} else {
-			console.log(`Removing deployed commands globally...`);
-			const commands = (await this.rest.get(
-				Routes.applicationCommands(this.user.id),
-			)) as RESTGetAPIApplicationCommandsResult;
-			for (const command of commands) {
-				await this.rest.delete(
-					Routes.applicationCommand(this.user.id, command.id as Snowflake),
-				);
-			}
-			console.log(`Done removing commands globally`);
-		}
+		return guildId
+			? Routes.applicationGuildCommands(this.user.id, guildId)
+			: Routes.applicationCommands(this.user.id);
 	}
 }
 
