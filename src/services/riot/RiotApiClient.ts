@@ -75,10 +75,6 @@ function parseRateLimitPairs(header: string | null): Array<{
 		);
 }
 
-function defaultSleep(ms: number): Promise<void> {
-	return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 function remainingTtlSeconds(expiresAt: number, now: number): number {
 	return Math.max(1, Math.ceil((expiresAt - now) / 1000));
 }
@@ -142,7 +138,7 @@ export default class RiotApiClient {
 	) {
 		this.apiKey = apiKey?.trim() || null;
 		this.fetcher = options.fetch ?? fetch;
-		this.sleep = options.sleep ?? defaultSleep;
+		this.sleep = options.sleep ?? Bun.sleep;
 		this.now = options.now ?? Date.now;
 		this.temporaryState = options.temporaryState;
 	}
