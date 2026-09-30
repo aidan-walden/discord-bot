@@ -164,8 +164,5 @@ export interface RiotApiClientOptions {
 	fetch?: Fetcher;
 	sleep?: (ms: number) => Promise<void>;
 	now?: () => number;
-	temporaryState?: Pick<
-		import("../../repositories/TemporaryStateRepository").TemporaryStateRepository,
-		"get" | "set" | "delete"
-	>;
+	temporaryState?: import("../../repositories/TemporaryStateRepository").TemporaryStateStore;
 }

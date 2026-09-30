@@ -3,6 +3,7 @@ import type RiotMatchRepository from "../repositories/RiotMatchRepository";
 import type RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
 import type RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import type RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 import {
 	DEFAULT_POLL_INTERVAL_SECONDS,
@@ -13,7 +14,7 @@ import {
 	RECENT_MATCH_COUNT,
 	SOLO_QUEUE,
 } from "./riot/constants";
-import RiotApiClient, { type TemporaryStateStore } from "./riot/RiotApiClient";
+import RiotApiClient from "./riot/RiotApiClient";
 import type {
 	Fetcher,
 	RiotAccount,

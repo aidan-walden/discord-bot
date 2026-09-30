@@ -3,7 +3,7 @@ import { TimestampStyles, time } from "discord.js";
 import OpenAI from "openai";
 import type { AnthropicConfig, OpenAIConfig } from "../config";
 import type LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
-import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type { ExternalApiProvider } from "./ExternalApiCredentialStatus";
 
 export type LlmMessage = { role: "user" | "assistant"; content: string };
@@ -33,8 +33,6 @@ type RequestRecord = {
 	requestId: string;
 	timestamp: number;
 };
-
-type TemporaryState = Pick<TemporaryStateRepository, "get" | "set" | "delete">;
 
 export class LlmUserRateLimitError extends Error {
 	/** @param retryAt epoch ms when the oldest request leaves the rolling window */
@@ -96,7 +94,7 @@ export class LlmUserRateLimiter {
 		private readonly defaultLimit: number,
 		private readonly overrides: LlmUserRateLimitRepository,
 		private readonly isAdminUser: (userId: string) => boolean,
-		private readonly temporaryState: TemporaryState,
+		private readonly temporaryState: TemporaryStateStore,
 		private readonly now: () => number = Date.now,
 	) {}
 

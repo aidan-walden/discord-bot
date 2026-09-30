@@ -1,4 +1,4 @@
-import type { TemporaryStateRepository } from "../../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "../ExternalApiCredentialStatus";
 import {
 	ACCOUNT_CACHE_TTL_MS,
@@ -20,11 +20,6 @@ import type {
 	RiotSummoner,
 } from "./types";
 import { RiotGamesError } from "./types";
-
-export type TemporaryStateStore = Pick<
-	TemporaryStateRepository,
-	"get" | "set" | "delete"
->;
 
 interface CacheEntry<T> {
 	expiresAt: number;

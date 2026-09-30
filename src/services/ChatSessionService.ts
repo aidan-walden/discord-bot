@@ -1,4 +1,4 @@
-import type { TemporaryStateRepository } from "../repositories/TemporaryStateRepository";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 import {
 	isCredentialFailure,
@@ -25,11 +25,6 @@ type PersistedChatSession = {
 	threadChannelId: string;
 	messages: LlmMessage[];
 };
-
-type TemporaryStateStore = Pick<
-	TemporaryStateRepository,
-	"get" | "set" | "delete"
->;
 
 function isLlmMessage(value: unknown): value is LlmMessage {
 	if (value === null || typeof value !== "object") {
