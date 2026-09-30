@@ -521,12 +521,8 @@ export async function playOggInVoiceChannel(options: {
 			rejectOnError,
 		]);
 
-		if (ttsSessions.get(guildId)?.player !== player) {
-			return;
-		}
-
 		const session = ttsSessions.get(guildId);
-		if (!session) {
+		if (session?.player !== player) {
 			return;
 		}
 		session.leaveTimer = setTimeout(() => {
