@@ -36,23 +36,25 @@ export default class RiotMatchRepository {
 				})
 				.onConflictDoNothing();
 
-			for (const participant of match.info.participants) {
-				const timePlayed =
-					typeof participant.timePlayed === "number" &&
-					participant.timePlayed > 0
-						? participant.timePlayed
-						: match.info.gameDuration;
-				await tx
-					.insert(riotMatchParticipants)
-					.values({
+			if (match.info.participants.length === 0) {
+				return;
+			}
+			await tx
+				.insert(riotMatchParticipants)
+				.values(
+					match.info.participants.map((participant) => ({
 						matchId,
 						puuid: participant.puuid,
-						timePlayed,
+						timePlayed:
+							typeof participant.timePlayed === "number" &&
+							participant.timePlayed > 0
+								? participant.timePlayed
+								: match.info.gameDuration,
 						championId: participant.championId,
 						win: participant.win,
-					})
-					.onConflictDoNothing();
-			}
+					})),
+				)
+				.onConflictDoNothing();
 		});
 	}
 
