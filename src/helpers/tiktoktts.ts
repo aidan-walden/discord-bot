@@ -7,6 +7,7 @@ import { config, createAudioFromText } from "tiktok-tts";
 import {
 	type CredentialRejectionReporter,
 	getErrorMessage,
+	reportRejectedError,
 } from "../services/ExternalApiCredentialStatus";
 
 export type OutputMode = "voice" | "attachment";
@@ -341,7 +342,6 @@ async function createAudioFromTextWithBaseUrlFallback(
 	text: string,
 	audioBasePath: string,
 	voiceApiValue: string,
-	credentialReporter?: CredentialRejectionReporter,
 	audioCreator: typeof createAudioFromText = createAudioFromText,
 ): Promise<void> {
 	let lastError: unknown;
@@ -358,7 +358,6 @@ async function createAudioFromTextWithBaseUrlFallback(
 			console.warn(`base url for tiktok ${baseUrl} failed, rotating...`);
 		}
 	}
-	credentialReporter?.recordCredentialRejection("tiktok");
 	console.warn("exhausted tiktok base URLs, tiktok tts will not work");
 	throw lastError;
 }
@@ -377,13 +376,20 @@ export async function createTikTokSpeechOgg(
 	try {
 		const audioBasePath = path.join(tempDir, "speech");
 		const oggPath = path.join(tempDir, "speech.ogg");
-		await createAudioFromTextWithBaseUrlFallback(
-			sessionId,
-			text,
-			audioBasePath,
-			voiceApiValue,
+		// Only an error that survived every base URL reaches here as a
+		// credential rejection; earlier ones rotate to the next region.
+		await reportRejectedError(
 			credentialReporter,
-			audioCreator,
+			"tiktok",
+			() =>
+				createAudioFromTextWithBaseUrlFallback(
+					sessionId,
+					text,
+					audioBasePath,
+					voiceApiValue,
+					audioCreator,
+				),
+			isTikTokCredentialRejection,
 		);
 		const durationSeconds = await transcodeAudio(
 			`${audioBasePath}.mp3`,

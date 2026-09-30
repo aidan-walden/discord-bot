@@ -1,5 +1,8 @@
 import type { TemporaryStateStore } from "../../repositories/TemporaryStateRepository";
-import type { CredentialRejectionReporter } from "../ExternalApiCredentialStatus";
+import {
+	type CredentialRejectionReporter,
+	reportRejectedResponse,
+} from "../ExternalApiCredentialStatus";
 import {
 	ACCOUNT_CACHE_TTL_MS,
 	DEFAULT_429_RETRY_MS,
@@ -486,15 +489,15 @@ export default class RiotApiClient {
 	): Promise<T> {
 		await this.acquireRateLimit(host);
 
-		const response = await this.fetcher(url, {
-			headers: { "X-Riot-Token": this.apiKey as string },
-		});
+		const response = await reportRejectedResponse(
+			this.credentialReporter,
+			"riot",
+			this.fetcher(url, {
+				headers: { "X-Riot-Token": this.apiKey as string },
+			}),
+		);
 
 		await this.recordRateLimitHeaders(host, response.headers);
-
-		if (response.status === 401 || response.status === 403) {
-			this.credentialReporter?.recordCredentialRejection("riot");
-		}
 
 		if (response.status === 429) {
 			const retryAfterMs =

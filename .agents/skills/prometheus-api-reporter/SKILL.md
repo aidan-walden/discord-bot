@@ -37,26 +37,31 @@ The rejection gauge is sticky for the process lifetime: it changes to `1` after 
 
 ## Wrapper Pattern
 
+Use the shared wrappers in `src/services/ExternalApiCredentialStatus.ts` instead of hand-rolling the check. Both accept an optional reporter and preserve the original result or error.
+
+For raw HTTP responses, wrap the fetch promise. The default rejected statuses are `401` and `403`; pass a provider-specific list when needed (the Spotify token endpoint uses `[400, 401, 403]`):
+
 ```ts
-import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
-
-export class ProviderService {
-    constructor(private readonly reporter: CredentialRejectionReporter) {}
-
-    async request(): Promise<Result> {
-        const response = await fetchProvider();
-        if (response.status === 401) {
-            this.reporter.recordCredentialRejection("provider");
-        }
-        if (!response.ok) {
-            throw new ProviderError(response.status);
-        }
-        return response.json();
-    }
+const response = await reportRejectedResponse(
+    this.credentialReporter,
+    "provider",
+    this.fetcher(url, { headers }),
+);
+if (!response.ok) {
+    throw new ProviderError(response.status);
 }
 ```
 
-For SDK-thrown errors, use a small provider-specific classifier and test both a credential rejection and a nearby non-authentication failure.
+For SDK-thrown errors, wrap the call with a small provider-specific classifier and test both a credential rejection and a nearby non-authentication failure:
+
+```ts
+return reportRejectedError(
+    this.credentialReporter,
+    "provider",
+    () => sdk.call(),
+    isProviderCredentialRejection,
+);
+```
 
 ## Security and Metrics Rules
 

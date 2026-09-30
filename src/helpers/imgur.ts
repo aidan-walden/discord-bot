@@ -1,4 +1,7 @@
-import type { CredentialRejectionReporter } from "../services/ExternalApiCredentialStatus";
+import {
+	type CredentialRejectionReporter,
+	reportRejectedResponse,
+} from "../services/ExternalApiCredentialStatus";
 import type { Fetcher } from "./fetcher";
 
 const albumCache = new Map<string, string[]>();
@@ -27,12 +30,13 @@ export async function getAlbumImageLinks(
 		return cached;
 	}
 
-	const response = await fetcher(`https://api.imgur.com/3/album/${albumId}`, {
-		headers: { Authorization: `Client-ID ${clientId}` },
-	});
-	if (response.status === 401 || response.status === 403) {
-		credentialReporter.recordCredentialRejection("imgur");
-	}
+	const response = await reportRejectedResponse(
+		credentialReporter,
+		"imgur",
+		fetcher(`https://api.imgur.com/3/album/${albumId}`, {
+			headers: { Authorization: `Client-ID ${clientId}` },
+		}),
+	);
 	if (!response.ok) {
 		throw new ImgurError(`Imgur returned HTTP ${response.status}`);
 	}
