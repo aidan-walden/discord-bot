@@ -275,13 +275,17 @@ export default class ChatSessionService {
 	): Promise<T> {
 		const previous = this.rootQueues.get(rootKey) ?? Promise.resolve();
 		const run = previous.then(fn, fn);
-		this.rootQueues.set(
-			rootKey,
-			run.then(
-				() => undefined,
-				() => undefined,
-			),
+		const tail = run.then(
+			() => undefined,
+			() => undefined,
 		);
+		this.rootQueues.set(rootKey, tail);
+		// Drop the entry once this is the last queued run so the map stays bounded.
+		void tail.then(() => {
+			if (this.rootQueues.get(rootKey) === tail) {
+				this.rootQueues.delete(rootKey);
+			}
+		});
 		return run;
 	}
 
