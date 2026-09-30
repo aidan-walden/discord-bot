@@ -9,6 +9,7 @@ import {
 	SlashCommandBuilder,
 	userMention,
 } from "discord.js";
+import { requireAdminUser } from "../../helpers/permissions";
 import { assignSecretSanta } from "../../helpers/secretSantaAssign";
 import { prepareMessageChunks } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
@@ -63,19 +64,6 @@ function parseName(raw: string | null): string | null {
 		return null;
 	}
 	return name;
-}
-
-function requireAdmin(interaction: ChatInputCommandInteraction): boolean {
-	return interaction.client.bot.permissions.isAdminUser(interaction.user.id);
-}
-
-async function denyAdmin(
-	interaction: ChatInputCommandInteraction,
-): Promise<void> {
-	await interaction.reply({
-		content: "You don't have permission to use this command.",
-		flags: MessageFlags.Ephemeral,
-	});
 }
 
 function dmBody(
@@ -318,8 +306,8 @@ export default class SecretSanta implements Command {
 	private async handleInit(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -343,8 +331,8 @@ export default class SecretSanta implements Command {
 	private async handleDelete(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -363,8 +351,8 @@ export default class SecretSanta implements Command {
 		interaction: ChatInputCommandInteraction,
 		open: boolean,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -392,8 +380,8 @@ export default class SecretSanta implements Command {
 	private async handleSpendLimit(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -428,8 +416,8 @@ export default class SecretSanta implements Command {
 	private async handleExclude(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -551,8 +539,8 @@ export default class SecretSanta implements Command {
 	private async handleRemove(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -681,8 +669,8 @@ export default class SecretSanta implements Command {
 	private async handleResend(
 		interaction: ChatInputCommandInteraction,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {
@@ -734,8 +722,8 @@ export default class SecretSanta implements Command {
 		interaction: ChatInputCommandInteraction,
 		reroll: boolean,
 	): Promise<void> {
-		if (!requireAdmin(interaction)) {
-			return denyAdmin(interaction);
+		if (!(await requireAdminUser(interaction))) {
+			return;
 		}
 		const name = await this.nameOrReply(interaction);
 		if (!name) {

@@ -4,6 +4,7 @@ import {
 	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
+import { requireAdminUser } from "../../helpers/permissions";
 import type Command from "../../models/Command";
 
 export default class Echo implements Command {
@@ -15,11 +16,7 @@ export default class Echo implements Command {
 		);
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-		if (!interaction.client.bot.permissions.isAdminUser(interaction.user.id)) {
-			await interaction.reply({
-				content: "You don't have permission to use this command.",
-				flags: MessageFlags.Ephemeral,
-			});
+		if (!(await requireAdminUser(interaction))) {
 			return;
 		}
 

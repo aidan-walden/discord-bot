@@ -1,22 +1,14 @@
-import { type CommandInteraction, MessageFlags } from "discord.js";
-
-export function isAdminUser(
-	userId: string,
-	adminUserIds: ReadonlySet<string>,
-): boolean {
-	return adminUserIds.has(userId);
-}
+import { type ChatInputCommandInteraction, MessageFlags } from "discord.js";
 
 export async function requireAdminUser(
-	interaction: CommandInteraction,
-	adminUserIds: ReadonlySet<string>,
+	interaction: ChatInputCommandInteraction,
 ): Promise<boolean> {
-	if (isAdminUser(interaction.user.id, adminUserIds)) {
+	if (interaction.client.bot.permissions.isAdminUser(interaction.user.id)) {
 		return true;
 	}
 
 	await interaction.reply({
-		content: "You don't have permission to use that command.",
+		content: "You don't have permission to use this command.",
 		flags: MessageFlags.Ephemeral,
 	});
 	return false;
