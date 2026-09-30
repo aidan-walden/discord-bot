@@ -206,38 +206,21 @@ function validateNodes(value: unknown): LavalinkNodeConfig[] {
 	});
 }
 
-function validateAdminUserIds(value: unknown): string[] {
+function validateUniqueStringArray(value: unknown, key: string): string[] {
 	if (value === undefined) {
 		return [];
 	}
 
 	if (!Array.isArray(value)) {
 		throw new Error(
-			"Invalid config value for ADMIN_USER_IDS: expected array of strings.",
+			`Invalid config value for ${key}: expected array of strings.`,
 		);
 	}
 
-	const adminUserIds = value.map((userId, index) =>
-		ensureString(userId, `ADMIN_USER_IDS[${index}]`),
+	const items = value.map((item, index) =>
+		ensureString(item, `${key}[${index}]`),
 	);
-	return [...new Set(adminUserIds)];
-}
-
-function validateDeafenTrackerUsers(value: unknown): string[] {
-	if (value === undefined) {
-		return [];
-	}
-
-	if (!Array.isArray(value)) {
-		throw new Error(
-			"Invalid config value for deafentracker.users: expected array of strings.",
-		);
-	}
-
-	const users = value.map((userId, index) =>
-		ensureString(userId, `deafentracker.users[${index}]`),
-	);
-	return [...new Set(users)];
+	return [...new Set(items)];
 }
 
 function validateDeafenTracker(value: unknown): DeafenTrackerConfig {
@@ -262,7 +245,7 @@ function validateDeafenTracker(value: unknown): DeafenTrackerConfig {
 						record.muted_is_deafened,
 						"deafentracker.muted_is_deafened",
 					),
-		users: validateDeafenTrackerUsers(record.users),
+		users: validateUniqueStringArray(record.users, "deafentracker.users"),
 	};
 }
 
@@ -589,7 +572,10 @@ function validateConfigFile(
 		);
 	}
 
-	const adminUserIds = validateAdminUserIds(configFile.ADMIN_USER_IDS);
+	const adminUserIds = validateUniqueStringArray(
+		configFile.ADMIN_USER_IDS,
+		"ADMIN_USER_IDS",
+	);
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
 	const openai = validateOpenAI(configFile.openai);
 	const anthropic = validateAnthropic(configFile.anthropic);
