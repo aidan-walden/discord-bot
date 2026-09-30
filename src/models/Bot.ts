@@ -397,14 +397,17 @@ export default class Bot extends Client {
 			if (event.isEnabled && !event.isEnabled(this)) {
 				continue;
 			}
+			// Log handler failures here instead of leaving unhandled rejections.
+			const listener = (...args: unknown[]) =>
+				event
+					.execute(this, ...args)
+					.catch((error) =>
+						console.error(`${event.event} handler ${file} failed`, error),
+					);
 			if (event.once) {
-				this.once(event.event as keyof ClientEvents, (...args) =>
-					event.execute(this, ...args),
-				);
+				this.once(event.event as keyof ClientEvents, listener);
 			} else {
-				this.on(event.event as keyof ClientEvents, (...args) =>
-					event.execute(this, ...args),
-				);
+				this.on(event.event as keyof ClientEvents, listener);
 			}
 		}
 	}
