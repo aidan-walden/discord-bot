@@ -588,11 +588,12 @@ export default class SecretSanta implements Command {
 				});
 				return;
 			}
-			const lines: string[] = [];
-			for (const draw of draws) {
-				const count = await repo.participantCount(draw.name);
-				lines.push(this.statusLine(draw, count));
-			}
+			const counts = await Promise.all(
+				draws.map((draw) => repo.participantCount(draw.name)),
+			);
+			const lines = draws.map((draw, index) =>
+				this.statusLine(draw, counts[index] ?? 0),
+			);
 			const [first, ...rest] = prepareMessageChunks(lines.join("\n"), false);
 			await interaction.reply({
 				content: first,
@@ -626,8 +627,10 @@ export default class SecretSanta implements Command {
 			return;
 		}
 
-		const participants = await repo.listParticipants(name);
-		const exclusions = await repo.listExclusions(name);
+		const [participants, exclusions] = await Promise.all([
+			repo.listParticipants(name),
+			repo.listExclusions(name),
+		]);
 		const embed = new EmbedBuilder()
 			.setTitle(`Secret Santa: ${name}`)
 			.addFields(
