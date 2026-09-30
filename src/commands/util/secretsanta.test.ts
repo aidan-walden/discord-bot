@@ -366,7 +366,7 @@ describe("SecretSanta", () => {
 		await new SecretSanta().execute(interaction);
 		expect(setSpendLimitCents).not.toHaveBeenCalled();
 		expect(interaction.reply).toHaveBeenCalledWith({
-			content: "Spend limit must be between $0 and $1000000.00.",
+			content: "Spend limit must be between $0 and $1,000,000.00.",
 			flags: MessageFlags.Ephemeral,
 		});
 	});

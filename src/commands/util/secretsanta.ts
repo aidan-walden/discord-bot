@@ -12,6 +12,7 @@ import {
 import { requireAdminUser } from "../../helpers/permissions";
 import { assignSecretSanta } from "../../helpers/secretSantaAssign";
 import { prepareMessageChunks } from "../../helpers/sendLongMessage";
+import { formatCurrency } from "../../helpers/unbox";
 import type Command from "../../models/Command";
 import type {
 	SecretSantaAssignment,
@@ -26,7 +27,7 @@ function formatSpendLimit(cents: number | null): string {
 	if (cents === null) {
 		return "No spend limit set.";
 	}
-	return `$${(cents / 100).toFixed(2)}`;
+	return formatCurrency(cents / 100);
 }
 
 // Joins whole items into an embed field value (max 1024 chars), noting how
