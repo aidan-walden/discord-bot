@@ -1,7 +1,6 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
-	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
@@ -29,14 +28,7 @@ export default class Rotation implements Command {
 		}
 		const { player } = context;
 
-		const newSpeed = interaction.options.getNumber("speed");
-		if (newSpeed === null) {
-			await interaction.reply({
-				content: "You must specify a new speed.",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
+		const newSpeed = interaction.options.getNumber("speed", true);
 
 		await player.shoukaku.setRotation({ rotationHz: newSpeed });
 		await interaction.reply({

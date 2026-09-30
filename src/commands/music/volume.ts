@@ -1,7 +1,6 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
-	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
@@ -29,14 +28,7 @@ export default class Volume implements Command {
 		}
 		const { player } = context;
 
-		const newVol = interaction.options.getInteger("volume");
-		if (newVol === null) {
-			await interaction.reply({
-				content: "You must specify a new volume.",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
+		const newVol = interaction.options.getInteger("volume", true);
 
 		await player.setVolume(newVol);
 		await interaction.reply({ content: `Set volume to ${bold(`${newVol}`)}` });

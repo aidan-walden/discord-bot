@@ -56,14 +56,7 @@ export default class TiktokTts implements Command {
 	}
 
 	async execute(interaction: ChatInputCommandInteraction): Promise<void> {
-		const message = interaction.options.getString("message");
-		if (message === null) {
-			await interaction.reply({
-				content: "You must provide a message.",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
+		const message = interaction.options.getString("message", true);
 
 		const voiceName = interaction.options.getString("voice");
 		const voice = TIKTOK_VOICES.find(({ name }) => name === voiceName);

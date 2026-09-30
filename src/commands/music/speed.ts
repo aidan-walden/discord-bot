@@ -1,7 +1,6 @@
 import {
 	bold,
 	type ChatInputCommandInteraction,
-	MessageFlags,
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
@@ -29,14 +28,7 @@ export default class Speed implements Command {
 		}
 		const { player } = context;
 
-		const newSpeed = interaction.options.getInteger("speed");
-		if (newSpeed === null) {
-			await interaction.reply({
-				content: "You must specify a new speed.",
-				flags: MessageFlags.Ephemeral,
-			});
-			return;
-		}
+		const newSpeed = interaction.options.getInteger("speed", true);
 
 		const timescale = player.filters.timescale ?? {};
 		await player.shoukaku.setTimescale({ ...timescale, speed: newSpeed / 100 });
