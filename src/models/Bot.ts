@@ -269,17 +269,21 @@ export default class Bot extends Client {
 	}
 
 	async initialize(): Promise<void> {
+		// Waits only for the bounded first phase of the token scrape; any remaining
+		// search continues in the background and startup proceeds even on failure.
+		// It depends on nothing else, so start it first and overlap the rest.
+		const appleMusicReady = this.appleMusic.initialize();
 		// Redis is required; startup fails if unavailable. Connect before events so
 		// ClientReady reconciliation sees restored temporary state.
 		await this.temporaryState.connect();
 		await migrateDatabase(this.db);
-		await this.deafenTracker.initialize();
-		await this.chatSessions.initialize();
-		// Waits only for the bounded first phase of the token scrape; any remaining
-		// search continues in the background and startup proceeds even on failure.
-		await this.appleMusic.initialize();
-		await this.registerCommands(path.join(import.meta.dirname, "../commands"));
-		await this.registerEvents(path.join(import.meta.dirname, "../events"));
+		await Promise.all([
+			this.deafenTracker.initialize(),
+			this.chatSessions.initialize(),
+			appleMusicReady,
+			this.registerCommands(path.join(import.meta.dirname, "../commands")),
+			this.registerEvents(path.join(import.meta.dirname, "../events")),
+		]);
 
 		// Bot must be ready to deploy or remove commands, as we need to access the bot user's ID.
 		this.once(Events.ClientReady, async () => {
