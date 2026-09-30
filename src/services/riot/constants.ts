@@ -79,6 +79,14 @@ export const FRIENDLY_REGION_TO_PLATFORM: Record<string, RiotPlatform> = {
 	VN: "vn2",
 };
 
+/** Platform routing values → friendly region labels; inverse of {@link FRIENDLY_REGION_TO_PLATFORM}. */
+export const PLATFORM_TO_FRIENDLY_REGION = Object.fromEntries(
+	Object.entries(FRIENDLY_REGION_TO_PLATFORM).map(([region, platform]) => [
+		platform,
+		region,
+	]),
+) as Record<RiotPlatform, string>;
+
 const QUEUE_NAMES: Record<number, string> = {
 	400: "Normal Draft",
 	420: "Solo/Duo",

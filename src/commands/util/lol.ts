@@ -19,25 +19,12 @@ import {
 	type RiotPlatform,
 	SOLO_QUEUE,
 } from "../../services/RiotGamesService";
+import {
+	FRIENDLY_REGION_TO_PLATFORM,
+	PLATFORM_TO_FRIENDLY_REGION,
+} from "../../services/riot/constants";
 
-const FRIENDLY_REGIONS = [
-	"NA",
-	"EUW",
-	"EUNE",
-	"KR",
-	"BR",
-	"LAN",
-	"LAS",
-	"OCE",
-	"JP",
-	"TR",
-	"RU",
-	"PH",
-	"SG",
-	"TH",
-	"TW",
-	"VN",
-] as const;
+const FRIENDLY_REGIONS = Object.keys(FRIENDLY_REGION_TO_PLATFORM);
 
 function formatRank(entry: RiotLeagueEntry | undefined): string {
 	if (!entry) {
@@ -71,27 +58,8 @@ function matchLine(match: RiotMatch, puuid: string): string | null {
 	return `${result} ${champ} ${p.kills}/${p.deaths}/${p.assists} · ${queue} · ${formatDuration(match.info.gameDuration)}`;
 }
 
-const PLATFORM_LABEL: Record<RiotPlatform, string> = {
-	na1: "NA",
-	euw1: "EUW",
-	eun1: "EUNE",
-	kr: "KR",
-	br1: "BR",
-	la1: "LAN",
-	la2: "LAS",
-	oc1: "OCE",
-	jp1: "JP",
-	tr1: "TR",
-	ru: "RU",
-	ph2: "PH",
-	sg2: "SG",
-	th2: "TH",
-	tw2: "TW",
-	vn2: "VN",
-};
-
 function platformLabel(platform: RiotPlatform): string {
-	return PLATFORM_LABEL[platform] ?? platform.toUpperCase();
+	return PLATFORM_TO_FRIENDLY_REGION[platform] ?? platform.toUpperCase();
 }
 
 export default class Lol implements Command {
