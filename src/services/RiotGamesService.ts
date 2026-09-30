@@ -461,7 +461,12 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			memory.seededFromDb = true;
 		}
 
-		const active = await this.client.getActiveGame(player.platform, puuid);
+		const [active, matchIds, entries] = await Promise.all([
+			this.client.getActiveGame(player.platform, puuid),
+			this.client.getMatchIdsByPuuid(region, puuid, { count: 1 }),
+			this.client.getLeagueEntriesByPuuid(player.platform, puuid),
+		]);
+		const currentRank = soloRankFromEntries(entries);
 		let inProgress: RiotActiveGameStatus | null = null;
 		if (active) {
 			const self = active.participants.find((p) => p.puuid === puuid);
@@ -475,18 +480,11 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 			};
 		}
 
-		const matchIds = await this.client.getMatchIdsByPuuid(region, puuid, {
-			count: 1,
-		});
 		const newestMatchId = matchIds[0] ?? null;
 
 		if (newestMatchId !== null && newestMatchId !== memory.lastMatchId) {
 			const match = await this.client.getMatch(region, newestMatchId);
-			const entries = await this.client.getLeagueEntriesByPuuid(
-				player.platform,
-				puuid,
-			);
-			const rankAfter = soloRankFromEntries(entries);
+			const rankAfter = currentRank;
 			const rankBefore = memory.currentRank;
 			const participant = match?.info.participants.find(
 				(p) => p.puuid === puuid,
@@ -507,14 +505,8 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 				};
 			}
 			memory.lastMatchId = newestMatchId;
-			memory.currentRank = rankAfter;
-		} else {
-			const entries = await this.client.getLeagueEntriesByPuuid(
-				player.platform,
-				puuid,
-			);
-			memory.currentRank = soloRankFromEntries(entries);
 		}
+		memory.currentRank = currentRank;
 
 		if (memory.currentRank && this.rankHistory) {
 			await this.rankHistory.recordIfChanged(
