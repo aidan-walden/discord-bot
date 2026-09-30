@@ -409,14 +409,6 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		return this.client.getSummonerByPuuid(platform, puuid);
 	}
 
-	async request<T>(
-		routing: RiotRegion | RiotPlatform,
-		path: string,
-		query?: Record<string, string | number | undefined>,
-	): Promise<T> {
-		return this.client.request(routing, path, query);
-	}
-
 	private async resolveAccount(
 		player: RiotPlayerConfig,
 	): Promise<RiotAccount | null> {

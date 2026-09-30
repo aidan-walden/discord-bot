@@ -29,11 +29,6 @@ export default class RiotUserLinkRepository {
 		return rows[0] ? mapRow(rows[0]) : null;
 	}
 
-	/** @deprecated use getPrimaryByUserId — kept as alias */
-	async getByUserId(userId: string): Promise<RiotUserLink | null> {
-		return this.getPrimaryByUserId(userId);
-	}
-
 	async listByUserId(userId: string): Promise<RiotUserLink[]> {
 		const rows = await this.db
 			.select()
