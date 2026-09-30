@@ -8,12 +8,14 @@ function createApp(execute: () => Promise<unknown>) {
 	const bot = {
 		db: { execute },
 		isReady: () => true,
-		music: {
-			shoukaku: {
-				nodes: new Map([
-					["ready", { state: 1 }],
-					["offline", { state: 0 }],
-				]),
+		voiceSessions: {
+			kazagumo: {
+				shoukaku: {
+					nodes: new Map([
+						["ready", { state: 1 }],
+						["offline", { state: 0 }],
+					]),
+				},
 			},
 		},
 	} as unknown as Bot;

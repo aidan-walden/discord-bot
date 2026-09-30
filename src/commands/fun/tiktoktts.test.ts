@@ -21,11 +21,11 @@ function createAutocompleteInteraction(focused: string) {
 
 function createCommandInteraction(options: {
 	sessionId?: string;
-	player?: object;
+	musicActive?: boolean;
 }) {
 	const reply = mock(async () => undefined);
 	const deferReply = mock(async () => undefined);
-	const getPlayer = mock(() => options.player);
+	const isMusicActive = mock(() => options.musicActive ?? false);
 	return {
 		interaction: {
 			options: {
@@ -38,7 +38,7 @@ function createCommandInteraction(options: {
 					config: {
 						get: () => ({ TIKTOK_SESSION_ID: options.sessionId }),
 					},
-					music: { getPlayer },
+					voiceSessions: { isMusicActive },
 				},
 			},
 			inCachedGuild: () => true,
@@ -53,7 +53,7 @@ function createCommandInteraction(options: {
 		} as unknown as ChatInputCommandInteraction,
 		reply,
 		deferReply,
-		getPlayer,
+		isMusicActive,
 	};
 }
 
@@ -95,14 +95,13 @@ describe("TiktokTts", () => {
 	});
 
 	test("rejects voice output while music is active", async () => {
-		const player = {};
-		const { interaction, reply, deferReply, getPlayer } =
+		const { interaction, reply, deferReply, isMusicActive } =
 			createCommandInteraction({
 				sessionId: "session",
-				player,
+				musicActive: true,
 			});
 		await new TiktokTts().execute(interaction);
-		expect(getPlayer).toHaveBeenCalledWith("guild");
+		expect(isMusicActive).toHaveBeenCalledWith("guild");
 		expect(reply).toHaveBeenCalledWith({
 			content:
 				"TikTok TTS cannot play while music is active. Choose attachment mode instead.",
