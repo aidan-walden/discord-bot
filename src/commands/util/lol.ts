@@ -200,9 +200,11 @@ export default class Lol implements Command {
 			return;
 		}
 
-		const link = await interaction.client.bot.riotLinks.getPrimaryByUserId(
+		// Newest link first; it is the primary account shown in the embed.
+		const links = await interaction.client.bot.riotLinks.listByUserId(
 			member.id,
 		);
+		const link = links[0];
 		if (!link) {
 			await interaction.reply({
 				content: `${userMention(member.id)} has no League account mapped. Use \`/lol map\`.`,
@@ -213,24 +215,22 @@ export default class Lol implements Command {
 
 		await interaction.deferReply();
 
-		const links = await interaction.client.bot.riotLinks.listByUserId(
-			member.id,
-		);
-		await Promise.all(
-			links.map((account) =>
-				interaction.client.bot.riot.ensurePlaytimeBackfill({
-					puuid: account.puuid,
-					platform: account.platform,
-				}),
-			),
-		);
-
 		const [view, playtimeSeconds] = await Promise.all([
 			interaction.client.bot.riot.getLolView(link.platform, link.puuid, {
 				gameName: link.gameName,
 				tagLine: link.tagLine,
 			}),
-			interaction.client.bot.riotMatches.sumTimePlayedForUser(member.id),
+			// Playtime is summed from backfilled matches, so it waits for the backfill.
+			Promise.all(
+				links.map((account) =>
+					interaction.client.bot.riot.ensurePlaytimeBackfill({
+						puuid: account.puuid,
+						platform: account.platform,
+					}),
+				),
+			).then(() =>
+				interaction.client.bot.riotMatches.sumTimePlayedForUser(member.id),
+			),
 		]);
 
 		const solo = view.entries.find((e) => e.queueType === SOLO_QUEUE);
