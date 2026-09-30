@@ -372,43 +372,19 @@ function withOptionalStringField<T extends object>(
 	return result;
 }
 
-function validateOpenAI(value: unknown): OpenAIConfig {
-	const record = validateApiCategory(value, "openai");
-	let result: OpenAIConfig = {};
-	result = withOptionalStringField(result, record, "OPENAI_API_TOKEN");
-	result = withOptionalStringField(result, record, "OPENAI_MODEL");
-	return result;
-}
+type StringFieldCategory = Exclude<keyof typeof NESTED_ENV_KEYS, "riot">;
 
-function validateAnthropic(value: unknown): AnthropicConfig {
-	const record = validateApiCategory(value, "anthropic");
-	let result: AnthropicConfig = {};
-	result = withOptionalStringField(result, record, "ANTHROPIC_API_TOKEN");
-	result = withOptionalStringField(result, record, "ANTHROPIC_MODEL");
-	return result;
-}
-
-function validateSpotify(value: unknown): SpotifyConfig {
-	const record = validateApiCategory(value, "spotify");
-	let result: SpotifyConfig = {};
-	result = withOptionalStringField(result, record, "SPOTIFY_CLIENT_ID");
-	result = withOptionalStringField(result, record, "SPOTIFY_CLIENT_SECRET");
-	return result;
-}
-
-function validateTikTok(value: unknown): TikTokConfig {
-	const record = validateApiCategory(value, "tiktok");
-	return withOptionalStringField({}, record, "TIKTOK_SESSION_ID");
-}
-
-function validateImgur(value: unknown): ImgurConfig {
-	const record = validateApiCategory(value, "imgur");
-	return withOptionalStringField({}, record, "IMGUR_CLIENT_ID");
-}
-
-function validateSteam(value: unknown): SteamConfig {
-	const record = validateApiCategory(value, "steam");
-	return withOptionalStringField({}, record, "STEAM_API_KEY");
+/** Validates a category whose fields are exactly its optional env-overridable strings. */
+function validateStringFieldCategory<C extends StringFieldCategory>(
+	value: unknown,
+	category: C,
+): AppConfig[C] {
+	const record = validateApiCategory(value, category);
+	let result = {};
+	for (const key of NESTED_ENV_KEYS[category]) {
+		result = withOptionalStringField(result, record, key);
+	}
+	return result as AppConfig[C];
 }
 
 function validateRiot(value: unknown): RiotConfig {
@@ -577,15 +553,18 @@ function validateConfigFile(
 		"ADMIN_USER_IDS",
 	);
 	const deafentracker = validateDeafenTracker(configFile.deafentracker);
-	const openai = validateOpenAI(configFile.openai);
-	const anthropic = validateAnthropic(configFile.anthropic);
+	const openai = validateStringFieldCategory(configFile.openai, "openai");
+	const anthropic = validateStringFieldCategory(
+		configFile.anthropic,
+		"anthropic",
+	);
 	const llm = validateLlm(configFile.llm);
 	const musicLinks = validateMusicLinks(configFile.musicLinks);
-	const spotify = validateSpotify(configFile.spotify);
-	const tiktok = validateTikTok(configFile.tiktok);
-	const imgur = validateImgur(configFile.imgur);
+	const spotify = validateStringFieldCategory(configFile.spotify, "spotify");
+	const tiktok = validateStringFieldCategory(configFile.tiktok, "tiktok");
+	const imgur = validateStringFieldCategory(configFile.imgur, "imgur");
 	const riot = validateRiot(configFile.riot);
-	const steam = validateSteam(configFile.steam);
+	const steam = validateStringFieldCategory(configFile.steam, "steam");
 	const lavalinkNodes = validateNodes(configFile.lavalink?.nodes);
 	const profilePicture = validateProfilePicture(configFile.profilePicture);
 	const baseProfilePicture = validateBaseProfilePicture(
