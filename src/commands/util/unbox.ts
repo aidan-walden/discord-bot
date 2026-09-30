@@ -153,11 +153,18 @@ export default class Unbox implements Command {
 			? [new ActionRowBuilder<ButtonBuilder>().addComponents(inspectButton)]
 			: [];
 
+		const content =
+			`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
+			`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
+			`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`;
+		const settledReply = {
+			content,
+			embeds: [embed],
+			components: remainingComponents,
+		};
+
 		const reply = await interaction.editReply({
-			content:
-				`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
-				`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
-				`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
+			content,
 			embeds: [embed],
 			components: [row],
 		});
@@ -170,14 +177,7 @@ export default class Unbox implements Command {
 				time: 60_000,
 			});
 
-			await confirmation.update({
-				content:
-					`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
-					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
-					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
-				embeds: [embed],
-				components: remainingComponents,
-			});
+			await confirmation.update(settledReply);
 			if (confirmation.channel?.isSendable()) {
 				await sendLongMessage(
 					confirmation.channel,
@@ -187,14 +187,7 @@ export default class Unbox implements Command {
 				);
 			}
 		} catch {
-			await interaction.editReply({
-				content:
-					`Your new balance: ${bold(formatCurrency(balance.balanceCents / 100))}\n` +
-					`Most gained in one run: ${bold(formatCurrency(balance.mostGainedCents / 100))}\n` +
-					`Most lost in one run: ${bold(formatCurrency(balance.mostLostCents / 100))}`,
-				embeds: [embed],
-				components: remainingComponents,
-			});
+			await interaction.editReply(settledReply);
 		}
 	}
 
