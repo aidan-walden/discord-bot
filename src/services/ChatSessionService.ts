@@ -167,29 +167,11 @@ export default class ChatSessionService {
 			throw new Error(this.getUnavailableReason());
 		}
 
-		const request: LlmRequestContext = {
-			userId,
-			requestId: crypto.randomUUID(),
-		};
-		let lastError: unknown;
-		for (const provider of this.providers) {
-			try {
-				const content = await provider.complete(request, systemPrompt, [
-					{ role: "user", content: userMessage },
-				]);
-				if (!content) {
-					throw new Error("The AI assistant returned an empty response.");
-				}
-				return content;
-			} catch (error) {
-				if (!isCredentialFailure(error)) {
-					throw error;
-				}
-				this.credentialReporter?.recordCredentialRejection(provider.name);
-				lastError = error;
-			}
-		}
-		throw lastError ?? new Error("The AI assistant is unavailable.");
+		return this.completeWithFailover(
+			{ userId, requestId: crypto.randomUUID() },
+			systemPrompt,
+			[{ role: "user", content: userMessage }],
+		);
 	}
 
 	async prompt(session: ChatSession, input: string): Promise<string> {
@@ -210,33 +192,15 @@ export default class ChatSessionService {
 		};
 
 		try {
-			let lastError: unknown;
-			for (const provider of this.providers) {
-				try {
-					const content = await provider.complete(
-						request,
-						SYSTEM_PROMPT,
-						session.messages,
-					);
-					if (!content) {
-						throw new Error("The AI assistant returned an empty response.");
-					}
-
-					session.messages.push({ role: "assistant", content });
-					this.trimSessionHistory(session);
-					await this.persistSessions();
-					return content;
-				} catch (error) {
-					// Only failover on credential/quota failures; anything else
-					// (empty response, network) is surfaced immediately.
-					if (!isCredentialFailure(error)) {
-						throw error;
-					}
-					this.credentialReporter?.recordCredentialRejection(provider.name);
-					lastError = error;
-				}
-			}
-			throw lastError ?? new Error("The AI assistant is unavailable.");
+			const content = await this.completeWithFailover(
+				request,
+				SYSTEM_PROMPT,
+				session.messages,
+			);
+			session.messages.push({ role: "assistant", content });
+			this.trimSessionHistory(session);
+			await this.persistSessions();
+			return content;
 		} catch (error) {
 			const lastMessage = session.messages.at(-1);
 			if (lastMessage?.role === "user" && lastMessage.content === input) {
@@ -247,6 +211,36 @@ export default class ChatSessionService {
 		} finally {
 			session.isBusy = false;
 		}
+	}
+
+	private async completeWithFailover(
+		request: LlmRequestContext,
+		systemPrompt: string,
+		messages: LlmMessage[],
+	): Promise<string> {
+		let lastError: unknown;
+		for (const provider of this.providers) {
+			try {
+				const content = await provider.complete(
+					request,
+					systemPrompt,
+					messages,
+				);
+				if (!content) {
+					throw new Error("The AI assistant returned an empty response.");
+				}
+				return content;
+			} catch (error) {
+				// Only failover on credential/quota failures; anything else
+				// (empty response, network) is surfaced immediately.
+				if (!isCredentialFailure(error)) {
+					throw error;
+				}
+				this.credentialReporter?.recordCredentialRejection(provider.name);
+				lastError = error;
+			}
+		}
+		throw lastError ?? new Error("The AI assistant is unavailable.");
 	}
 
 	private getRootKey(userId: string, rootChannelId: string): string {
