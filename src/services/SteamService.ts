@@ -1,5 +1,6 @@
 import { randomInt as cryptoRandomInt } from "node:crypto";
 import type { Fetcher } from "../helpers/fetcher";
+import { shuffleInPlace } from "../helpers/shuffle";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 
 export interface SteamGame {
@@ -96,15 +97,6 @@ function isOnlineCoopGame(body: unknown, appid: number): boolean {
 		}
 	}
 	return false;
-}
-
-function shuffleInPlace<T>(items: T[], randomInt: RandomInt): void {
-	for (let i = items.length - 1; i > 0; i--) {
-		const j = randomInt(i + 1);
-		const tmp = items[i] as T;
-		items[i] = items[j] as T;
-		items[j] = tmp;
-	}
 }
 
 export default class SteamService {

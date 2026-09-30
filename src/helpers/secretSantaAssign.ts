@@ -1,16 +1,9 @@
+import { shuffleInPlace } from "./shuffle";
+
 export type ExclusionPair = readonly [string, string];
 
 function exclusionKey(a: string, b: string): string {
 	return a < b ? `${a}\0${b}` : `${b}\0${a}`;
-}
-
-function shuffleInPlace<T>(items: T[], rng: () => number): void {
-	for (let i = items.length - 1; i > 0; i--) {
-		const j = Math.floor(rng() * (i + 1));
-		const tmp = items[i] as T;
-		items[i] = items[j] as T;
-		items[j] = tmp;
-	}
 }
 
 /**
@@ -59,7 +52,7 @@ export function assignSecretSanta(
 		if (recipients.length === 0) {
 			return null;
 		}
-		shuffleInPlace(recipients, rng);
+		shuffleInPlace(recipients, (n) => Math.floor(rng() * n));
 		adj.set(giver, recipients);
 	}
 
