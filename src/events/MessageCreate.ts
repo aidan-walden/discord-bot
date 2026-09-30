@@ -1,14 +1,11 @@
-import {
-	type ClientEvents,
-	Events,
-	type Message,
-	userMention,
-} from "discord.js";
+import { type ClientEvents, Events, type Message } from "discord.js";
 import { sendLongMessage } from "../helpers/sendLongMessage";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
 import {
+	LLM_USER_BANNED_MESSAGE,
 	LlmUserRateLimitError,
+	llmFailureNotice,
 	llmRateLimitNotice,
 } from "../services/LlmProvider";
 
@@ -46,7 +43,7 @@ export default class MessageCreate implements BotEvent {
 
 		if (await bot.permissions.isGptUserBanned(message.author.id)) {
 			await bot.chatSessions.closeSession(session);
-			await message.reply("You're banned from using the AI assistant.");
+			await message.reply(LLM_USER_BANNED_MESSAGE);
 			return;
 		}
 
@@ -70,9 +67,7 @@ export default class MessageCreate implements BotEvent {
 				return;
 			}
 			console.error("AI assistant thread response failed:", error);
-			await message.reply(
-				`The AI assistant failed to respond. Please contact ${userMention(bot.config.get("BOT_OWNER_ID"))}`,
-			);
+			await message.reply(llmFailureNotice(bot.config.get("BOT_OWNER_ID")));
 		}
 	}
 }

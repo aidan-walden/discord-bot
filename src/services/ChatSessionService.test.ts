@@ -89,6 +89,25 @@ describe("ChatSessionService", () => {
 		);
 	});
 
+	test("getForChannel resolves threads by id and root channels by user", async () => {
+		const { provider } = createProvider("openai", async () => "ok");
+		const service = new ChatSessionService([provider], createTemporaryState());
+		const session = await service.createSession("user-1", "root-1", "thread-1");
+
+		expect(
+			service.getForChannel("someone-else", {
+				id: "thread-1",
+				isThread: () => true,
+			}),
+		).toBe(session);
+		expect(
+			service.getForChannel("user-1", { id: "root-1", isThread: () => false }),
+		).toBe(session);
+		expect(
+			service.getForChannel("user-2", { id: "root-1", isThread: () => false }),
+		).toBeUndefined();
+	});
+
 	test("replaces existing session when same user starts new session in same root channel", async () => {
 		const { provider } = createProvider("openai", async () => "ok");
 		const temporaryState = createTemporaryState();

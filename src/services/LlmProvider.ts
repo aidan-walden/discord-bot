@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { TimestampStyles, time } from "discord.js";
+import { TimestampStyles, time, userMention } from "discord.js";
 import OpenAI from "openai";
 import type { AnthropicConfig, OpenAIConfig } from "../config";
 import type LlmUserRateLimitRepository from "../repositories/LlmUserRateLimitRepository";
@@ -43,6 +43,13 @@ export class LlmUserRateLimitError extends Error {
 		super(`User has reached the LLM limit of ${limit} requests per hour.`);
 		this.name = "LlmUserRateLimitError";
 	}
+}
+
+export const LLM_USER_BANNED_MESSAGE =
+	"You're banned from using the AI assistant.";
+
+export function llmFailureNotice(ownerId: string): string {
+	return `The AI assistant failed to respond. Please contact ${userMention(ownerId)}`;
 }
 
 export function llmRateLimitNotice(error: LlmUserRateLimitError): string {

@@ -13,7 +13,9 @@ import {
 import { sendLongMessage } from "../../helpers/sendLongMessage";
 import type Command from "../../models/Command";
 import {
+	LLM_USER_BANNED_MESSAGE,
 	LlmUserRateLimitError,
+	llmFailureNotice,
 	llmRateLimitNotice,
 } from "../../services/LlmProvider";
 
@@ -80,7 +82,7 @@ export default class ChatGpt implements Command {
 				interaction.user.id,
 			)
 		) {
-			await interaction.editReply("You're banned from using the AI assistant.");
+			await interaction.editReply(LLM_USER_BANNED_MESSAGE);
 			return;
 		}
 
@@ -105,12 +107,10 @@ export default class ChatGpt implements Command {
 		}
 
 		const activeChannel = interaction.channel;
-		let session = activeChannel.isThread()
-			? interaction.client.bot.chatSessions.getByThreadId(activeChannel.id)
-			: interaction.client.bot.chatSessions.getByRootChannel(
-					interaction.user.id,
-					activeChannel.id,
-				);
+		let session = interaction.client.bot.chatSessions.getForChannel(
+			interaction.user.id,
+			activeChannel,
+		);
 
 		let thread: AnyThreadChannel | null = null;
 
@@ -203,7 +203,7 @@ export default class ChatGpt implements Command {
 			}
 			console.error("AI assistant ask command failed:", error);
 			await thread.send(
-				`The AI assistant failed to respond. Please contact ${userMention(interaction.client.bot.config.get("BOT_OWNER_ID"))}`,
+				llmFailureNotice(interaction.client.bot.config.get("BOT_OWNER_ID")),
 			);
 		}
 	}
@@ -220,14 +220,10 @@ export default class ChatGpt implements Command {
 			return;
 		}
 
-		const session = interaction.channel.isThread()
-			? interaction.client.bot.chatSessions.getByThreadId(
-					interaction.channel.id,
-				)
-			: interaction.client.bot.chatSessions.getByRootChannel(
-					interaction.user.id,
-					interaction.channel.id,
-				);
+		const session = interaction.client.bot.chatSessions.getForChannel(
+			interaction.user.id,
+			interaction.channel,
+		);
 
 		if (!session) {
 			await interaction.editReply(

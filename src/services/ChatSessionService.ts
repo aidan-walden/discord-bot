@@ -124,6 +124,16 @@ export default class ChatSessionService {
 		return this.sessionsByRootKey.get(this.getRootKey(userId, rootChannelId));
 	}
 
+	/** The session a thread belongs to, or the user's session rooted in a channel. */
+	getForChannel(
+		userId: string,
+		channel: { id: string; isThread(): boolean },
+	): ChatSession | undefined {
+		return channel.isThread()
+			? this.getByThreadId(channel.id)
+			: this.getByRootChannel(userId, channel.id);
+	}
+
 	async createSession(
 		userId: string,
 		rootChannelId: string,
