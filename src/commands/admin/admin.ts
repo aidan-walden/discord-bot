@@ -35,7 +35,6 @@ type Field = {
 	label: string;
 	min: number;
 	max: number;
-	required?: boolean;
 };
 
 export type Action = {
@@ -321,7 +320,7 @@ function buildModal(action: Action, customId: string): ModalBuilder {
 					.setStyle(TextInputStyle.Short)
 					.setMinLength(field.min)
 					.setMaxLength(field.max)
-					.setRequired(field.required ?? true),
+					.setRequired(true),
 			),
 		);
 	}
