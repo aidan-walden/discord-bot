@@ -6,7 +6,6 @@ import {
 	SlashCommandBuilder,
 } from "discord.js";
 import { getMusicCommandContext } from "../../helpers/musicCommandContext";
-import { releaseTtsVoice } from "../../helpers/tiktoktts";
 import type Command from "../../models/Command";
 
 export default class Play implements Command {
@@ -35,9 +34,12 @@ export default class Play implements Command {
 			});
 			return;
 		}
-		const results = await interaction.client.bot.music.search(query, {
-			requester: interaction.user,
-		});
+		const results = await interaction.client.bot.voiceSessions.kazagumo.search(
+			query,
+			{
+				requester: interaction.user,
+			},
+		);
 		if (results.tracks.length === 0) {
 			await interaction.reply({
 				content: "No song found",
@@ -55,14 +57,11 @@ export default class Play implements Command {
 			return;
 		}
 
-		releaseTtsVoice(context.guildId);
-
-		// Get or create player
-		const player = await interaction.client.bot.music.createPlayer({
+		// Releases any TTS session, then gets or creates the player
+		const player = await interaction.client.bot.voiceSessions.startMusic({
 			guildId: context.guildId,
 			textId: interaction.channelId,
 			voiceId: context.voiceChannelId,
-			deaf: true,
 		});
 
 		if (!player) {

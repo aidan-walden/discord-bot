@@ -52,8 +52,8 @@ function createInteraction(options: InteractionOptions = {}) {
 				permissions: {
 					getMusicUsageBlockReason,
 				},
-				music: {
-					getPlayer,
+				voiceSessions: {
+					getMusicPlayer: getPlayer,
 				},
 			},
 		},
@@ -91,7 +91,7 @@ describe("getMusicCommandContext", () => {
 	test("rejects commands from non-members", async () => {
 		const { interaction, reply, getMusicUsageBlockReason } = createInteraction({
 			member: {
-				voice: {
+				voiceSessions: {
 					channelId: "voice-123",
 				},
 			},

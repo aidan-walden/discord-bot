@@ -11,7 +11,7 @@
 
 ## Entry Points
 - [`src/index.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/index.ts) loads config, initializes the bot, optionally syncs/removes slash commands, logs in, and starts the web server.
-- [`src/models/Bot.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/models/Bot.ts) wires Discord, OpenAI, database access, repositories, metrics, Kazagumo music setup, commands, and event registration.
+- [`src/models/Bot.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/models/Bot.ts) wires Discord, OpenAI, database access, repositories, metrics, `VoiceSessionService` (`bot.voiceSessions`), commands, and event registration.
 - [`src/web/server.ts`](/Users/aidanwalden/Documents/Programming/discord-bot/src/web/server.ts) mounts the Hono API under `/api` and serves a simple root response.
 
 ## Config
@@ -22,6 +22,9 @@
 - `musicLinks.persistMappings` is an opt-in, YAML-only boolean (default `false`). When enabled, ISRC/UPC-verified Spotify ↔ Apple Music conversions persist their entity-ID mapping in Postgres so later conversions can reuse it; fuzzy text matches are never persisted. It is internal state and has no user-facing command or setting.
 - `riot.RIOT_API_KEY` is optional; without it `RiotGamesService` reports unavailable (LoL stats consumers stay idle). Nested `riot.pollIntervalSeconds` (default 60) and `riot.players` drive the optional match poller. Solo rank history (max 5 per puuid) is in `riot_rank_history`. Discord ↔ Riot links (`riot_user_links`) power `/lol map` and `/lol view`. HTTP client lives under `src/services/riot/`.
 - `steam.STEAM_API_KEY` is optional; without it `/friendslop` reports unavailable. With it, `/friendslop` resolves Steam IDs from Discord connected accounts, intersects owned games, and picks a random online co-op title via Steam Store category 38.
+
+## Voice
+- `VoiceSessionService` (`src/services/VoiceSessionService.ts`, `bot.voiceSessions`; not `bot.voice`, which is discord.js' own) is the single owner of every per-guild bot voice connection: music (Kazagumo/Lavalink, exposed read-only as `.kazagumo` for search and health) and TikTok TTS (@discordjs/voice). A guild's voice is owned by music, TTS, or none. TTS leaves after a 30s idle timeout following playback; music leaves as soon as its queue is empty. `startMusic` releases any TTS session first; `playTts` throws `VoiceBusyError` while music is active; `leave(guildId)` tears down either kind (`VoiceStateUpdate` calls it). Do not create Kazagumo players or @discordjs/voice connections elsewhere. `src/helpers/tiktoktts.ts` holds only the pure TTS pieces.
 
 ## Commands And Events
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.

@@ -15,8 +15,6 @@ import {
 	GatewayIntentBits,
 	Routes,
 } from "discord.js";
-import { Kazagumo } from "kazagumo";
-import { Connectors } from "shoukaku";
 import type { Config, ProfilePictureState } from "../config";
 import { createDatabase, type Database } from "../database/client";
 import { migrateDatabase } from "../database/migrate";
@@ -57,6 +55,7 @@ import RiotGamesService from "../services/RiotGamesService";
 import SpotifyClientCredentialsStrategy from "../services/SpotifyClientCredentialsStrategy";
 import SpotifyService from "../services/SpotifyService";
 import SteamService from "../services/SteamService";
+import VoiceSessionService from "../services/VoiceSessionService";
 import WolGgClient from "../services/wol/WolGgClient";
 import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
@@ -70,7 +69,7 @@ function isRuntimeTypescriptModule(file: string): boolean {
 export default class Bot extends Client {
 	override readonly bot: Bot = this;
 	readonly commands: Collection<string, Command>;
-	readonly music: Kazagumo;
+	readonly voiceSessions: VoiceSessionService;
 	readonly adminUserIds: ReadonlySet<string>;
 	readonly config: Config;
 	readonly db: Database;
@@ -203,65 +202,10 @@ export default class Bot extends Client {
 
 		this.holidays = new HolidayProvider();
 
-		this.music = new Kazagumo(
-			{
-				defaultSearchEngine: "youtube",
-				send: (guildId, payload) => {
-					const guild = this.guilds.cache.get(guildId);
-					if (guild) guild.shard.send(payload);
-				},
-			},
-			new Connectors.DiscordJS(this),
+		this.voiceSessions = new VoiceSessionService(
+			this,
 			config.get("lavalink").nodes,
 		);
-
-		const idleLeave = new Map<string, ReturnType<typeof setTimeout>>();
-		const clearIdleLeave = (guildId: string) => {
-			const t = idleLeave.get(guildId);
-			if (t) {
-				clearTimeout(t);
-				idleLeave.delete(guildId);
-			}
-		};
-		this.music.on("playerEmpty", (player) => {
-			clearIdleLeave(player.guildId);
-			idleLeave.set(
-				player.guildId,
-				setTimeout(() => {
-					idleLeave.delete(player.guildId);
-					void player.destroy();
-				}, 30_000),
-			);
-		});
-		this.music.on("playerStart", (player) => clearIdleLeave(player.guildId));
-		this.music.on("playerDestroy", (player) => clearIdleLeave(player.guildId));
-
-		// Lavalink events
-		// Dervied from Kazagumo readme
-		this.music.shoukaku.on("ready", (name) =>
-			console.log(`Lavalink ${name}: Ready!`),
-		);
-		this.music.shoukaku.on("error", (name, error) =>
-			console.error(`Lavalink ${name}: Error Caught,`, error),
-		);
-		this.music.shoukaku.on("close", (name, code, reason) =>
-			console.warn(
-				`Lavalink ${name}: Closed, Code ${code}, Reason ${reason || "No reason"}`,
-			),
-		);
-		this.music.shoukaku.on("debug", (name, info) =>
-			console.debug(`Lavalink ${name}: Debug,`, info),
-		);
-		this.music.shoukaku.on("disconnect", (name) => {
-			const players = [...this.music.shoukaku.players.values()].filter(
-				(p) => p.node.name === name,
-			);
-			players.forEach(async (player) => {
-				this.music.destroyPlayer(player.guildId);
-				await player.destroy();
-			});
-			console.warn(`Lavalink ${name}: Destroyed`);
-		});
 
 		this.holidays.on("change", (holiday) => {
 			this.emit(BotEvents.HolidayChange, holiday);
@@ -308,6 +252,7 @@ export default class Bot extends Client {
 			this.temporaryStateClosed = true;
 			this.temporaryState.close();
 		}
+		await this.voiceSessions.destroy();
 		await super.destroy();
 	}
 

@@ -68,7 +68,9 @@ export async function getMusicCommandContext<
 
 	let player: KazagumoPlayer | undefined;
 	if (requirePlayer) {
-		player = interaction.client.bot.music.getPlayer(interaction.guildId);
+		player = interaction.client.bot.voiceSessions.getMusicPlayer(
+			interaction.guildId,
+		);
 		if (!player) {
 			await interaction.reply({
 				content: "There is nothing playing",

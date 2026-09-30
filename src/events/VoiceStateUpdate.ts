@@ -4,7 +4,6 @@ import {
 	type VoiceBasedChannel,
 	type VoiceState,
 } from "discord.js";
-import type { KazagumoPlayer } from "kazagumo";
 import type Bot from "../models/Bot";
 import type BotEvent from "../models/BotEvent";
 
@@ -17,18 +16,18 @@ export default class VoiceStateUpdate implements BotEvent {
 		oldState: VoiceState,
 		newState: VoiceState,
 	): Promise<void> {
-		const player = bot.music.getPlayer(newState.guild.id);
-		if (!player) {
+		const guildId = newState.guild.id;
+		if (bot.voiceSessions.getOwner(guildId) === "none") {
 			return;
 		}
 
 		if (newState.id === bot.user?.id) {
-			await this.handleBotVoiceStateUpdate(player, newState);
+			await this.handleBotVoiceStateUpdate(bot, guildId, newState);
 			return;
 		}
 
 		if (
-			oldState.channelId !== player.voiceId ||
+			oldState.channelId !== bot.voiceSessions.getVoiceChannelId(guildId) ||
 			oldState.channelId === newState.channelId ||
 			!oldState.channel
 		) {
@@ -39,11 +38,12 @@ export default class VoiceStateUpdate implements BotEvent {
 			return;
 		}
 
-		await player.destroy();
+		await bot.voiceSessions.leave(guildId);
 	}
 
 	private async handleBotVoiceStateUpdate(
-		player: KazagumoPlayer,
+		bot: Bot,
+		guildId: string,
 		newState: VoiceState,
 	): Promise<void> {
 		// Leave when disconnected or moved into a channel with no listeners.
@@ -51,7 +51,7 @@ export default class VoiceStateUpdate implements BotEvent {
 			!newState.channelId ||
 			(newState.channel && !this.hasNonBotMembers(newState.channel))
 		) {
-			await player.destroy();
+			await bot.voiceSessions.leave(guildId);
 		}
 	}
 

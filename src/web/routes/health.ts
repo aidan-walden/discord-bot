@@ -19,7 +19,7 @@ health.get("/", async (c) => {
 
 	// Informational only: not part of the pass/fail decision. Shoukaku Node
 	// state 1 === CONNECTED.
-	const nodes = [...bot.music.shoukaku.nodes.values()];
+	const nodes = [...bot.voiceSessions.kazagumo.shoukaku.nodes.values()];
 	const lavalink = {
 		nodes: nodes.length,
 		connected: nodes.filter((n) => n.state === 1).length,

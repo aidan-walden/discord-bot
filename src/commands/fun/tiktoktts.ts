@@ -6,12 +6,12 @@ import {
 } from "discord.js";
 import {
 	createTikTokSpeechOgg,
-	playOggInVoiceChannel,
 	postVoiceMessage,
 	resolveOutputMode,
 	TIKTOK_VOICES,
 } from "../../helpers/tiktoktts";
 import type Command from "../../models/Command";
+import { VoiceBusyError } from "../../services/VoiceSessionService";
 
 export default class TiktokTts implements Command {
 	data = new SlashCommandBuilder()
@@ -103,7 +103,7 @@ export default class TiktokTts implements Command {
 		if (
 			outputMode === "voice" &&
 			interaction.inCachedGuild() &&
-			interaction.client.bot.music.getPlayer(interaction.guildId)
+			interaction.client.bot.voiceSessions.isMusicActive(interaction.guildId)
 		) {
 			await interaction.reply({
 				content:
@@ -138,9 +138,9 @@ export default class TiktokTts implements Command {
 						"Resolved voice output without a cached voice channel",
 					);
 				}
-				await playOggInVoiceChannel({
-					channelId: voiceChannel.id,
+				await interaction.client.bot.voiceSessions.playTts({
 					guildId: interaction.guildId,
+					channelId: voiceChannel.id,
 					adapterCreator: interaction.guild.voiceAdapterCreator,
 					oggPath: speech.oggPath,
 					durationSeconds: speech.durationSeconds,
@@ -152,6 +152,10 @@ export default class TiktokTts implements Command {
 				});
 			}
 		} catch (error) {
+			if (error instanceof VoiceBusyError) {
+				await interaction.editReply(error.message);
+				return;
+			}
 			console.error("Failed to create TikTok TTS audio", error);
 			await interaction.editReply("Failed to create TikTok TTS audio.");
 		} finally {
