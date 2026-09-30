@@ -20,6 +20,7 @@ import {
 	getRarityColor,
 	isUnboxCatalogAvailable,
 	listCaseNames,
+	RARITY_ORDER,
 	runUnboxSimulation,
 } from "../../helpers/unbox";
 import type Command from "../../models/Command";
@@ -79,31 +80,11 @@ export default class Unbox implements Command {
 				},
 				{ name: "Float", value: floatDisplay, inline: true },
 				{ name: "Total rolls", value: result.rolls.toString(), inline: true },
-				{
-					name: "Blues",
-					value: result.countsByRarity.Blue.toString(),
+				...RARITY_ORDER.map((rarity) => ({
+					name: `${rarity}s`,
+					value: result.countsByRarity[rarity].toString(),
 					inline: true,
-				},
-				{
-					name: "Purples",
-					value: result.countsByRarity.Purple.toString(),
-					inline: true,
-				},
-				{
-					name: "Pinks",
-					value: result.countsByRarity.Pink.toString(),
-					inline: true,
-				},
-				{
-					name: "Reds",
-					value: result.countsByRarity.Red.toString(),
-					inline: true,
-				},
-				{
-					name: "Golds",
-					value: result.countsByRarity.Gold.toString(),
-					inline: true,
-				},
+				})),
 				{
 					name: "Total spent on keys",
 					value: formatCurrency(result.spentKeys),
