@@ -64,27 +64,27 @@ function parseOwnedGames(body: unknown, steamId: string): SteamGame[] {
 	return [...byAppid.values()];
 }
 
-function isOnlineCoopGame(body: unknown, appid: number): boolean | "skip" {
+function isOnlineCoopGame(body: unknown, appid: number): boolean {
 	if (typeof body !== "object" || body === null) {
-		return "skip";
+		return false;
 	}
 	const entry = (body as Record<string, unknown>)[String(appid)];
 	if (typeof entry !== "object" || entry === null) {
-		return "skip";
+		return false;
 	}
 	const record = entry as { success?: unknown; data?: unknown };
 	if (record.success !== true) {
-		return "skip";
+		return false;
 	}
 	if (typeof record.data !== "object" || record.data === null) {
-		return "skip";
+		return false;
 	}
 	const data = record.data as { type?: unknown; categories?: unknown };
 	if (data.type !== "game") {
 		return false;
 	}
 	if (!Array.isArray(data.categories)) {
-		return "skip";
+		return false;
 	}
 	for (const category of data.categories) {
 		if (typeof category !== "object" || category === null) {
@@ -117,8 +117,7 @@ export default class SteamService {
 		private readonly credentialReporter?: CredentialRejectionReporter,
 		options: { fetch?: Fetcher; randomInt?: RandomInt } = {},
 	) {
-		const trimmed = apiKey?.trim() || null;
-		this.apiKey = trimmed && trimmed.length > 0 ? trimmed : null;
+		this.apiKey = apiKey?.trim() || null;
 		this.fetcher = options.fetch ?? fetch;
 		this.randomInt = options.randomInt ?? ((max) => cryptoRandomInt(max));
 	}
@@ -240,7 +239,6 @@ export default class SteamService {
 			throw new Error("Steam storefront response was invalid");
 		}
 
-		const result = isOnlineCoopGame(body, appid);
-		return result === true;
+		return isOnlineCoopGame(body, appid);
 	}
 }
