@@ -8,6 +8,7 @@ import type { ParsedMusicLink } from "../helpers/musicLinks";
 import {
 	type CredentialRejectionReporter,
 	getErrorMessage,
+	reportRejectedError,
 } from "./ExternalApiCredentialStatus";
 import type { MusicItem, MusicKind } from "./musicTypes";
 
@@ -122,14 +123,12 @@ export default class SpotifyService {
 		return artists.map((artist) => artist.name).join(", ");
 	}
 
-	private async request<T>(operation: Promise<T>): Promise<T> {
-		try {
-			return await operation;
-		} catch (error) {
-			if (isSpotifyCredentialRejection(error)) {
-				this.credentialReporter?.recordCredentialRejection("spotify");
-			}
-			throw error;
-		}
+	private request<T>(operation: Promise<T>): Promise<T> {
+		return reportRejectedError(
+			this.credentialReporter,
+			"spotify",
+			() => operation,
+			isSpotifyCredentialRejection,
+		);
 	}
 }

@@ -1,5 +1,8 @@
 import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
-import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
+import {
+	type CredentialRejectionReporter,
+	reportRejectedError,
+} from "./ExternalApiCredentialStatus";
 import {
 	isCredentialFailure,
 	type LlmMessage,
@@ -231,10 +234,11 @@ export default class ChatSessionService {
 		let lastError: unknown;
 		for (const provider of this.providers) {
 			try {
-				const content = await provider.complete(
-					request,
-					systemPrompt,
-					messages,
+				const content = await reportRejectedError(
+					this.credentialReporter,
+					provider.name,
+					() => provider.complete(request, systemPrompt, messages),
+					isCredentialFailure,
 				);
 				if (!content) {
 					throw new Error("The AI assistant returned an empty response.");
@@ -246,7 +250,6 @@ export default class ChatSessionService {
 				if (!isCredentialFailure(error)) {
 					throw error;
 				}
-				this.credentialReporter?.recordCredentialRejection(provider.name);
 				lastError = error;
 			}
 		}

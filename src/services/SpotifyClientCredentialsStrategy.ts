@@ -4,7 +4,10 @@ import type {
 	SdkConfiguration,
 } from "@spotify/web-api-ts-sdk";
 import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
-import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
+import {
+	type CredentialRejectionReporter,
+	reportRejectedResponse,
+} from "./ExternalApiCredentialStatus";
 
 const TOKEN_URL = "https://accounts.spotify.com/api/token";
 const SDK_CACHE_KEY = "discord-bot:spotify-client-credentials-token";
@@ -130,18 +133,21 @@ export default class SpotifyClientCredentialsStrategy implements IAuthStrategy {
 		const credentials = Buffer.from(
 			`${this.clientId}:${this.clientSecret}`,
 		).toString("base64");
-		const response = await this.getConfiguration().fetch(TOKEN_URL, {
-			method: "POST",
-			headers: {
-				Authorization: `Basic ${credentials}`,
-				"Content-Type": "application/x-www-form-urlencoded",
-			},
-			body: "grant_type=client_credentials",
-		});
-
-		if ([400, 401, 403].includes(response.status)) {
-			this.credentialReporter.recordCredentialRejection("spotify");
-		}
+		// The token endpoint answers bad client credentials with 400
+		// (`invalid_client`) as well as 401/403.
+		const response = await reportRejectedResponse(
+			this.credentialReporter,
+			"spotify",
+			this.getConfiguration().fetch(TOKEN_URL, {
+				method: "POST",
+				headers: {
+					Authorization: `Basic ${credentials}`,
+					"Content-Type": "application/x-www-form-urlencoded",
+				},
+				body: "grant_type=client_credentials",
+			}),
+			[400, 401, 403],
+		);
 		if (response.status !== 200) {
 			throw new Error("Failed to get Spotify access token.");
 		}

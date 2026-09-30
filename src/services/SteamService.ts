@@ -1,7 +1,10 @@
 import { randomInt as cryptoRandomInt } from "node:crypto";
 import type { Fetcher } from "../helpers/fetcher";
 import { shuffleInPlace } from "../helpers/shuffle";
-import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
+import {
+	type CredentialRejectionReporter,
+	reportRejectedResponse,
+} from "./ExternalApiCredentialStatus";
 
 export interface SteamGame {
 	appid: number;
@@ -188,14 +191,15 @@ export default class SteamService {
 
 		let response: Response;
 		try {
-			response = await this.fetcher(url);
+			response = await reportRejectedResponse(
+				this.credentialReporter,
+				"steam",
+				this.fetcher(url),
+			);
 		} catch {
 			throw new Error("Steam owned games request failed");
 		}
 
-		if (response.status === 401 || response.status === 403) {
-			this.credentialReporter?.recordCredentialRejection("steam");
-		}
 		if (!response.ok) {
 			throw new Error(`Steam owned games returned HTTP ${response.status}`);
 		}
