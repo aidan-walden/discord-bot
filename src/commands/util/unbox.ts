@@ -182,7 +182,6 @@ export default class Unbox implements Command {
 				await sendLongMessage(
 					confirmation.channel,
 					formatRolledSkinsSummary(result.rolledSkins),
-					{},
 					false,
 				);
 			}

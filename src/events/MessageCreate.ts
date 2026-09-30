@@ -63,7 +63,7 @@ export default class MessageCreate implements BotEvent {
 		try {
 			await message.channel.sendTyping();
 			const response = await bot.chatSessions.prompt(session, prompt);
-			await sendLongMessage(message.channel, response, {}, false);
+			await sendLongMessage(message.channel, response, false);
 		} catch (error) {
 			if (error instanceof LlmUserRateLimitError) {
 				await message.reply(llmRateLimitNotice(error));

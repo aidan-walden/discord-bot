@@ -185,7 +185,6 @@ export default class ChatGpt implements Command {
 			await sendLongMessage(
 				thread,
 				`${userMention(interaction.user.id)} asked:\n${escapeMarkdown(prompt)}`,
-				{},
 				false,
 			);
 			await thread.sendTyping();
@@ -193,7 +192,7 @@ export default class ChatGpt implements Command {
 				session,
 				prompt,
 			);
-			await sendLongMessage(thread, response, {}, false);
+			await sendLongMessage(thread, response, false);
 		} catch (error) {
 			if (error instanceof LlmUserRateLimitError) {
 				await interaction.followUp({
