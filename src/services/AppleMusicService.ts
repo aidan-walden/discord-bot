@@ -1,6 +1,7 @@
 import type { AppleAlbum, AppleArtwork, AppleSong } from "node-apple-music";
 import * as appleMusic from "node-apple-music";
 import type { ParsedMusicLink } from "../helpers/musicLinks";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import {
 	type AppleMusicTokenScrape,
 	startAppleMusicTokenScrape,
@@ -39,12 +40,22 @@ const defaultTokenSource: AppleMusicTokenSource = {
 	start: () => startAppleMusicTokenScrape(),
 };
 
+/** Redis key holding the last developer token Apple accepted. */
+const TOKEN_STATE_KEY = "apple-music:developer-token";
 const ARTWORK_SIZE = 512;
 const MISSING_TOKEN_MESSAGE =
 	"I don't have a token to use! Did you call fetchToken()?";
 
+export interface AppleMusicServiceOptions {
+	client?: AppleMusicClient;
+	tokenSource?: AppleMusicTokenSource;
+	/** Stores the last token Apple accepted so restarts can skip the scrape. */
+	temporaryState?: TemporaryStateStore;
+}
+
 /**
- * - `initializing`: a token scrape is running (at startup or after a 401).
+ * - `initializing`: a stored token is being restored, or a token scrape is
+ *   running (at startup or after a 401).
  * - `ready`: a token is loaded and catalog requests can be made.
  * - `failed`: the last scrape ended without a token.
  */
@@ -69,19 +80,28 @@ export class AppleMusicUnavailableError extends Error {
 /**
  * Wraps the anonymous Apple Music catalog client and normalizes results into
  * {@link MusicItem}. It obtains an anonymous developer token by scraping the
- * Apple Music web bundle. The service only becomes ready once a scrape
- * completes; until then, and after a failed scrape, catalog methods throw
+ * Apple Music web bundle. Once Apple accepts a token, it is stored in
+ * temporary state and reused on later startups; a new scrape only happens when
+ * no stored token exists or Apple rejects the current one. The service only
+ * becomes ready once a token is restored or a scrape completes; until then,
+ * and after a failed scrape, catalog methods throw
  * {@link AppleMusicUnavailableError}.
  */
 export default class AppleMusicService {
 	private token: string | null = null;
+	/** The token currently stored in temporary state, if any. */
+	private storedToken: string | null = null;
 	private state: AppleMusicStatus = "initializing";
 	private scrape: AppleMusicTokenScrape | null = null;
+	private readonly client: AppleMusicClient;
+	private readonly tokenSource: AppleMusicTokenSource;
+	private readonly temporaryState: TemporaryStateStore | null;
 
-	constructor(
-		private readonly client: AppleMusicClient = defaultClient,
-		private readonly tokenSource: AppleMusicTokenSource = defaultTokenSource,
-	) {}
+	constructor(options: AppleMusicServiceOptions = {}) {
+		this.client = options.client ?? defaultClient;
+		this.tokenSource = options.tokenSource ?? defaultTokenSource;
+		this.temporaryState = options.temporaryState ?? null;
+	}
 
 	isAvailable(): boolean {
 		return this.state === "ready";
@@ -92,11 +112,15 @@ export default class AppleMusicService {
 	}
 
 	/**
-	 * Start the token scrape and wait only for its bounded foreground phase. If
-	 * the token is not found by then, the scrape keeps going in the background
-	 * and the service becomes ready when it completes. Never throws.
+	 * Restore the stored token if there is one. Otherwise start the token scrape
+	 * and wait only for its bounded foreground phase. If the token is not found
+	 * by then, the scrape keeps going in the background and the service becomes
+	 * ready when it completes. Never throws.
 	 */
 	async initialize(): Promise<void> {
+		if (await this.restoreStoredToken()) {
+			return;
+		}
 		await this.refreshToken().foreground;
 	}
 
@@ -155,6 +179,62 @@ export default class AppleMusicService {
 
 		const album = results.albums?.[0];
 		return album ? this.albumToItem(album) : null;
+	}
+
+	private async restoreStoredToken(): Promise<boolean> {
+		if (!this.temporaryState) {
+			return false;
+		}
+
+		let token: unknown;
+		try {
+			token = await this.temporaryState.get<unknown>(TOKEN_STATE_KEY);
+		} catch (error) {
+			console.error("Failed to read the stored Apple Music token:", error);
+			return false;
+		}
+		// A scrape may have started while the read was pending.
+		if (typeof token !== "string" || token.length === 0 || this.scrape) {
+			return false;
+		}
+
+		this.applyToken(token);
+		if (this.state !== "ready") {
+			return false;
+		}
+		this.storedToken = token;
+		return true;
+	}
+
+	/** Store a token Apple has just accepted, unless it is already stored. */
+	private rememberToken(token: string): void {
+		if (
+			!this.temporaryState ||
+			token !== this.token ||
+			token === this.storedToken
+		) {
+			return;
+		}
+
+		this.storedToken = token;
+		this.temporaryState.set(TOKEN_STATE_KEY, token).catch((error) => {
+			if (this.storedToken === token) {
+				this.storedToken = null;
+			}
+			console.error("Failed to store the Apple Music token:", error);
+		});
+	}
+
+	/** Drop a rejected token from temporary state if it is the stored one. */
+	private forgetToken(token: string): void {
+		if (!this.temporaryState || token !== this.storedToken) {
+			return;
+		}
+
+		this.storedToken = null;
+		this.temporaryState.delete(TOKEN_STATE_KEY).catch((error) => {
+			console.error("Failed to delete the stored Apple Music token:", error);
+		});
 	}
 
 	/** Start a token scrape, or join the one already running. */
@@ -230,19 +310,28 @@ export default class AppleMusicService {
 	private async request<T>(
 		operation: (token: string) => Promise<T>,
 	): Promise<T | null> {
-		const result = await this.attempt(operation, this.requireToken());
+		const token = this.requireToken();
+		const result = await this.attempt(operation, token);
 		if (result.ok) {
+			this.rememberToken(token);
 			return result.value;
 		}
 
 		// The token was rejected: refresh it, retrying once if the new token
-		// arrives within the bounded foreground phase.
-		await this.refreshToken().foreground;
-		const retry = await this.attempt(operation, this.requireToken());
+		// arrives within the bounded foreground phase. Skip the refresh when a
+		// concurrent request has already replaced the rejected token.
+		this.forgetToken(token);
+		if (this.token === token || this.state !== "ready") {
+			await this.refreshToken().foreground;
+		}
+		const retryToken = this.requireToken();
+		const retry = await this.attempt(operation, retryToken);
 		if (retry.ok) {
+			this.rememberToken(retryToken);
 			return retry.value;
 		}
 
+		this.forgetToken(retryToken);
 		this.token = null;
 		this.state = "failed";
 		throw new AppleMusicUnavailableError("failed");

@@ -176,7 +176,9 @@ export default class Bot extends Client {
 					)
 				: null;
 		this.spotify = new SpotifyService(spotifyClient, this.metrics);
-		this.appleMusic = new AppleMusicService();
+		this.appleMusic = new AppleMusicService({
+			temporaryState: this.temporaryState,
+		});
 		const musicLinksConfig = config.get("musicLinks");
 		this.musicLinks = new MusicLinkService(
 			this.spotify,
@@ -213,13 +215,13 @@ export default class Bot extends Client {
 	}
 
 	async initialize(): Promise<void> {
-		// Waits only for the bounded first phase of the token scrape; any remaining
-		// search continues in the background and startup proceeds even on failure.
-		// It depends on nothing else, so start it first and overlap the rest.
-		const appleMusicReady = this.appleMusic.initialize();
 		// Redis is required; startup fails if unavailable. Connect before events so
 		// ClientReady reconciliation sees restored temporary state.
 		await this.temporaryState.connect();
+		// Restores the stored Apple Music token, or waits only for the bounded first
+		// phase of the token scrape; any remaining search continues in the
+		// background and startup proceeds even on failure. Overlap it with the rest.
+		const appleMusicReady = this.appleMusic.initialize();
 		await migrateDatabase(this.db);
 		await Promise.all([
 			this.deafenTracker.initialize(),

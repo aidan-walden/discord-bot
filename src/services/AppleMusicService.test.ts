@@ -1,4 +1,5 @@
 import { describe, expect, test } from "bun:test";
+import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
 import type {
 	AppleMusicClient,
 	AppleMusicTokenSource,
@@ -71,11 +72,27 @@ function makeTokenSource(
 	};
 }
 
+function makeStore(initial: Record<string, unknown> = {}) {
+	const values = new Map<string, unknown>(Object.entries(initial));
+	const store: TemporaryStateStore = {
+		get: async <T>(key: string) => (values.get(key) as T) ?? null,
+		set: async (key, value) => {
+			values.set(key, value);
+		},
+		delete: async (key) => {
+			values.delete(key);
+		},
+	};
+	return { store, values };
+}
+
+const TOKEN_KEY = "apple-music:developer-token";
+
 async function makeService(
 	client: AppleMusicClient,
 	tokenSource: AppleMusicTokenSource = makeTokenSource(),
 ): Promise<AppleMusicService> {
-	const service = new AppleMusicService(client, tokenSource);
+	const service = new AppleMusicService({ client, tokenSource });
 	await service.initialize();
 	return service;
 }
@@ -190,10 +207,13 @@ describe("AppleMusicService", () => {
 		const token = new Promise<string>((resolve) => {
 			finishScrape = resolve;
 		});
-		const service = new AppleMusicService(makeClient(), {
-			// Foreground settles before the scrape completes, as when it continues
-			// past the startup asset limit in the background.
-			start: () => ({ foreground: Promise.resolve(), token }),
+		const service = new AppleMusicService({
+			client: makeClient(),
+			tokenSource: {
+				// Foreground settles before the scrape completes, as when it continues
+				// past the startup asset limit in the background.
+				start: () => ({ foreground: Promise.resolve(), token }),
+			},
 		});
 
 		expect(service.status()).toBe("initializing");
@@ -211,11 +231,14 @@ describe("AppleMusicService", () => {
 	});
 
 	test("reports the initializing state on the unavailable error", async () => {
-		const service = new AppleMusicService(makeClient(), {
-			start: () => ({
-				foreground: Promise.resolve(),
-				token: new Promise<string>(() => {}),
-			}),
+		const service = new AppleMusicService({
+			client: makeClient(),
+			tokenSource: {
+				start: () => ({
+					foreground: Promise.resolve(),
+					token: new Promise<string>(() => {}),
+				}),
+			},
 		});
 		await service.initialize();
 
@@ -347,5 +370,139 @@ describe("AppleMusicService", () => {
 
 		expect(service.status()).toBe("ready");
 		expect(receivedToken).toBe("dummy-token");
+	});
+	test("stores a scraped token once Apple accepts it", async () => {
+		const { store, values } = makeStore();
+		const service = new AppleMusicService({
+			client: makeClient({ fetchSong: async () => fakeSong() }),
+			tokenSource: makeTokenSource(async () => "scraped-token"),
+			temporaryState: store,
+		});
+		await service.initialize();
+
+		expect(service.status()).toBe("ready");
+		expect(values.has(TOKEN_KEY)).toBe(false);
+
+		await service.resolve({ platform: "apple", kind: "track", id: "song1" });
+		expect(values.get(TOKEN_KEY)).toBe("scraped-token");
+	});
+
+	test("does not store a token Apple rejected", async () => {
+		const { store, values } = makeStore();
+		const unauthorized = {
+			errors: [{ status: 401 }],
+		} as unknown as Awaited<ReturnType<AppleMusicClient["fetchSong"]>>;
+		const service = new AppleMusicService({
+			client: makeClient({ fetchSong: async () => unauthorized }),
+			temporaryState: store,
+		});
+		await service.initialize();
+
+		await expect(
+			service.resolve({ platform: "apple", kind: "track", id: "song1" }),
+		).rejects.toBeInstanceOf(AppleMusicUnavailableError);
+		expect(values.has(TOKEN_KEY)).toBe(false);
+	});
+
+	test("reuses a stored token without scraping", async () => {
+		const { store } = makeStore({ [TOKEN_KEY]: "stored-token" });
+		let scrapes = 0;
+		let requestedToken: string | undefined;
+		let clientToken: string | undefined;
+		const service = new AppleMusicService({
+			client: makeClient({
+				fetchSong: async (_id, options) => {
+					requestedToken = options?.token;
+					return fakeSong();
+				},
+				setToken: (token) => {
+					clientToken = token;
+				},
+			}),
+			tokenSource: makeTokenSource(async () => {
+				scrapes += 1;
+				return "scraped-token";
+			}),
+			temporaryState: store,
+		});
+		await service.initialize();
+
+		expect(service.status()).toBe("ready");
+		expect(clientToken).toBe("stored-token");
+		await service.resolve({ platform: "apple", kind: "track", id: "song1" });
+		expect(requestedToken).toBe("stored-token");
+		expect(scrapes).toBe(0);
+	});
+
+	test("replaces a stored token after Apple rejects it", async () => {
+		const { store, values } = makeStore({ [TOKEN_KEY]: "stored-token" });
+		let scrapes = 0;
+		const requestedTokens: string[] = [];
+		const unauthorized = {
+			errors: [{ status: 401 }],
+		} as unknown as Awaited<ReturnType<AppleMusicClient["fetchSong"]>>;
+		const service = new AppleMusicService({
+			client: makeClient({
+				fetchSong: async (_id, options) => {
+					requestedTokens.push(options?.token ?? "");
+					return options?.token === "stored-token" ? unauthorized : fakeSong();
+				},
+			}),
+			tokenSource: makeTokenSource(async () => {
+				scrapes += 1;
+				return "scraped-token";
+			}),
+			temporaryState: store,
+		});
+		await service.initialize();
+		expect(scrapes).toBe(0);
+
+		const item = await service.resolve({
+			platform: "apple",
+			kind: "track",
+			id: "song1",
+		});
+
+		expect(item).toMatchObject({ title: "Get Lucky" });
+		expect(scrapes).toBe(1);
+		expect(requestedTokens).toEqual(["stored-token", "scraped-token"]);
+		expect(values.get(TOKEN_KEY)).toBe("scraped-token");
+	});
+
+	test("forgets a stored token when the refresh fails", async () => {
+		const { store, values } = makeStore({ [TOKEN_KEY]: "stored-token" });
+		const unauthorized = {
+			errors: [{ status: 401 }],
+		} as unknown as Awaited<ReturnType<AppleMusicClient["fetchSong"]>>;
+		const service = new AppleMusicService({
+			client: makeClient({ fetchSong: async () => unauthorized }),
+			tokenSource: makeTokenSource(async () => {
+				throw new Error("scrape failed");
+			}),
+			temporaryState: store,
+		});
+		await service.initialize();
+
+		await expect(
+			service.resolve({ platform: "apple", kind: "track", id: "song1" }),
+		).rejects.toBeInstanceOf(AppleMusicUnavailableError);
+		expect(values.has(TOKEN_KEY)).toBe(false);
+		expect(service.status()).toBe("failed");
+	});
+
+	test("scrapes when reading the stored token fails", async () => {
+		const service = new AppleMusicService({
+			client: makeClient(),
+			tokenSource: makeTokenSource(async () => "scraped-token"),
+			temporaryState: {
+				get: async () => {
+					throw new Error("redis down");
+				},
+				set: async () => {},
+				delete: async () => {},
+			},
+		});
+		await service.initialize();
+		expect(service.status()).toBe("ready");
 	});
 });
