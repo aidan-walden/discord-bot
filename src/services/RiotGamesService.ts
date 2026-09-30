@@ -1,6 +1,7 @@
 import { EventEmitter } from "node:events";
 import type RiotMatchRepository from "../repositories/RiotMatchRepository";
 import type RiotMatchSyncRepository from "../repositories/RiotMatchSyncRepository";
+import type { RiotMatchSync } from "../repositories/RiotMatchSyncRepository";
 import type RiotRankHistoryRepository from "../repositories/RiotRankHistoryRepository";
 import type RiotUserLinkRepository from "../repositories/RiotUserLinkRepository";
 import type { TemporaryStateStore } from "../repositories/TemporaryStateRepository";
@@ -674,16 +675,25 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		platform: RiotPlatform;
 		riotId?: string;
 	}): Promise<void> {
+		await this.backfilledSyncRow(player);
+	}
+
+	/** Backfills if needed; returns the sync row once backfilled, else null. */
+	private async backfilledSyncRow(player: {
+		puuid: string;
+		platform: RiotPlatform;
+		riotId?: string;
+	}): Promise<RiotMatchSync | null> {
 		if (!this.matchSync || !this.wol) {
-			return;
+			return null;
 		}
 		const row = await this.matchSync.get(player.puuid);
 		if (row?.backfilled) {
-			return;
+			return row;
 		}
 		const identity = await this.resolveRiotId(player);
 		if (!identity) {
-			return;
+			return null;
 		}
 		const backfillSeconds = await this.wol.fetchPlaytimeSeconds(
 			player.platform,
@@ -692,13 +702,14 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		);
 		if (backfillSeconds === null) {
 			// Do not lock 0 on a scrape miss; retry next cycle.
-			return;
+			return null;
 		}
 		await this.matchSync.setBackfill(
 			player.puuid,
 			backfillSeconds,
 			new Date(this.now()),
 		);
+		return this.matchSync.get(player.puuid);
 	}
 
 	private async syncPlayerMatches(player: {
@@ -708,8 +719,7 @@ export default class RiotGamesService extends EventEmitter<RiotGamesServiceEvent
 		if (!this.matches || !this.matchSync || !this.wol) {
 			return;
 		}
-		await this.ensurePlaytimeBackfill(player);
-		const row = await this.matchSync.get(player.puuid);
+		const row = await this.backfilledSyncRow(player);
 		if (!row?.backfilled) {
 			return;
 		}

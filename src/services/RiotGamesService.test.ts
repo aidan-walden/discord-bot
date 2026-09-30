@@ -919,8 +919,8 @@ describe("RiotGamesService", () => {
 					url.includes("endTime=1700100060"),
 			),
 		).toBe(true);
-		// ensurePlaytimeBackfill + syncPlayerMatches each call get once per poll
-		expect(getSync).toHaveBeenCalledTimes(4);
+		// One read per poll, plus one re-read right after the first backfill
+		expect(getSync).toHaveBeenCalledTimes(3);
 		expect(
 			matchDetailCalls.filter((u) => u.includes("NA1_known")),
 		).toHaveLength(0);
