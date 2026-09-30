@@ -1,6 +1,8 @@
+import type { Fetcher } from "../../helpers/fetcher";
 import type { RiotPlatform } from "./constants";
 
 export type { RiotPlatform, RiotRegion } from "./constants";
+export type { Fetcher };
 
 export interface RiotPlayerConfig {
 	platform: RiotPlatform;
@@ -154,11 +156,6 @@ export class RiotGamesError extends Error {
 		this.retryAfterMs = retryAfterMs;
 	}
 }
-
-export type Fetcher = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
 
 export interface RiotApiClientOptions {
 	fetch?: Fetcher;

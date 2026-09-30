@@ -1,4 +1,5 @@
 import { randomInt as cryptoRandomInt } from "node:crypto";
+import type { Fetcher } from "../helpers/fetcher";
 import type { CredentialRejectionReporter } from "./ExternalApiCredentialStatus";
 
 export interface SteamGame {
@@ -20,10 +21,6 @@ const OWNED_GAMES_URL =
 	"https://api.steampowered.com/IPlayerService/GetOwnedGames/v1/";
 const APP_DETAILS_URL = "https://store.steampowered.com/api/appdetails";
 
-type Fetcher = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
 type RandomInt = (maxExclusive: number) => number;
 
 function parseOwnedGames(body: unknown, steamId: string): SteamGame[] {

@@ -1,11 +1,7 @@
 import type { CredentialRejectionReporter } from "../services/ExternalApiCredentialStatus";
+import type { Fetcher } from "./fetcher";
 
 const albumCache = new Map<string, string[]>();
-
-type Fetcher = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
 
 interface ImgurAlbumResponse {
 	data?: {

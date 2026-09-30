@@ -1,10 +1,6 @@
+import type { Fetcher } from "../../helpers/fetcher";
 import type { TemporaryStateStore } from "../../repositories/TemporaryStateRepository";
 import type { RiotPlatform } from "../riot/constants";
-
-type Fetcher = (
-	input: string | URL | Request,
-	init?: RequestInit,
-) => Promise<Response>;
 
 const CACHE_TTL_MS = 60 * 60_000;
 
