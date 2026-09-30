@@ -15,8 +15,8 @@ import type { Client } from "discord.js";
 import { Kazagumo, type KazagumoPlayer } from "kazagumo";
 import { Connectors } from "shoukaku";
 
-/** Time the bot stays in a voice channel with nothing playing. */
-export const VOICE_IDLE_LEAVE_MS = 30_000;
+/** Time the bot stays in a voice channel after TTS playback finishes. */
+export const TTS_IDLE_LEAVE_MS = 30_000;
 
 export type VoiceOwner = "music" | "tts" | "none";
 
@@ -45,7 +45,7 @@ export type VoiceSessionDeps = {
 	createAudioResource: typeof createAudioResource;
 	entersState: typeof entersState;
 	getVoiceConnection: typeof getVoiceConnection;
-	idleLeaveMs: number;
+	ttsIdleLeaveMs: number;
 };
 
 function defaultCreateKazagumo(client: Client, nodes: KazagumoNodes): Kazagumo {
@@ -65,13 +65,14 @@ function defaultCreateKazagumo(client: Client, nodes: KazagumoNodes): Kazagumo {
 /**
  * Owns every per-guild bot voice connection: music (Kazagumo/Lavalink players)
  * and TikTok TTS (@discordjs/voice). A guild's voice is owned by music, TTS, or
- * nobody, and one idle timer leaves after {@link VOICE_IDLE_LEAVE_MS}.
+ * nobody. TTS leaves after {@link TTS_IDLE_LEAVE_MS} of idle; music leaves as
+ * soon as its queue is empty.
  */
 export default class VoiceSessionService {
 	readonly kazagumo: Kazagumo;
 	private readonly deps: VoiceSessionDeps;
 	private readonly ttsSessions = new Map<string, TtsSession>();
-	private readonly idleTimers = new Map<
+	private readonly ttsIdleTimers = new Map<
 		string,
 		ReturnType<typeof setTimeout>
 	>();
@@ -88,20 +89,20 @@ export default class VoiceSessionService {
 			createAudioResource,
 			entersState,
 			getVoiceConnection,
-			idleLeaveMs: VOICE_IDLE_LEAVE_MS,
+			ttsIdleLeaveMs: TTS_IDLE_LEAVE_MS,
 			...deps,
 		};
 		this.kazagumo = this.deps.createKazagumo(client, nodes);
 
-		this.kazagumo.on("playerEmpty", (player) =>
-			this.scheduleIdleLeave(player.guildId),
-		);
-		this.kazagumo.on("playerStart", (player) =>
-			this.clearIdleLeave(player.guildId),
-		);
-		this.kazagumo.on("playerDestroy", (player) =>
-			this.clearIdleLeave(player.guildId),
-		);
+		// Music leaves as soon as its queue runs out; only TTS uses an idle timer.
+		this.kazagumo.on("playerEmpty", (player) => {
+			this.leave(player.guildId).catch((error) =>
+				console.error(
+					`Failed to leave voice in guild ${player.guildId}`,
+					error,
+				),
+			);
+		});
 
 		// Lavalink events
 		// Dervied from Kazagumo readme
@@ -197,7 +198,7 @@ export default class VoiceSessionService {
 			throw new VoiceBusyError();
 		}
 
-		this.clearIdleLeave(guildId);
+		this.clearTtsIdleLeave(guildId);
 		this.ttsSessions.get(guildId)?.player.stop(true);
 
 		const connection = this.deps.joinVoiceChannel({
@@ -246,10 +247,10 @@ export default class VoiceSessionService {
 			if (this.ttsSessions.get(guildId)?.player !== player) {
 				return;
 			}
-			this.scheduleIdleLeave(guildId);
+			this.scheduleTtsIdleLeave(guildId);
 		} catch (error) {
 			if (this.ttsSessions.get(guildId)?.player === player) {
-				this.clearIdleLeave(guildId);
+				this.clearTtsIdleLeave(guildId);
 				this.ttsSessions.delete(guildId);
 				player.stop(true);
 				connection.destroy();
@@ -262,7 +263,7 @@ export default class VoiceSessionService {
 
 	/** Tears down whatever owns the guild's voice connection and clears timers. */
 	async leave(guildId: string): Promise<void> {
-		this.clearIdleLeave(guildId);
+		this.clearTtsIdleLeave(guildId);
 		const player = this.kazagumo.getPlayer(guildId);
 		if (player) {
 			await player.destroy();
@@ -276,13 +277,13 @@ export default class VoiceSessionService {
 		const guildIds = new Set<string>([
 			...this.ttsSessions.keys(),
 			...this.kazagumo.players.keys(),
-			...this.idleTimers.keys(),
+			...this.ttsIdleTimers.keys(),
 		]);
 		await Promise.allSettled([...guildIds].map((id) => this.leave(id)));
 	}
 
 	private releaseTts(guildId: string): void {
-		this.clearIdleLeave(guildId);
+		this.clearTtsIdleLeave(guildId);
 		const session = this.ttsSessions.get(guildId);
 		if (session) {
 			session.player.stop(true);
@@ -291,24 +292,24 @@ export default class VoiceSessionService {
 		this.deps.getVoiceConnection(guildId)?.destroy();
 	}
 
-	private scheduleIdleLeave(guildId: string): void {
-		this.clearIdleLeave(guildId);
-		this.idleTimers.set(
+	private scheduleTtsIdleLeave(guildId: string): void {
+		this.clearTtsIdleLeave(guildId);
+		this.ttsIdleTimers.set(
 			guildId,
 			setTimeout(() => {
-				this.idleTimers.delete(guildId);
+				this.ttsIdleTimers.delete(guildId);
 				this.leave(guildId).catch((error) =>
 					console.error(`Failed to leave voice in guild ${guildId}`, error),
 				);
-			}, this.deps.idleLeaveMs),
+			}, this.deps.ttsIdleLeaveMs),
 		);
 	}
 
-	private clearIdleLeave(guildId: string): void {
-		const timer = this.idleTimers.get(guildId);
+	private clearTtsIdleLeave(guildId: string): void {
+		const timer = this.ttsIdleTimers.get(guildId);
 		if (timer) {
 			clearTimeout(timer);
-			this.idleTimers.delete(guildId);
+			this.ttsIdleTimers.delete(guildId);
 		}
 	}
 }

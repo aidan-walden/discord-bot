@@ -84,7 +84,7 @@ function setup() {
 		createAudioResource: mock(() => ({})),
 		entersState: mock(async (target: unknown) => target),
 		getVoiceConnection: mock((guildId: string) => connections.get(guildId)),
-		idleLeaveMs: IDLE_MS,
+		ttsIdleLeaveMs: IDLE_MS,
 	};
 	const service = new VoiceSessionService(
 		{} as Client,
@@ -181,7 +181,7 @@ describe("VoiceSessionService", () => {
 		expect(service.getOwner("g1")).toBe("none");
 	});
 
-	test("idle timer is shared: playerEmpty destroys the music player, playerStart cancels it", async () => {
+	test("playerEmpty destroys the music player immediately", async () => {
 		const { service, kazagumo } = setup();
 		const player = (await service.startMusic({
 			guildId: "g1",
@@ -190,27 +190,10 @@ describe("VoiceSessionService", () => {
 		})) as unknown as FakePlayer;
 
 		kazagumo.emit("playerEmpty", player);
-		kazagumo.emit("playerStart", player);
-		await wait(IDLE_MS * 3);
-		expect(player.destroy).not.toHaveBeenCalled();
+		await Promise.resolve();
 
-		kazagumo.emit("playerEmpty", player);
-		await wait(IDLE_MS * 3);
 		expect(player.destroy).toHaveBeenCalledTimes(1);
 		expect(service.getOwner("g1")).toBe("none");
-	});
-
-	test("playerDestroy clears a pending idle leave", async () => {
-		const { service, kazagumo } = setup();
-		const player = (await service.startMusic({
-			guildId: "g1",
-			textId: "t",
-			voiceId: "v",
-		})) as unknown as FakePlayer;
-		kazagumo.emit("playerEmpty", player);
-		kazagumo.emit("playerDestroy", player);
-		await wait(IDLE_MS * 3);
-		expect(player.destroy).not.toHaveBeenCalled();
 	});
 
 	test("leave destroys the music player", async () => {
