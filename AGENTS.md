@@ -27,6 +27,8 @@
 - Commands live under `src/commands/<category>/*.ts` and are auto-registered by directory scan.
 - Event handlers live under `src/events/*.ts` and are auto-registered on startup.
 - Keep new command/event modules side-effect free except for their exported class.
+- `InteractionCreate` is the shared command error boundary: it logs a thrown error and tells the user (reply, editReply or followUp as the interaction's state allows), and `registerEvents` logs event handler rejections. Commands catch only errors they can turn into a more specific message.
+- Admin-only commands gate with `requireAdminUser` (`src/helpers/permissions.ts`); music commands use `getMusicCommandContext`, whose result is typed non-null for the fields they require.
 - `/friendslop` takes 2-25 users, requires public Steam libraries and a connected Steam account on each Discord profile.
 
 ## Persistence
