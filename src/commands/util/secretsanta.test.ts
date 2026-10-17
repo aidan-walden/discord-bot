@@ -328,10 +328,7 @@ describe("SecretSanta", () => {
 			{ length: 100 },
 			(_, index) => `${100000000000000000n + BigInt(index)}`,
 		);
-		for (const [sub, name] of [
-			["status", "party"],
-			["draw", "party"],
-		] as const) {
+		for (const [sub, name] of [["draw", "party"]] as const) {
 			const interaction = buildInteraction({
 				sub,
 				name,
@@ -380,33 +377,61 @@ describe("SecretSanta", () => {
 		expect(amount?.max_value).toBe(1_000_000);
 	});
 
-	test("exclusions field keeps whole pairs and notes the rest", async () => {
-		const exclusions = Array.from({ length: 40 }, (_, index) => ({
-			userA: `${100000000000000000n + BigInt(index)}`,
-			userB: `${200000000000000000n + BigInt(index)}`,
-		}));
+	test("status lists every participant across embeds", async () => {
+		const participants = Array.from(
+			{ length: 400 },
+			(_, index) => `${100000000000000000n + BigInt(index)}`,
+		);
 		const interaction = buildInteraction({
 			sub: "status",
 			secretSanta: {
 				get: mock(async () => draw({ name: "party" })),
-				listExclusions: mock(async () => exclusions),
+				listParticipants: mock(async () => participants),
 			},
 		});
 		await new SecretSanta().execute(interaction);
 		const payload = (interaction.reply as ReturnType<typeof mock>).mock
 			.calls[0]?.[0] as {
-			embeds: { data: { fields?: { name: string; value: string }[] } }[];
+			embeds: { data: { description?: string } }[];
 		};
-		const value =
-			payload.embeds[0]?.data.fields?.find((f) => f.name === "Exclusions")
-				?.value ?? "";
-		expect(value.length).toBeLessThanOrEqual(1024);
-		const lines = value.split("\n");
-		const shown = lines.slice(0, -1);
-		for (const line of shown) {
-			expect(line).toMatch(/^<@\d+> ↔ <@\d+>$/);
+		const text = payload.embeds.map((e) => e.data.description ?? "").join("\n");
+		for (const id of participants) {
+			expect(text).toContain(`<@${id}>`);
 		}
-		expect(lines.at(-1)).toBe(`and ${exclusions.length - shown.length} more`);
+		for (const embed of payload.embeds) {
+			expect(embed.data.description?.length).toBeLessThanOrEqual(4096);
+		}
+	});
+
+	test("exclusions explains each person's blocked matches in plain language", async () => {
+		const interaction = buildInteraction({
+			sub: "exclusions",
+			secretSanta: {
+				get: mock(async () => draw({ name: "party" })),
+				listExclusions: mock(async () => [
+					{ userA: "1", userB: "2" },
+					{ userA: "1", userB: "3" },
+				]),
+			},
+		});
+		await new SecretSanta().execute(interaction);
+		const payload = (interaction.reply as ReturnType<typeof mock>).mock
+			.calls[0]?.[0] as { content: string };
+		expect(payload.content).toContain("<@1> won't be matched with <@2>, <@3>");
+		expect(payload.content).toContain("<@2> won't be matched with <@1>");
+		expect(payload.content).toContain("<@3> won't be matched with <@1>");
+	});
+
+	test("exclusions reports when there are none", async () => {
+		const interaction = buildInteraction({
+			sub: "exclusions",
+			secretSanta: { get: mock(async () => draw({ name: "party" })) },
+		});
+		await new SecretSanta().execute(interaction);
+		expect(interaction.reply).toHaveBeenCalledWith({
+			content: "No exclusions for `party`. Anyone can be matched with anyone.",
+			flags: MessageFlags.Ephemeral,
+		});
 	});
 
 	test("rejects invalid name", async () => {
