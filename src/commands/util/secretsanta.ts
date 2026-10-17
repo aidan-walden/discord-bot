@@ -56,6 +56,27 @@ function formatMentionList(ids: string[]): string {
 	);
 }
 
+// Embed descriptions hold 4096 characters; leave headroom.
+const PARTICIPANT_CHUNK_LIMIT = 4000;
+
+// Packs whole lines into chunks of at most `limit` characters.
+function chunkLines(lines: string[], limit: number): string[] {
+	if (lines.length === 0) return ["None"];
+	const chunks: string[] = [];
+	let current = "";
+	for (const line of lines) {
+		const next = current ? `${current}\n${line}` : line;
+		if (current && next.length > limit) {
+			chunks.push(current);
+			current = line;
+		} else {
+			current = next;
+		}
+	}
+	chunks.push(current);
+	return chunks;
+}
+
 function parseName(raw: string | null): string | null {
 	if (raw === null) {
 		return null;
@@ -252,9 +273,17 @@ export default class SecretSanta implements Command {
 		.addSubcommand((sc) =>
 			sc
 				.setName("status")
-				.setDescription("Show draw status (no pairings)")
+				.setDescription("Show draw status and participants (no pairings)")
 				.addStringOption((o) =>
 					o.setName("name").setDescription("Draw name").setRequired(false),
+				),
+		)
+		.addSubcommand((sc) =>
+			sc
+				.setName("exclusions")
+				.setDescription("List who can't be matched with whom")
+				.addStringOption((o) =>
+					o.setName("name").setDescription("Draw name").setRequired(true),
 				),
 		);
 
@@ -287,6 +316,8 @@ export default class SecretSanta implements Command {
 				return this.handleResend(interaction);
 			case "status":
 				return this.handleStatus(interaction);
+			case "exclusions":
+				return this.handleExclusions(interaction);
 			default:
 				await replyEphemeral(interaction, "Unknown subcommand.");
 		}
@@ -596,14 +627,15 @@ export default class SecretSanta implements Command {
 			return;
 		}
 
-		const [participants, exclusions] = await Promise.all([
-			repo.listParticipants(name),
-			repo.listExclusions(name),
-		]);
-		const embed = new EmbedBuilder()
-			.setTitle(`Secret Santa: ${name}`)
-			.addFields(
-				{
+		const participants = await repo.listParticipants(name);
+		const chunks = chunkLines(
+			participants.map((id) => userMention(id)),
+			PARTICIPANT_CHUNK_LIMIT,
+		);
+		const embeds = chunks.map((chunk, index) => {
+			const embed = new EmbedBuilder().setDescription(chunk);
+			if (index === 0) {
+				embed.setTitle(`Secret Santa: ${name}`).addFields({
 					name: "Status",
 					value: [
 						draw.open ? "Opt-in open" : "Opt-in closed",
@@ -611,26 +643,87 @@ export default class SecretSanta implements Command {
 						`Spend limit: ${formatSpendLimit(draw.spendLimitCents)}`,
 						`Participants: ${participants.length}`,
 					].join("\n"),
-				},
-				{
-					name: "Participants",
-					value: formatMentionList(participants),
-				},
-				{
-					name: "Exclusions",
-					value: formatFieldList(
-						exclusions.map(
-							(e) => `${userMention(e.userA)} ↔ ${userMention(e.userB)}`,
-						),
-						"\n",
-					),
-				},
+				});
+			}
+			return embed;
+		});
+
+		// Discord allows up to 10 embeds per message.
+		const batches = Array.from(
+			{ length: Math.ceil(embeds.length / 10) },
+			(_, i) => embeds.slice(i * 10, i * 10 + 10),
+		);
+		const [first, ...rest] = batches;
+		await interaction.reply({ embeds: first, flags: MessageFlags.Ephemeral });
+		for (const batch of rest) {
+			await interaction.followUp({
+				embeds: batch,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
+	}
+
+	private async handleExclusions(
+		interaction: ChatInputCommandInteraction,
+	): Promise<void> {
+		const name = await this.nameOrReply(interaction);
+		if (!name) {
+			return;
+		}
+		const repo = interaction.client.bot.secretSanta;
+		if (!(await repo.get(name))) {
+			await replyEphemeral(interaction, noDrawNamed(name));
+			return;
+		}
+
+		const exclusions = await repo.listExclusions(name);
+		if (exclusions.length === 0) {
+			await replyEphemeral(
+				interaction,
+				`No exclusions for ${inlineCode(name)}. Anyone can be matched with anyone.`,
+			);
+			return;
+		}
+
+		// Exclusions are mutual, so list each person with everyone they can't be
+		// paired with in either direction.
+		const blocked = new Map<string, Set<string>>();
+		const addBlocked = (user: string, other: string) => {
+			const set = blocked.get(user) ?? new Set<string>();
+			set.add(other);
+			blocked.set(user, set);
+		};
+		for (const { userA, userB } of exclusions) {
+			addBlocked(userA, userB);
+			addBlocked(userB, userA);
+		}
+		const lines = [...blocked.entries()]
+			.sort(([a], [b]) => (a < b ? -1 : a > b ? 1 : 0))
+			.map(
+				([user, others]) =>
+					`${userMention(user)} won't be matched with ${[...others]
+						.sort()
+						.map((id) => userMention(id))
+						.join(", ")}`,
 			);
 
+		const [first, ...rest] = chunkLines(
+			[
+				`Exclusions for ${inlineCode(name)} (applies both ways: neither person can draw the other):`,
+				...lines,
+			],
+			2000,
+		);
 		await interaction.reply({
-			embeds: [embed],
+			content: first,
 			flags: MessageFlags.Ephemeral,
 		});
+		for (const chunk of rest) {
+			await interaction.followUp({
+				content: chunk,
+				flags: MessageFlags.Ephemeral,
+			});
+		}
 	}
 
 	private statusLine(draw: SecretSantaDraw, count: number): string {
