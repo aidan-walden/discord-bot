@@ -23,6 +23,7 @@ import {
 	ProfilePictureValidationError,
 	validateRemoteProfilePictureMime,
 } from "../helpers/profilePicture";
+import { isRuntimeTypescriptModule } from "../helpers/runtimeModules";
 import BanRepository from "../repositories/BanRepository";
 import DeafenSessionRepository from "../repositories/DeafenSessionRepository";
 import GuildSettingsRepository from "../repositories/GuildSettingsRepository";
@@ -43,6 +44,7 @@ import ChatSessionService from "../services/ChatSessionService";
 import DeafenTrackerService, {
 	isDeafenTrackerActive,
 } from "../services/DeafenTrackerService";
+import EventManager from "../services/EventManager";
 import HolidayProvider from "../services/HolidayProvider";
 import {
 	createLlmProviders,
@@ -61,10 +63,6 @@ import type BotEvent from "./BotEvent";
 import { BotEvents } from "./BotEvents";
 import type Command from "./Command";
 import type Holiday from "./Holiday";
-
-function isRuntimeTypescriptModule(file: string): boolean {
-	return file.endsWith(".ts") && !file.endsWith(".test.ts");
-}
 
 export default class Bot extends Client {
 	override readonly bot: Bot = this;
@@ -91,6 +89,8 @@ export default class Bot extends Client {
 	readonly guildSettings: GuildSettingsRepository;
 	readonly secretSanta: SecretSantaRepository;
 	readonly temporaryState: TemporaryStateRepository;
+	/** Routes `src/listeners` modules; not `listeners()`, which is EventEmitter's. */
+	readonly eventManager: EventManager;
 
 	private readonly shouldDeployCommands: boolean;
 	private readonly shouldRemoveCommands: boolean;
@@ -203,6 +203,7 @@ export default class Bot extends Client {
 		this.steam = new SteamService(steamApiKey, this.metrics);
 
 		this.holidays = new HolidayProvider();
+		this.eventManager = new EventManager(this);
 
 		this.voiceSessions = new VoiceSessionService(
 			this,
@@ -229,7 +230,9 @@ export default class Bot extends Client {
 			appleMusicReady,
 			this.registerCommands(path.join(import.meta.dirname, "../commands")),
 			this.registerEvents(path.join(import.meta.dirname, "../events")),
+			this.eventManager.load(path.join(import.meta.dirname, "../listeners")),
 		]);
+		this.eventManager.attach();
 
 		// Bot must be ready to deploy or remove commands, as we need to access the bot user's ID.
 		this.once(Events.ClientReady, async () => {
@@ -254,6 +257,7 @@ export default class Bot extends Client {
 			this.temporaryStateClosed = true;
 			this.temporaryState.close();
 		}
+		this.eventManager.dispose();
 		await this.voiceSessions.destroy();
 		await super.destroy();
 	}
